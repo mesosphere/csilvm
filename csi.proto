@@ -1,7 +1,13 @@
 // DO NOT EDIT: regenerate with `go generate`
+
 syntax = 'proto3';
 
+package csilvm;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
 option go_package = 'csilvm';
+option (gogoproto.goproto_enum_prefix_all) = true;
 
 service Identity {
   rpc GetSupportedVersions (GetSupportedVersionsRequest)

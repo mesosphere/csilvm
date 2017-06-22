@@ -12,6 +12,21 @@ import (
 	"os"
 )
 
+func lineWriter(writeString func(string) (int, error), newline bool) func(string) {
+	return func(line string) {
+		var err error
+		if line != "" {
+			_, err = writeString(line)
+		}
+		if err == nil && newline {
+			_, err = writeString("\n")
+		}
+		if err != nil {
+			panic(err.Error())
+		}
+	}
+}
+
 func main() {
 	const url = "https://raw.githubusercontent.com/container-storage-interface/spec/master/spec.md"
 
@@ -27,21 +42,37 @@ func main() {
 	}
 	defer out.Close()
 
-	if _, err := out.WriteString("// DO NOT EDIT: regenerate with `go generate`\n"); err != nil {
-		log.Fatalf("error writing header: %v", err)
-	}
-	if _, err := out.WriteString("syntax = 'proto3';\n\n"); err != nil {
-		log.Fatalf("error writing header: %v", err)
-	}
+	echo := lineWriter(out.WriteString, true)
 
-	if _, err := out.WriteString("option go_package = 'csilvm';\n\n"); err != nil {
-		log.Fatalf("error writing header: %v", err)
-	}
+	echo("// DO NOT EDIT: regenerate with `go generate`")
+	echo("")
+	echo("syntax = 'proto3';")
+	echo("")
+	echo("package csilvm;")
+	echo("")
+	echo(`import "github.com/gogo/protobuf/gogoproto/gogo.proto";`)
+	echo("")
 
+	echo("option go_package = 'csilvm';")
+	echo("option (gogoproto.goproto_enum_prefix_all) = true;")
+	echo("")
 
-	r := bufio.NewReader(rsp.Body)
-	inProtoDef := false
-	ii := 1
+	var (
+		r          = bufio.NewReader(rsp.Body)
+		inProtoDef = false
+		ii         = 1
+	)
+	echo = func() func(string) {
+		liner := lineWriter(out.WriteString, false)
+		return func(line string) {
+			defer func() {
+				if x := recover(); x != nil {
+					log.Fatalf("error writing line %d: %v", ii, x)
+				}
+			}()
+			liner(line)
+		}
+	}()
 	for {
 		line, err := r.ReadString('\n')
 		if err != nil {
@@ -64,9 +95,7 @@ func main() {
 			continue
 		}
 		if inProtoDef {
-			if _, err := out.WriteString(line); err != nil {
-				log.Fatalf("error writing line %d: %v", ii, err)
-			}
+			echo(line)
 		}
 		ii++
 	}
