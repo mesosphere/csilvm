@@ -6,11 +6,15 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 )
+
+func die(format string, v ...interface{}) {
+	panic(fmt.Sprintf(format, v...))
+}
 
 func lineWriter(writeString func(string) (int, error), newline bool) func(string) {
 	return func(line string) {
@@ -22,7 +26,7 @@ func lineWriter(writeString func(string) (int, error), newline bool) func(string
 			_, err = writeString("\n")
 		}
 		if err != nil {
-			panic(err.Error())
+			die(err.Error())
 		}
 	}
 }
@@ -32,15 +36,23 @@ func main() {
 
 	rsp, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		die(err.Error())
 	}
 	defer rsp.Body.Close()
 
 	out, err := os.Create("csi.proto")
 	if err != nil {
-		log.Fatal(err)
+		die(err.Error())
 	}
-	defer out.Close()
+	defer func() {
+		err := out.Sync()
+		if err == nil {
+			err = out.Close()
+		}
+		if err != nil {
+			println(err)
+		}
+	}()
 
 	echo := lineWriter(out.WriteString, true)
 
@@ -67,7 +79,7 @@ func main() {
 		return func(line string) {
 			defer func() {
 				if x := recover(); x != nil {
-					log.Fatalf("error writing line %d: %v", ii, x)
+					die("error writing line %d: %v", ii, x)
 				}
 			}()
 			liner(line)
@@ -79,12 +91,12 @@ func main() {
 			if err == io.EOF {
 				return
 			}
-			log.Fatalf("error reading spec.md: %v", err)
+			die("error reading spec.md: %v", err)
 		}
 		const protoStart = "```protobuf\n"
 		if line == protoStart {
 			if inProtoDef {
-				log.Fatalf("expected code section to end before starting a new one: line %d", ii)
+				die("expected code section to end before starting a new one: line %d", ii)
 			}
 			inProtoDef = true
 			continue
