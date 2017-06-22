@@ -1,6 +1,11 @@
 package lvmcmd
 
-import "unsafe"
+import (
+	"context"
+	"log"
+	"sync/atomic"
+	"unsafe"
+)
 
 // #cgo LDFLAGS: -llvm2cmd
 // #include <stdlib.h>
@@ -44,16 +49,22 @@ func (e Error) Error() string {
 	return msg
 }
 
-func init() {
-	C.lvm2_log_fn(C.lvm2_log_fn_t(C.logging_bridge))
+type LogLevel int
+
+const (
+	LogLevelFatal = LogLevel(iota)
+	LogLevelError
+	LogLevelWarn
+	LogLevelInfo
+	LogLevelDebug
+	LogLevelTrace
+)
+
+func (l LogLevel) log(file string, line, dmErrno int, message string) {
+	LogFunc(l, file, line, dmErrno, message)
 }
 
 var (
-	// TODO(jdef) apparently liblvm maintains a VG cache (maybe among other things).
-	// it's not actually required to obtain a handle, we may pass in NULL instead to
-	// lvm2_run. consider abstracting the use of this handle instead of mandating it.
-	lvm = unsafe.Pointer(C.lvm2_init())
-
 	logLevels = map[C.int]LogLevel{
 		C.LVM2_LOG_FATAL:        LogLevelFatal,
 		C.LVM2_LOG_ERROR:        LogLevelError,
@@ -63,6 +74,23 @@ var (
 		C.LVM2_LOG_DEBUG:        LogLevelTrace,
 	}
 
+	levelStr = map[LogLevel]string{
+		LogLevelFatal: "F",
+		LogLevelError: "E",
+		LogLevelWarn:  "W",
+		LogLevelInfo:  "I",
+		LogLevelDebug: "D",
+		LogLevelTrace: "T",
+	}
+
+	LogFunc = func(level LogLevel, file string, line, dmErrno int, message string) {
+		// TODO(jdef) eventually tie into some better logging subsystem
+		if x := len(file); x > 15 {
+			file = file[x-15:]
+		}
+		log.Printf("%s lvm [%15s:%5d] (%3d) %s", levelStr[level], file, line, dmErrno, message)
+	}
+
 	errorMessages = map[Error]string{
 		ErrorNoSuchCommand:     "no such command",
 		ErrorInvalidParameters: "invalid parameters",
@@ -70,18 +98,65 @@ var (
 	}
 )
 
+type contextKey int
+
+const (
+	contextKeyHandle = contextKey(iota) // lvm2 handle
+)
+
+var handleCount int32
+
+func newContext(ctx context.Context) (context.Context, func()) {
+	if ctx == nil {
+		return nil, func() {}
+	}
+
+	// TODO(jdef): unsure about the thread-safety of `handle`; if I close it at the same time
+	// that someone else is using it, what happens?
+	handle := unsafe.Pointer(C.lvm2_init())
+
+	if handle == nil {
+		return ctx, func() {}
+	}
+
+	atomic.AddInt32(&handleCount, 1)
+
+	ctx, cancel := context.WithCancel(context.WithValue(ctx, contextKeyHandle, handle))
+
+	return ctx, func() {
+		defer func() {
+			C.lvm2_exit(handle)
+			c := atomic.AddInt32(&handleCount, -1)
+			if c < 0 {
+				panic("lvm: handle count should never fall below zero")
+			}
+		}()
+		cancel()
+	}
+}
+
+func fromContext(ctx context.Context) (p unsafe.Pointer, ok bool) {
+	if ctx != nil {
+		p, ok = ctx.Value(contextKeyHandle).(unsafe.Pointer)
+	}
+	return
+}
+
+func init() {
+	C.lvm2_log_fn(C.lvm2_log_fn_t(C.logging_bridge))
+}
+
 // run invokes an LVM2 command line and returns the raw result
-func run(cmdline string) error {
+func run(ctx context.Context, cmdline string) error {
 	cmd := C.CString(cmdline)
 	defer C.free(unsafe.Pointer(cmd))
-	rc := C.lvm2_run(lvm, cmd)
+
+	var (
+		handle, _ = fromContext(ctx) // handle may be nil, lvm2 API says that's OK
+		rc        = C.lvm2_run(handle, cmd)
+	)
 	if rc == C.LVM2_COMMAND_SUCCEEDED {
 		return nil
 	}
 	return Error(rc)
-}
-
-// onexit releases the LVM2 handle
-func onexit() {
-	C.lvm2_exit(lvm)
 }
