@@ -63,6 +63,11 @@ import strings "strings"
 import reflect "reflect"
 import github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
 
+import (
+	context "golang.org/x/net/context"
+	grpc "google.golang.org/grpc"
+)
+
 import io "io"
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -10089,6 +10094,603 @@ func valueToGoStringCsi(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
+
+// Reference imports to suppress errors if they are not otherwise used.
+var _ context.Context
+var _ grpc.ClientConn
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+const _ = grpc.SupportPackageIsVersion4
+
+// Client API for Identity service
+
+type IdentityClient interface {
+	GetSupportedVersions(ctx context.Context, in *GetSupportedVersionsRequest, opts ...grpc.CallOption) (*GetSupportedVersionsResponse, error)
+	GetPluginInfo(ctx context.Context, in *GetPluginInfoRequest, opts ...grpc.CallOption) (*GetPluginInfoResponse, error)
+}
+
+type identityClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewIdentityClient(cc *grpc.ClientConn) IdentityClient {
+	return &identityClient{cc}
+}
+
+func (c *identityClient) GetSupportedVersions(ctx context.Context, in *GetSupportedVersionsRequest, opts ...grpc.CallOption) (*GetSupportedVersionsResponse, error) {
+	out := new(GetSupportedVersionsResponse)
+	err := grpc.Invoke(ctx, "/Identity/GetSupportedVersions", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *identityClient) GetPluginInfo(ctx context.Context, in *GetPluginInfoRequest, opts ...grpc.CallOption) (*GetPluginInfoResponse, error) {
+	out := new(GetPluginInfoResponse)
+	err := grpc.Invoke(ctx, "/Identity/GetPluginInfo", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for Identity service
+
+type IdentityServer interface {
+	GetSupportedVersions(context.Context, *GetSupportedVersionsRequest) (*GetSupportedVersionsResponse, error)
+	GetPluginInfo(context.Context, *GetPluginInfoRequest) (*GetPluginInfoResponse, error)
+}
+
+func RegisterIdentityServer(s *grpc.Server, srv IdentityServer) {
+	s.RegisterService(&_Identity_serviceDesc, srv)
+}
+
+func _Identity_GetSupportedVersions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSupportedVersionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServer).GetSupportedVersions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Identity/GetSupportedVersions",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServer).GetSupportedVersions(ctx, req.(*GetSupportedVersionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Identity_GetPluginInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPluginInfoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServer).GetPluginInfo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Identity/GetPluginInfo",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServer).GetPluginInfo(ctx, req.(*GetPluginInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Identity_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "Identity",
+	HandlerType: (*IdentityServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSupportedVersions",
+			Handler:    _Identity_GetSupportedVersions_Handler,
+		},
+		{
+			MethodName: "GetPluginInfo",
+			Handler:    _Identity_GetPluginInfo_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "csi.proto",
+}
+
+// Client API for Controller service
+
+type ControllerClient interface {
+	CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error)
+	DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error)
+	ControllerPublishVolume(ctx context.Context, in *ControllerPublishVolumeRequest, opts ...grpc.CallOption) (*ControllerPublishVolumeResponse, error)
+	ControllerUnpublishVolume(ctx context.Context, in *ControllerUnpublishVolumeRequest, opts ...grpc.CallOption) (*ControllerUnpublishVolumeResponse, error)
+	ValidateVolumeCapabilities(ctx context.Context, in *ValidateVolumeCapabilitiesRequest, opts ...grpc.CallOption) (*ValidateVolumeCapabilitiesResponse, error)
+	ListVolumes(ctx context.Context, in *ListVolumesRequest, opts ...grpc.CallOption) (*ListVolumesResponse, error)
+	GetCapacity(ctx context.Context, in *GetCapacityRequest, opts ...grpc.CallOption) (*GetCapacityResponse, error)
+	ControllerGetCapabilities(ctx context.Context, in *ControllerGetCapabilitiesRequest, opts ...grpc.CallOption) (*ControllerGetCapabilitiesResponse, error)
+}
+
+type controllerClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewControllerClient(cc *grpc.ClientConn) ControllerClient {
+	return &controllerClient{cc}
+}
+
+func (c *controllerClient) CreateVolume(ctx context.Context, in *CreateVolumeRequest, opts ...grpc.CallOption) (*CreateVolumeResponse, error) {
+	out := new(CreateVolumeResponse)
+	err := grpc.Invoke(ctx, "/Controller/CreateVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) DeleteVolume(ctx context.Context, in *DeleteVolumeRequest, opts ...grpc.CallOption) (*DeleteVolumeResponse, error) {
+	out := new(DeleteVolumeResponse)
+	err := grpc.Invoke(ctx, "/Controller/DeleteVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) ControllerPublishVolume(ctx context.Context, in *ControllerPublishVolumeRequest, opts ...grpc.CallOption) (*ControllerPublishVolumeResponse, error) {
+	out := new(ControllerPublishVolumeResponse)
+	err := grpc.Invoke(ctx, "/Controller/ControllerPublishVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) ControllerUnpublishVolume(ctx context.Context, in *ControllerUnpublishVolumeRequest, opts ...grpc.CallOption) (*ControllerUnpublishVolumeResponse, error) {
+	out := new(ControllerUnpublishVolumeResponse)
+	err := grpc.Invoke(ctx, "/Controller/ControllerUnpublishVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) ValidateVolumeCapabilities(ctx context.Context, in *ValidateVolumeCapabilitiesRequest, opts ...grpc.CallOption) (*ValidateVolumeCapabilitiesResponse, error) {
+	out := new(ValidateVolumeCapabilitiesResponse)
+	err := grpc.Invoke(ctx, "/Controller/ValidateVolumeCapabilities", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) ListVolumes(ctx context.Context, in *ListVolumesRequest, opts ...grpc.CallOption) (*ListVolumesResponse, error) {
+	out := new(ListVolumesResponse)
+	err := grpc.Invoke(ctx, "/Controller/ListVolumes", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) GetCapacity(ctx context.Context, in *GetCapacityRequest, opts ...grpc.CallOption) (*GetCapacityResponse, error) {
+	out := new(GetCapacityResponse)
+	err := grpc.Invoke(ctx, "/Controller/GetCapacity", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controllerClient) ControllerGetCapabilities(ctx context.Context, in *ControllerGetCapabilitiesRequest, opts ...grpc.CallOption) (*ControllerGetCapabilitiesResponse, error) {
+	out := new(ControllerGetCapabilitiesResponse)
+	err := grpc.Invoke(ctx, "/Controller/ControllerGetCapabilities", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for Controller service
+
+type ControllerServer interface {
+	CreateVolume(context.Context, *CreateVolumeRequest) (*CreateVolumeResponse, error)
+	DeleteVolume(context.Context, *DeleteVolumeRequest) (*DeleteVolumeResponse, error)
+	ControllerPublishVolume(context.Context, *ControllerPublishVolumeRequest) (*ControllerPublishVolumeResponse, error)
+	ControllerUnpublishVolume(context.Context, *ControllerUnpublishVolumeRequest) (*ControllerUnpublishVolumeResponse, error)
+	ValidateVolumeCapabilities(context.Context, *ValidateVolumeCapabilitiesRequest) (*ValidateVolumeCapabilitiesResponse, error)
+	ListVolumes(context.Context, *ListVolumesRequest) (*ListVolumesResponse, error)
+	GetCapacity(context.Context, *GetCapacityRequest) (*GetCapacityResponse, error)
+	ControllerGetCapabilities(context.Context, *ControllerGetCapabilitiesRequest) (*ControllerGetCapabilitiesResponse, error)
+}
+
+func RegisterControllerServer(s *grpc.Server, srv ControllerServer) {
+	s.RegisterService(&_Controller_serviceDesc, srv)
+}
+
+func _Controller_CreateVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).CreateVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/CreateVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).CreateVolume(ctx, req.(*CreateVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_DeleteVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).DeleteVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/DeleteVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).DeleteVolume(ctx, req.(*DeleteVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_ControllerPublishVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ControllerPublishVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).ControllerPublishVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/ControllerPublishVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).ControllerPublishVolume(ctx, req.(*ControllerPublishVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_ControllerUnpublishVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ControllerUnpublishVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).ControllerUnpublishVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/ControllerUnpublishVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).ControllerUnpublishVolume(ctx, req.(*ControllerUnpublishVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_ValidateVolumeCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateVolumeCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).ValidateVolumeCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/ValidateVolumeCapabilities",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).ValidateVolumeCapabilities(ctx, req.(*ValidateVolumeCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_ListVolumes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVolumesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).ListVolumes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/ListVolumes",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).ListVolumes(ctx, req.(*ListVolumesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_GetCapacity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCapacityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).GetCapacity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/GetCapacity",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).GetCapacity(ctx, req.(*GetCapacityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Controller_ControllerGetCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ControllerGetCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServer).ControllerGetCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Controller/ControllerGetCapabilities",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServer).ControllerGetCapabilities(ctx, req.(*ControllerGetCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Controller_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "Controller",
+	HandlerType: (*ControllerServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateVolume",
+			Handler:    _Controller_CreateVolume_Handler,
+		},
+		{
+			MethodName: "DeleteVolume",
+			Handler:    _Controller_DeleteVolume_Handler,
+		},
+		{
+			MethodName: "ControllerPublishVolume",
+			Handler:    _Controller_ControllerPublishVolume_Handler,
+		},
+		{
+			MethodName: "ControllerUnpublishVolume",
+			Handler:    _Controller_ControllerUnpublishVolume_Handler,
+		},
+		{
+			MethodName: "ValidateVolumeCapabilities",
+			Handler:    _Controller_ValidateVolumeCapabilities_Handler,
+		},
+		{
+			MethodName: "ListVolumes",
+			Handler:    _Controller_ListVolumes_Handler,
+		},
+		{
+			MethodName: "GetCapacity",
+			Handler:    _Controller_GetCapacity_Handler,
+		},
+		{
+			MethodName: "ControllerGetCapabilities",
+			Handler:    _Controller_ControllerGetCapabilities_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "csi.proto",
+}
+
+// Client API for Node service
+
+type NodeClient interface {
+	NodePublishVolume(ctx context.Context, in *NodePublishVolumeRequest, opts ...grpc.CallOption) (*NodePublishVolumeResponse, error)
+	NodeUnpublishVolume(ctx context.Context, in *NodeUnpublishVolumeRequest, opts ...grpc.CallOption) (*NodeUnpublishVolumeResponse, error)
+	GetNodeID(ctx context.Context, in *GetNodeIDRequest, opts ...grpc.CallOption) (*GetNodeIDResponse, error)
+	ProbeNode(ctx context.Context, in *ProbeNodeRequest, opts ...grpc.CallOption) (*ProbeNodeResponse, error)
+	NodeGetCapabilities(ctx context.Context, in *NodeGetCapabilitiesRequest, opts ...grpc.CallOption) (*NodeGetCapabilitiesResponse, error)
+}
+
+type nodeClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewNodeClient(cc *grpc.ClientConn) NodeClient {
+	return &nodeClient{cc}
+}
+
+func (c *nodeClient) NodePublishVolume(ctx context.Context, in *NodePublishVolumeRequest, opts ...grpc.CallOption) (*NodePublishVolumeResponse, error) {
+	out := new(NodePublishVolumeResponse)
+	err := grpc.Invoke(ctx, "/Node/NodePublishVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeClient) NodeUnpublishVolume(ctx context.Context, in *NodeUnpublishVolumeRequest, opts ...grpc.CallOption) (*NodeUnpublishVolumeResponse, error) {
+	out := new(NodeUnpublishVolumeResponse)
+	err := grpc.Invoke(ctx, "/Node/NodeUnpublishVolume", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeClient) GetNodeID(ctx context.Context, in *GetNodeIDRequest, opts ...grpc.CallOption) (*GetNodeIDResponse, error) {
+	out := new(GetNodeIDResponse)
+	err := grpc.Invoke(ctx, "/Node/GetNodeID", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeClient) ProbeNode(ctx context.Context, in *ProbeNodeRequest, opts ...grpc.CallOption) (*ProbeNodeResponse, error) {
+	out := new(ProbeNodeResponse)
+	err := grpc.Invoke(ctx, "/Node/ProbeNode", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeClient) NodeGetCapabilities(ctx context.Context, in *NodeGetCapabilitiesRequest, opts ...grpc.CallOption) (*NodeGetCapabilitiesResponse, error) {
+	out := new(NodeGetCapabilitiesResponse)
+	err := grpc.Invoke(ctx, "/Node/NodeGetCapabilities", in, out, c.cc, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Server API for Node service
+
+type NodeServer interface {
+	NodePublishVolume(context.Context, *NodePublishVolumeRequest) (*NodePublishVolumeResponse, error)
+	NodeUnpublishVolume(context.Context, *NodeUnpublishVolumeRequest) (*NodeUnpublishVolumeResponse, error)
+	GetNodeID(context.Context, *GetNodeIDRequest) (*GetNodeIDResponse, error)
+	ProbeNode(context.Context, *ProbeNodeRequest) (*ProbeNodeResponse, error)
+	NodeGetCapabilities(context.Context, *NodeGetCapabilitiesRequest) (*NodeGetCapabilitiesResponse, error)
+}
+
+func RegisterNodeServer(s *grpc.Server, srv NodeServer) {
+	s.RegisterService(&_Node_serviceDesc, srv)
+}
+
+func _Node_NodePublishVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodePublishVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).NodePublishVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Node/NodePublishVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).NodePublishVolume(ctx, req.(*NodePublishVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Node_NodeUnpublishVolume_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeUnpublishVolumeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).NodeUnpublishVolume(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Node/NodeUnpublishVolume",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).NodeUnpublishVolume(ctx, req.(*NodeUnpublishVolumeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Node_GetNodeID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).GetNodeID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Node/GetNodeID",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).GetNodeID(ctx, req.(*GetNodeIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Node_ProbeNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProbeNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).ProbeNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Node/ProbeNode",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).ProbeNode(ctx, req.(*ProbeNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Node_NodeGetCapabilities_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NodeGetCapabilitiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServer).NodeGetCapabilities(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/Node/NodeGetCapabilities",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServer).NodeGetCapabilities(ctx, req.(*NodeGetCapabilitiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _Node_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "Node",
+	HandlerType: (*NodeServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "NodePublishVolume",
+			Handler:    _Node_NodePublishVolume_Handler,
+		},
+		{
+			MethodName: "NodeUnpublishVolume",
+			Handler:    _Node_NodeUnpublishVolume_Handler,
+		},
+		{
+			MethodName: "GetNodeID",
+			Handler:    _Node_GetNodeID_Handler,
+		},
+		{
+			MethodName: "ProbeNode",
+			Handler:    _Node_ProbeNode_Handler,
+		},
+		{
+			MethodName: "NodeGetCapabilities",
+			Handler:    _Node_NodeGetCapabilities_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "csi.proto",
+}
+
 func (m *GetSupportedVersionsRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
