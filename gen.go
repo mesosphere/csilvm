@@ -12,8 +12,12 @@ import (
 	"os"
 )
 
-func die(format string, v ...interface{}) {
-	panic(fmt.Sprintf(format, v...))
+func die(lineOrFormat string, v ...interface{}) {
+	if len(v) == 0 {
+		panic(lineOrFormat)
+	} else {
+		panic(fmt.Sprintf(lineOrFormat, v...))
+	}
 }
 
 func lineWriter(writeString func(string) (int, error), newline bool) func(string) {
