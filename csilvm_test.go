@@ -48,12 +48,18 @@ func TestMain(m *testing.M) {
 }
 
 func TestNormal(t *testing.T) {
-	t.Log("I'm a normal test!")
+	t.Log("I'm a normal test that requires no root privileges!")
 }
 
-func TestRequiringSeparateMountNamespace(t *testing.T) {
+func TestCreatePhysicalVolume(t *testing.T) {
 	if !isInSeparateMountNamespace() {
 		t.Skip("Test requires a separate mount namespace.")
 	}
-	t.Log("I'm a test that requires a separate mount namespace!")
+	dev, err := newTestDevice()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkError(dev.Close)
+	// TODO(gpaul): use the loopback device to create an LVM
+	// physical volume.
 }
