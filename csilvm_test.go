@@ -60,6 +60,10 @@ func TestCreatePhysicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer checkError(dev.Close)
-	// TODO(gpaul): use the loopback device to create an LVM
-	// physical volume.
+
+	pd, err := newPhysicalVolume(dev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer checkError(pd.Close)
 }

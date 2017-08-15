@@ -160,3 +160,7 @@ func run(ctx context.Context, cmdline string) error {
 	}
 	return Error(rc)
 }
+
+func Run(ctx context.Context, cmdline string) error {
+	return run(ctx, cmdline)
+}
