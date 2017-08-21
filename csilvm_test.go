@@ -50,20 +50,3 @@ func TestMain(m *testing.M) {
 func TestNormal(t *testing.T) {
 	t.Log("I'm a normal test that requires no root privileges!")
 }
-
-func TestCreatePhysicalVolume(t *testing.T) {
-	if !isInSeparateMountNamespace() {
-		t.Skip("Test requires a separate mount namespace.")
-	}
-	dev, err := newTestDevice()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer checkError(dev.Close)
-
-	pd, err := newPhysicalVolume(dev)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer checkError(pd.Close)
-}

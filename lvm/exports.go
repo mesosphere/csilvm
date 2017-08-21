@@ -1,4 +1,4 @@
-package lvmcmd
+package lvm
 
 import "C"
 

@@ -1,6 +1,6 @@
 // +build e2e_test
 
-package lvmcmd
+package lvm
 
 import (
 	"context"
