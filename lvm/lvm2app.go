@@ -462,8 +462,6 @@ func (vg *VolumeGroup) close() {
 }
 
 func (vg *VolumeGroup) withOpen(fn func(C.vg_t) error) error {
-	vg.libHandle.lk.Lock()
-	defer vg.libHandle.lk.Unlock()
 	if err := vg.open(openReadWrite); err != nil {
 		return err
 	}
@@ -479,13 +477,26 @@ type LogicalVolume struct {
 }
 
 func (lv *LogicalVolume) Remove() error {
-	return lv.vg.withOpen(func(cvg C.vg_t) error {
-		res := C.lvm_vg_remove_lv(lv.lv)
-		if res != 0 {
-			return lv.vg.libHandle.err()
-		}
-		return nil
-	})
+	lv.vg.libHandle.lk.Lock()
+	defer lv.vg.libHandle.lk.Unlock()
+	if err := lv.vg.open(openReadWrite); err != nil {
+		return err
+	}
+	defer lv.vg.close()
+	cvg := lv.vg.vg
+	// Load the C.lv_t from scratch as the original vg_t
+	// was closed and re-opened here.
+	cname := C.CString(lv.name)
+	defer C.free(unsafe.Pointer(cname))
+	clv := C.lvm_lv_from_name(cvg, cname)
+	if clv == nil {
+		return lv.vg.libHandle.err()
+	}
+	res := C.lvm_vg_remove_lv(clv)
+	if res != 0 {
+		return lv.vg.libHandle.err()
+	}
+	return nil
 }
 
 var DefaultHandle *LibHandle
