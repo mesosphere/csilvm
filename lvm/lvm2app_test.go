@@ -163,6 +163,29 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 	}
 }
 
+func TestCreateLogicalVolume(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+}
+
 func createVolumeGroup(handle *LibHandle, size int) (*VolumeGroup, func(), error) {
 	// Create a loop device to back the physical volume.
 	loop, err := CreateLoopDevice(size)
