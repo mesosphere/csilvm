@@ -8,6 +8,9 @@ import (
 	"github.com/google/uuid"
 )
 
+// We use 100MiB test volumes.
+const pvsize = 100 << 20
+
 func TestLibraryGetVersion(t *testing.T) {
 	cmd := exec.Command("lvm", "version")
 	out, err := cmd.Output()
@@ -80,13 +83,13 @@ func TestListVolumeGroupNames(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg1, cleanup1, err := createVolumeGroup(handle)
+	vg1, cleanup1, err := createVolumeGroup(handle, pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cleanup1()
 	// Create the second volume group.
-	vg2, cleanup2, err := createVolumeGroup(handle)
+	vg2, cleanup2, err := createVolumeGroup(handle, pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,9 +115,57 @@ func TestListVolumeGroupNames(t *testing.T) {
 	}
 }
 
-func createVolumeGroup(handle *LibHandle) (*VolumeGroup, func(), error) {
+func TestVolumeGroupBytesTotal(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Create the first volume group.
+	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesTotal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Experimentally determined - this is probably really brittle.
+	exp := 100663296
+	if size != exp {
+		t.Fatalf("Expected size %d but got %d", 100<<20, exp)
+	}
+}
+
+func TestVolumeGroupBytesFree(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Create the first volume group.
+	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This size was experimentally determined - this is probably
+	// quite brittle. Consider multiplying number of extents with
+	// extent size and comparing that.
+	exp := 100663296
+	if size != exp {
+		t.Fatalf("Expected size %d but got %d", 100<<20, exp)
+	}
+}
+
+func createVolumeGroup(handle *LibHandle, size int) (*VolumeGroup, func(), error) {
 	// Create a loop device to back the physical volume.
-	loop, err := CreateLoopDevice(100 << 20)
+	loop, err := CreateLoopDevice(size)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -133,7 +184,7 @@ func createVolumeGroup(handle *LibHandle) (*VolumeGroup, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cleanup.add(func() error { return pv.Remove(handle) })
+	cleanup.add(func() error { return pv.Remove() })
 	pvs = append(pvs, pv)
 
 	// Create a volume group containing the physical volume.

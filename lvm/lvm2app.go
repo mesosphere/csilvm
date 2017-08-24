@@ -187,6 +187,107 @@ type VolumeGroup struct {
 	libHandle *LibHandle
 }
 
+// BytesTotal returns the current size in bytes of the volume group.
+func (vg *VolumeGroup) BytesTotal() (int, error) {
+	vg.libHandle.lk.Lock()
+	defer vg.libHandle.lk.Unlock()
+	if err := vg.open(openReadWrite); err != nil {
+		return 0, err
+	}
+	defer vg.close()
+	return int(C.lvm_vg_get_size(vg.vg)), nil
+}
+
+// BytesFree returns the unallocated space in bytes of the volume group.
+func (vg *VolumeGroup) BytesFree() (int, error) {
+	vg.libHandle.lk.Lock()
+	defer vg.libHandle.lk.Unlock()
+	if err := vg.open(openReadWrite); err != nil {
+		return 0, err
+	}
+	defer vg.close()
+	return int(C.lvm_vg_get_free_size(vg.vg)), nil
+}
+
+// Remove removes the volume group from disk.
+//
+// It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
+// change.
+func (vg *VolumeGroup) Remove() error {
+	vg.libHandle.lk.Lock()
+	defer vg.libHandle.lk.Unlock()
+	if err := vg.open(openReadWrite); err != nil {
+		return err
+	}
+	defer vg.close()
+	res := C.lvm_vg_remove(vg.vg)
+	if res != 0 {
+		return vg.libHandle.err()
+	}
+	res = C.lvm_vg_write(vg.vg)
+	if res != 0 {
+		return vg.libHandle.err()
+	}
+	return nil
+}
+
+const (
+	openReadWrite = false
+	openReadOnly  = true
+)
+
+// open calls `lvm_vg_open()` to get a handle to the underlying volume group.
+func (vg *VolumeGroup) open(readonly bool) error {
+	if vg.vg != nil {
+		return errors.New("already open")
+	}
+	cname := C.CString(vg.name)
+	defer C.free(unsafe.Pointer(cname))
+	mode := "w"
+	if readonly {
+		mode = "r"
+	}
+	cmode := C.CString(mode)
+	defer C.free(unsafe.Pointer(cmode))
+	const ignoredFlags = 0
+	cvg := C.lvm_vg_open(vg.libHandle.handle, cname, cmode, ignoredFlags)
+	if cvg == nil {
+		return vg.libHandle.err()
+	}
+	vg.vg = cvg
+	return nil
+}
+
+// close calls `lvm_vg_close()` to release the underlying volume group
+// handle and the VG lock. This function panics if the close fails or
+// if the volume group is already closed.  As this is an internal
+// function, the latter should never happen.
+func (vg *VolumeGroup) close() {
+	if vg.vg == nil {
+		panic("already closed")
+	}
+	res := C.lvm_vg_close(vg.vg)
+	if res != 0 {
+		panic(vg.libHandle.err())
+	}
+	vg.vg = nil
+}
+
+// LookupVolumeGroup returns the volume group with the given name.
+func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
+	handle.lk.Lock()
+	defer handle.lk.Unlock()
+	vg := &VolumeGroup{name, nil, handle}
+	// Check that the volume group can be opened.
+	if err := vg.open(openReadWrite); err != nil {
+		return nil, err
+	}
+	// Close the volume group, releasing the VG lock. Subsequent
+	// operations will re-open the volume group as necessary.
+	vg.close()
+	return vg, nil
+}
+
 // CreateVolumeGroup creates a new volume group.
 func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, opts ...VolumeGroupOpt) (*VolumeGroup, error) {
 	handle.lk.Lock()
@@ -236,77 +337,6 @@ func (handle *LibHandle) validateVolumeGroupName(name string) error {
 
 type VolumeGroupOpt func(*VolumeGroup) error
 
-// RemoveVolumeGroup removes the volume group with the specified name
-// from disk.
-func (handle *LibHandle) RemoveVolumeGroup(name string) error {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	vg := &VolumeGroup{name, nil, handle}
-	if err := vg.open(openReadWrite); err != nil {
-		return err
-	}
-	defer vg.close()
-	res := C.lvm_vg_remove(vg.vg)
-	if res != 0 {
-		return vg.libHandle.err()
-	}
-	res = C.lvm_vg_write(vg.vg)
-	if res != 0 {
-		return vg.libHandle.err()
-	}
-	return nil
-}
-
-// Remove removes the volume group from disk.
-//
-// It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
-// change.
-func (vg *VolumeGroup) Remove() error {
-	return vg.libHandle.RemoveVolumeGroup(vg.name)
-}
-
-const (
-	openReadWrite = false
-	openReadOnly  = true
-)
-
-// open calls `lvm_vg_open()` to get a handle to the underlying volume group.
-func (vg *VolumeGroup) open(readonly bool) error {
-	if vg.vg != nil {
-		return errors.New("already open")
-	}
-	cname := C.CString(vg.name)
-	defer C.free(unsafe.Pointer(cname))
-	mode := "w"
-	if readonly {
-		mode = "r"
-	}
-	cmode := C.CString(mode)
-	defer C.free(unsafe.Pointer(cmode))
-	const ignoredFlags = 0
-	cvg := C.lvm_vg_open(vg.libHandle.handle, cname, cmode, ignoredFlags)
-	if cvg == nil {
-		return vg.libHandle.err()
-	}
-	vg.vg = cvg
-	return nil
-}
-
-// close calls `lvm_vg_close()` to release the underlying volume group
-// handle and the VG lock. This function panics if the close fails or
-// if the volume group is already closed.  As this is an internal
-// function, the latter should never happen.
-func (vg *VolumeGroup) close() {
-	if vg.vg == nil {
-		panic("already closed")
-	}
-	res := C.lvm_vg_close(vg.vg)
-	if res != 0 {
-		panic(vg.libHandle.err())
-	}
-	vg.vg = nil
-}
-
 // Scan scans for new devices and volume groups.
 func (handle *LibHandle) Scan() error {
 	handle.lk.Lock()
@@ -323,15 +353,32 @@ type PhysicalVolume struct {
 	libHandle *LibHandle
 }
 
-func (pv *PhysicalVolume) Remove(handle *LibHandle) error {
-	return pv.libHandle.RemovePhysicalVolume(pv.dev)
+// Remove removes the physical volume.
+func (pv *PhysicalVolume) Remove() error {
+	pv.libHandle.lk.Lock()
+	defer pv.libHandle.lk.Unlock()
+	cdev := C.CString(pv.dev)
+	defer C.free(unsafe.Pointer(cdev))
+	res := C.lvm_pv_remove(pv.libHandle.handle, cdev)
+	if res != 0 {
+		return pv.libHandle.err()
+	}
+	return nil
+}
+
+// LookupPhysicalVolume returns the physical volume with the given name.
+func (handle *LibHandle) LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
+	handle.lk.Lock()
+	defer handle.lk.Unlock()
+	// TODO(gpaul): confirm that the physical volume exists.
+	return &PhysicalVolume{name, handle}, nil
 }
 
 // CreatePhysicalVolume creates a physical volume of the given device
 // and size.
 func (handle *LibHandle) CreatePhysicalVolume(dev string, size uint64) (*PhysicalVolume, error) {
 	handle.lk.Lock()
-	handle.lk.Unlock()
+	defer handle.lk.Unlock()
 	cdev := C.CString(dev)
 	defer C.free(unsafe.Pointer(cdev))
 	res := C.lvm_pv_create(handle.handle, cdev, C.uint64_t(size))
@@ -339,19 +386,6 @@ func (handle *LibHandle) CreatePhysicalVolume(dev string, size uint64) (*Physica
 		return nil, handle.err()
 	}
 	return &PhysicalVolume{dev, handle}, nil
-}
-
-// RemovePhysicalVolume removes the named physical volume.
-func (handle *LibHandle) RemovePhysicalVolume(dev string) error {
-	handle.lk.Lock()
-	handle.lk.Unlock()
-	cdev := C.CString(dev)
-	defer C.free(unsafe.Pointer(cdev))
-	res := C.lvm_pv_remove(handle.handle, cdev)
-	if res != 0 {
-		return handle.err()
-	}
-	return nil
 }
 
 var DefaultHandle *LibHandle
@@ -369,18 +403,22 @@ func Scan() error {
 	return DefaultHandle.Scan()
 }
 
+// LookupPhysicalVolume returns the volume group with the given name.
+func LookupVolumeGroup(name string) (*VolumeGroup, error) {
+	return DefaultHandle.LookupVolumeGroup(name)
+}
+
+// LookupVolumeGroup returns the volume group with the given name.
+func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
+	return DefaultHandle.LookupPhysicalVolume(name)
+}
+
 // CreateVolumeGroup creates a new volume group.
 func CreateVolumeGroup(
 	name string,
 	pvs []*PhysicalVolume,
 	opts ...VolumeGroupOpt) (*VolumeGroup, error) {
 	return DefaultHandle.CreateVolumeGroup(name, pvs, opts...)
-}
-
-// RemoveVolumeGroup removes the volume group with the specified name
-// from disk.
-func RemoveVolumeGroup(name string) error {
-	return DefaultHandle.RemoveVolumeGroup(name)
 }
 
 // ListVolumeGroupNames returns the names of the list of volume groups.
@@ -409,9 +447,4 @@ func ListVolumeGroupUUIDs() ([]string, error) {
 // and size.
 func CreatePhysicalVolume(dev string, size uint64) (*PhysicalVolume, error) {
 	return DefaultHandle.CreatePhysicalVolume(dev, size)
-}
-
-// RemovePhysicalVolume removes the named physical volume.
-func RemovePhysicalVolume(dev string) error {
-	return DefaultHandle.RemovePhysicalVolume(dev)
 }
