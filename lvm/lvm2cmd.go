@@ -34,15 +34,15 @@ import (
 // }
 import "C"
 
-type Error int
+type LVM2CMDError int
 
 const (
-	ErrorNoSuchCommand     = Error(C.LVM2_NO_SUCH_COMMAND)
-	ErrorInvalidParameters = Error(C.LVM2_INVALID_PARAMETERS)
-	ErrorProcessingFailed  = Error(C.LVM2_PROCESSING_FAILED)
+	ErrorNoSuchCommand     = LVM2CMDError(C.LVM2_NO_SUCH_COMMAND)
+	ErrorInvalidParameters = LVM2CMDError(C.LVM2_INVALID_PARAMETERS)
+	ErrorProcessingFailed  = LVM2CMDError(C.LVM2_PROCESSING_FAILED)
 )
 
-func (e Error) Error() string {
+func (e LVM2CMDError) Error() string {
 	msg := errorMessages[e]
 	if msg == "" {
 		return "unknown error"
@@ -95,7 +95,7 @@ var (
 		log.Printf("%s lvm [%15s:%5d] (%3d) %s", levelStr[level], file, line, dmErrno, message)
 	}
 
-	errorMessages = map[Error]string{
+	errorMessages = map[LVM2CMDError]string{
 		ErrorNoSuchCommand:     "no such command",
 		ErrorInvalidParameters: "invalid parameters",
 		ErrorProcessingFailed:  "processing failed",
@@ -163,5 +163,5 @@ func run(ctx context.Context, cmdline string) error {
 	if rc == C.LVM2_COMMAND_SUCCEEDED {
 		return nil
 	}
-	return Error(rc)
+	return LVM2CMDError(rc)
 }
