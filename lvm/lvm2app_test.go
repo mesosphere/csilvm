@@ -115,6 +115,50 @@ func TestListVolumeGroupNames(t *testing.T) {
 	}
 }
 
+func TestCreateVolumeGroup(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Create the volume group.
+	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	// Confirm that the volume group exists.
+	names, err := handle.ListVolumeGroupNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	had := false
+	for _, name := range names {
+		if name == vg.name {
+			had = true
+		}
+	}
+	if !had {
+		t.Fatalf("Expected volume group '%s'", vg.name)
+	}
+}
+
+func TestCreateVolumeGroupInvalidName(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Try to create the volume group with a bad name.
+	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
+	if err == nil {
+		t.Fatal("Expected error due to bad volume group name.")
+	}
+	if vg != nil {
+		t.Fatal("Expected no volume group in response")
+	}
+}
+
 func TestVolumeGroupBytesTotal(t *testing.T) {
 	handle, err := NewLibHandle()
 	if err != nil {
