@@ -8,8 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// We use 100MiB test volumes.
-const pvsize = 100 << 20
+const (
+	// We use 100MiB test volumes.
+	pvsize = 100 << 20
+)
 
 func TestLibraryGetVersion(t *testing.T) {
 	cmd := exec.Command("lvm", "version")
@@ -122,7 +124,7 @@ func TestCreateVolumeGroup(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the volume group.
-	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,9 +154,11 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	// Try to create the volume group with a bad name.
 	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
 	if err == nil {
+		vg.Remove()
 		t.Fatal("Expected error due to bad volume group name.")
 	}
 	if vg != nil {
+		vg.Remove()
 		t.Fatal("Expected no volume group in response")
 	}
 }
@@ -166,7 +170,7 @@ func TestVolumeGroupBytesTotal(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,10 +179,14 @@ func TestVolumeGroupBytesTotal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Experimentally determined - this is probably really brittle.
-	exp := 100663296
+	extentSize, err := vg.ExtentSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Metadata claims a single extent.
+	exp := uint64(pvsize - extentSize)
 	if size != exp {
-		t.Fatalf("Expected size %d but got %d", 100<<20, exp)
+		t.Fatalf("Expected size %d but got %d", exp, size)
 	}
 }
 
@@ -189,7 +197,7 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, 100<<20)
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,12 +206,14 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This size was experimentally determined - this is probably
-	// quite brittle. Consider multiplying number of extents with
-	// extent size and comparing that.
-	exp := 100663296
+	extentSize, err := vg.ExtentSize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Metadata claims a single extent.
+	exp := uint64(pvsize - extentSize)
 	if size != exp {
-		t.Fatalf("Expected size %d but got %d", 100<<20, exp)
+		t.Fatalf("Expected size %d but got %d", exp, size)
 	}
 }
 
@@ -230,7 +240,7 @@ func TestCreateLogicalVolume(t *testing.T) {
 	defer lv.Remove()
 }
 
-func createVolumeGroup(handle *LibHandle, size int) (*VolumeGroup, func(), error) {
+func createVolumeGroup(handle *LibHandle, size uint64) (*VolumeGroup, func(), error) {
 	// Create a loop device to back the physical volume.
 	loop, err := CreateLoopDevice(size)
 	if err != nil {
@@ -246,8 +256,7 @@ func createVolumeGroup(handle *LibHandle, size int) (*VolumeGroup, func(), error
 
 	// Create a physical volume using the loop device.
 	var pvs []*PhysicalVolume
-	const allAvailableSpace = 0
-	pv, err := handle.CreatePhysicalVolume(loop.Path(), allAvailableSpace)
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
 		return nil, nil, err
 	}
