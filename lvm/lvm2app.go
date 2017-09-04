@@ -254,7 +254,6 @@ func (handle *LibHandle) Scan() error {
 func (handle *LibHandle) LookupPhysicalVolume(dev string) (*PhysicalVolume, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
-	// TODO(gpaul): confirm that the physical volume exists.
 	return &PhysicalVolume{dev, handle}, nil
 }
 
@@ -350,11 +349,13 @@ const ErrNoSpace = simpleError("lvm: not enough free space")
 func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*LogicalVolume, error) {
 	vg.handle.lk.Lock()
 	defer vg.handle.lk.Unlock()
-	// TODO(gpaul): validate the name with C.int lvm_lv_name_validate(const vg_t vg, const char *lv_name);
 	if err := vg.open(openReadWrite); err != nil {
 		return nil, err
 	}
 	defer vg.close()
+	if err := vg.validateLogicalVolumeName(name); err != nil {
+		return nil, err
+	}
 	freeExtents := uint64(C.lvm_vg_get_free_extent_count(vg.vg))
 	extentSize := uint64(C.lvm_vg_get_extent_size(vg.vg))
 	if sizeInBytes == 0 {
@@ -382,6 +383,16 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	}
 	actualSize := extentsForSize * extentSize
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
+}
+
+func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
+	cname := C.CString(name)
+	defer C.free(unsafe.Pointer(cname))
+	res := C.lvm_lv_name_validate(vg.vg, cname)
+	if res != 0 {
+		return vg.handle.err()
+	}
+	return nil
 }
 
 // LookupLogicalVolume looks up the logical volume in the volume group

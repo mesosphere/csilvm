@@ -240,6 +240,32 @@ func TestCreateLogicalVolume(t *testing.T) {
 	defer lv.Remove()
 }
 
+func TestCreateLogicalVolumeInvalidName(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv, err := vg.CreateLogicalVolume("bad name :)", size)
+	if err == nil {
+		lv.Remove()
+		t.Fatal("Expected an invalid name error.")
+	}
+	if lv != nil {
+		lv.Remove()
+		t.Fatal("Expected no logical volume in response.")
+	}
+}
+
 func createVolumeGroup(handle *LibHandle, size uint64) (*VolumeGroup, func(), error) {
 	// Create a loop device to back the physical volume.
 	loop, err := CreateLoopDevice(size)
