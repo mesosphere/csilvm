@@ -49,6 +49,106 @@ func TestNewLibHandle(t *testing.T) {
 	handle.Close()
 }
 
+func TestCreatePhysicalDevice(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	// Create a physical volume using the loop device.
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv.Remove()
+}
+
+func TestListPhysicalVolumes(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	// Create a physical volume using the loop device.
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv.Remove()
+	pvs, err := handle.ListPhysicalVolumes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pv2 := range pvs {
+		if pv2.dev == pv.dev {
+			return
+		}
+	}
+	t.Fatal("Expected to find physical volume but did not.")
+}
+
+func TestLookupPhysicalVolume(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	// Create a physical volume using the loop device.
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv.Remove()
+	pv2, err := handle.LookupPhysicalVolume(pv.dev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pv2.dev != pv.dev {
+		t.Fatal("Expected to find physical volume but did not.")
+	}
+}
+
+func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	// Create a physical volume using the loop device.
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv.Remove()
+	pv2, err := handle.LookupPhysicalVolume(pv.dev + "a")
+	if err == nil {
+		t.Fatal("Expected lookup to fail.")
+	}
+	if pv2 != nil {
+		t.Fatal("Expected result to be nil.")
+	}
+}
+
 func TestValidateVolumeGroupName(t *testing.T) {
 	handle, err := NewLibHandle()
 	if err != nil {

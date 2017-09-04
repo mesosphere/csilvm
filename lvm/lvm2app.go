@@ -34,6 +34,25 @@ char** csilvm_get_strings_from_lvm_str_list(const struct dm_list *list)
 	}
 	return results;
 }
+
+
+// Returns the device names of the physical volumes in the given list.
+char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
+{
+	struct lvm_pv_list *pvl;
+	char **results;
+	unsigned int list_size;
+
+	list_size = dm_list_size(list);
+	results = malloc(sizeof (char *) * list_size);
+	int ii = 0;
+	dm_list_iterate_items(pvl, list) {
+		results[ii] = strdup(lvm_pv_get_name(pvl->pv));
+		ii++;
+	}
+	return results;
+}
+
 */
 import "C"
 
@@ -250,11 +269,63 @@ func (handle *LibHandle) Scan() error {
 	return nil
 }
 
+// ListPhysicalVolumes lists all physical volumes.
+func (handle *LibHandle) ListPhysicalVolumes() ([]*PhysicalVolume, error) {
+	handle.lk.Lock()
+	defer handle.lk.Unlock()
+	return handle.listPhysicalVolumes()
+}
+
+// listPhysicalVolumes lists all physical volumes.
+//
+// The handle lock must be held when executing this function.
+func (handle *LibHandle) listPhysicalVolumes() ([]*PhysicalVolume, error) {
+	dm_list := C.lvm_list_pvs(handle.handle)
+	if dm_list == nil {
+		return nil, handle.err()
+	}
+	// We need to free this dm_list explicitly.
+	defer func() {
+		res := C.lvm_list_pvs_free(dm_list)
+		if res != 0 {
+			panic(handle.err())
+		}
+	}()
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	if int(size) == 0 {
+		// We just checked that the lists is non-empty so we
+		// expect it's size to be greater than zero.
+		panic("lvm2app: unexpected zero-length list")
+	}
+	cdevnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
+	// Transform the array of C strings into a []string.
+	devnames := goStrings(size, cdevnames)
+	var pvs []*PhysicalVolume
+	for _, name := range devnames {
+		pvs = append(pvs, &PhysicalVolume{name, handle})
+	}
+	return pvs, nil
+}
+
+const ErrPhysicalVolumeNotFound = simpleError("lvm: physical volume not found")
+
 // LookupPhysicalVolume returns the physical volume for the given device.
 func (handle *LibHandle) LookupPhysicalVolume(dev string) (*PhysicalVolume, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
-	return &PhysicalVolume{dev, handle}, nil
+	pvs, err := handle.listPhysicalVolumes()
+	if err != nil {
+		return nil, err
+	}
+	for _, pv := range pvs {
+		if pv.dev == dev {
+			return pv, nil
+		}
+	}
+	return nil, ErrPhysicalVolumeNotFound
 }
 
 // CreatePhysicalVolume creates a physical volume of the given device.
@@ -525,12 +596,12 @@ func Scan() error {
 	return defaultHandle.Scan()
 }
 
-// LookupPhysicalVolume returns the volume group with the given name.
+// LookupVolumeGroup returns the volume group with the given name.
 func LookupVolumeGroup(name string) (*VolumeGroup, error) {
 	return defaultHandle.LookupVolumeGroup(name)
 }
 
-// LookupVolumeGroup returns the volume group with the given name.
+// LookupPhysicalVolume returns a physical volume with the given name.
 func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
 	return defaultHandle.LookupPhysicalVolume(name)
 }
