@@ -601,6 +601,11 @@ func LookupVolumeGroup(name string) (*VolumeGroup, error) {
 	return defaultHandle.LookupVolumeGroup(name)
 }
 
+// ListPhysicalVolumes lists all physical volumes.
+func LookupPhysicalVolumes() ([]*PhysicalVolume, error) {
+	return defaultHandle.ListPhysicalVolumes()
+}
+
 // LookupPhysicalVolume returns a physical volume with the given name.
 func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
 	return defaultHandle.LookupPhysicalVolume(name)
