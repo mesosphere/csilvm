@@ -136,6 +136,19 @@ func goStrings(argc C.uint, argv **C.char) []string {
 func (handle *LibHandle) ListVolumeGroupNames() ([]string, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
+	return handle.listVolumeGroupNames()
+}
+
+// listVolumeGroupNames returns the names of the list of volume groups.
+//
+// It is equivalent to `lvm_list_vg_names` followed by
+// `dm_list_iterate_items` to accumulate the string values.
+//
+// This does not normally scan for devices. To scan for devices, use
+// the `Scan()` function.
+//
+// The handle lock must be held by the caller.
+func (handle *LibHandle) listVolumeGroupNames() ([]string, error) {
 	// Get the list of volume group names
 	// The memory for the `dm_list` is freed when the handle is freed.
 	dm_list_names := C.lvm_list_vg_names(handle.handle)
@@ -194,10 +207,25 @@ func (handle *LibHandle) ListVolumeGroupUUIDs() ([]string, error) {
 	return vguuids, nil
 }
 
+const ErrVolumeGroupNotFound = simpleError("lvm: volume group not found")
+
 // LookupVolumeGroup returns the volume group with the given name.
 func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
+	vgnames, err := handle.listVolumeGroupNames()
+	if err != nil {
+		return nil, err
+	}
+	had := false
+	for _, vgname := range vgnames {
+		if vgname == name {
+			had = true
+		}
+	}
+	if !had {
+		return nil, ErrVolumeGroupNotFound
+	}
 	vg := &VolumeGroup{name, nil, handle}
 	// Check that the volume group can be opened.
 	if err := vg.open(openReadOnly); err != nil {
@@ -251,7 +279,7 @@ func (handle *LibHandle) validateVolumeGroupName(name string) error {
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_vg_name_validate(handle.handle, cname)
 	if res != 0 {
-		return handle.err()
+		return ErrInvalidName
 	}
 	return nil
 }
@@ -278,7 +306,7 @@ func (handle *LibHandle) ListPhysicalVolumes() ([]*PhysicalVolume, error) {
 
 // listPhysicalVolumes lists all physical volumes.
 //
-// The handle lock must be held when executing this function.
+// The handle lock must be held by the caller.
 func (handle *LibHandle) listPhysicalVolumes() ([]*PhysicalVolume, error) {
 	dm_list := C.lvm_list_pvs(handle.handle)
 	if dm_list == nil {
@@ -456,15 +484,19 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
 }
 
+const ErrInvalidName = simpleError("lvm: name is invalid")
+
 func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_lv_name_validate(vg.vg, cname)
 	if res != 0 {
-		return vg.handle.err()
+		return ErrInvalidName
 	}
 	return nil
 }
+
+const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
 
 // LookupLogicalVolume looks up the logical volume in the volume group
 // with the given name.
@@ -479,7 +511,8 @@ func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) 
 	defer C.free(unsafe.Pointer(cname))
 	lv := C.lvm_lv_from_name(vg.vg, cname)
 	if lv == nil {
-		return nil, vg.handle.err()
+		// If `lv == nil` the LV name is not associated with the VG handle.
+		return nil, ErrLogicalVolumeNotFound
 	}
 	actualSize := uint64(C.lvm_lv_get_size(lv))
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
@@ -596,27 +629,17 @@ func Scan() error {
 	return defaultHandle.Scan()
 }
 
-// LookupVolumeGroup returns the volume group with the given name.
-func LookupVolumeGroup(name string) (*VolumeGroup, error) {
-	return defaultHandle.LookupVolumeGroup(name)
-}
-
-// ListPhysicalVolumes lists all physical volumes.
-func LookupPhysicalVolumes() ([]*PhysicalVolume, error) {
-	return defaultHandle.ListPhysicalVolumes()
-}
-
-// LookupPhysicalVolume returns a physical volume with the given name.
-func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
-	return defaultHandle.LookupPhysicalVolume(name)
-}
-
 // CreateVolumeGroup creates a new volume group.
 func CreateVolumeGroup(
 	name string,
 	pvs []*PhysicalVolume,
 	opts ...VolumeGroupOpt) (*VolumeGroup, error) {
 	return defaultHandle.CreateVolumeGroup(name, pvs, opts...)
+}
+
+// LookupVolumeGroup returns the volume group with the given name.
+func LookupVolumeGroup(name string) (*VolumeGroup, error) {
+	return defaultHandle.LookupVolumeGroup(name)
 }
 
 // ListVolumeGroupNames returns the names of the list of volume groups.
@@ -644,6 +667,16 @@ func ListVolumeGroupUUIDs() ([]string, error) {
 // CreatePhysicalVolume creates a physical volume of the given device.
 func CreatePhysicalVolume(dev string) (*PhysicalVolume, error) {
 	return defaultHandle.CreatePhysicalVolume(dev)
+}
+
+// ListPhysicalVolumes lists all physical volumes.
+func ListPhysicalVolumes() ([]*PhysicalVolume, error) {
+	return defaultHandle.ListPhysicalVolumes()
+}
+
+// LookupPhysicalVolume returns a physical volume with the given name.
+func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
+	return defaultHandle.LookupPhysicalVolume(name)
 }
 
 // Extent sizing for linear logical volumes:

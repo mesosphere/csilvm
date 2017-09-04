@@ -141,8 +141,8 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	}
 	defer pv.Remove()
 	pv2, err := handle.LookupPhysicalVolume(pv.dev + "a")
-	if err == nil {
-		t.Fatal("Expected lookup to fail.")
+	if err != ErrPhysicalVolumeNotFound {
+		t.Fatal("Expected 'not found' error.")
 	}
 	if pv2 != nil {
 		t.Fatal("Expected result to be nil.")
@@ -171,8 +171,11 @@ func TestErr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	exp := `lvm: validateVolumeGroupName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. New volume group name "bad ^^^" is invalid. (-1)`
-	err = handle.validateVolumeGroupName("bad ^^^")
+	// Call `lvm_vg_name_validate` with an invalid name to trigger
+	// a failure and therefore populate the handle's error.
+	handle.validateVolumeGroupName("bad ^^^")
+	exp := `lvm: TestErr: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. New volume group name "bad ^^^" is invalid. (-1)`
+	err = handle.err()
 	if err.Error() != exp {
 		t.Fatalf("Expected '%s' but got '%s'", exp, err.Error())
 	}
@@ -253,13 +256,53 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	defer handle.Close()
 	// Try to create the volume group with a bad name.
 	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
-	if err == nil {
+	if err != ErrInvalidName {
 		vg.Remove()
-		t.Fatal("Expected error due to bad volume group name.")
+		t.Fatal("Expected ErrInvalidName.")
 	}
 	if vg != nil {
 		vg.Remove()
 		t.Fatal("Expected no volume group in response")
+	}
+}
+
+func TestLookupVolumeGroup(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	vg2, err := handle.LookupVolumeGroup(vg.name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vg2 == nil {
+		t.Fatal("Expected to find volume group but did not.")
+	}
+}
+
+func TestLookupVolumeGroupNonExistent(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	vg2, err := handle.LookupVolumeGroup(vg.name + "a")
+	if err != ErrVolumeGroupNotFound {
+		t.Fatal("Expected 'not found' error.")
+	}
+	if vg2 != nil {
+		t.Fatal("Expected result to be nil.")
 	}
 }
 
@@ -356,13 +399,99 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 	lv, err := vg.CreateLogicalVolume("bad name :)", size)
-	if err == nil {
+	if err != ErrInvalidName {
 		lv.Remove()
 		t.Fatal("Expected an invalid name error.")
 	}
 	if lv != nil {
 		lv.Remove()
 		t.Fatal("Expected no logical volume in response.")
+	}
+}
+
+func TestCreateLogicalVolumeTooLarge(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv, err := vg.CreateLogicalVolume("testvol", size*2)
+	if err != ErrNoSpace {
+		lv.Remove()
+		t.Fatal("Expected ErrNoSpace.")
+	}
+	if lv != nil {
+		lv.Remove()
+		t.Fatal("Expected no logical volume in response.")
+	}
+}
+
+func TestLookupLogicalVolume(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	lv2, err := vg.LookupLogicalVolume(lv.name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lv2 == nil {
+		t.Fatal("Expected to find logical volume but did not.")
+	}
+}
+
+func TestLookupLogicalVolumeNonExistent(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	lv2, err := vg.LookupLogicalVolume(lv.name + "a")
+	if err != ErrLogicalVolumeNotFound {
+		t.Fatal("Expected 'not found' error.")
+	}
+	if lv2 != nil {
+		t.Fatal("Expected result to be nil.")
 	}
 }
 
