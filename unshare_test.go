@@ -1,4 +1,4 @@
-package csilvm
+package main
 
 import (
 	"bufio"

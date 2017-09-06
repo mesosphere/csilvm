@@ -20,6 +20,14 @@
 #  name = "github.com/x/y"
 #  version = "2.4.0"
 
+required = [
+  "github.com/golang/protobuf/protoc-gen-go",
+  "github.com/container-storage-interface/spec/lib/go",
+]
+
+[[constraint]]
+  name = "github.com/container-storage-interface/spec"
+  branch = "master"
 
 [[constraint]]
   name = "github.com/gogo/protobuf"
