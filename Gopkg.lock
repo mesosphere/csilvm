@@ -5,13 +5,19 @@
   branch = "master"
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go","lib/go/csi"]
-  revision = "8dbb73222cdb63ce583e5c0abeafdf96748bf4f5"
+  revision = "8ba18a5c20e8fa09c560a829541c3e246a1c3570"
 
 [[projects]]
   branch = "master"
   name = "github.com/golang/protobuf"
   packages = ["proto","protoc-gen-go","protoc-gen-go/descriptor","protoc-gen-go/generator","protoc-gen-go/grpc","protoc-gen-go/plugin","ptypes","ptypes/any","ptypes/duration","ptypes/timestamp"]
-  revision = "1909bc2f63dc92bb931deace8b8312c4db72d12f"
+  revision = "17ce1425424ab154092bbb43af630bd647f3bb0d"
+
+[[projects]]
+  name = "github.com/google/uuid"
+  packages = ["."]
+  revision = "064e2069ce9c359c118179501254f67d7d37ba24"
+  version = "0.2"
 
 [[projects]]
   branch = "master"
@@ -23,7 +29,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "2d3e384235de683634e9080b58f757466840aa48"
+  revision = "9aade4d3a3b7e6d876cd3823ad20ec45fc035402"
 
 [[projects]]
   branch = "master"
@@ -52,6 +58,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "925f5b44522bfbb6946362b30c0cc688b7cb0b16630c42cc9cca4d7e9981e270"
+  inputs-digest = "95acbf2c81a861e26e407d7188e4d0b1cdd718c5bc7454a3d3b01d3c9624f26f"
   solver-name = "gps-cdcl"
   solver-version = 1

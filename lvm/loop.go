@@ -20,7 +20,7 @@ type LoopDevice struct {
 // with it.
 //
 // CreateLoopDevice may panic if an error occurs during error recovery.
-func CreateLoopDevice(size int) (device *LoopDevice, err error) {
+func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
 	var cleanup cleanupSteps
 	defer func() {
 		if err != nil {
