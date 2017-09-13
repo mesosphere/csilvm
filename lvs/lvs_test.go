@@ -84,7 +84,32 @@ func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
 		t.Fatal("Expected CallerMustNotRetry to be true")
 	}
 	if error.GetErrorDescription() != "" {
-		t.Fatal("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
+		t.Fatalf("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
+	}
+}
+
+func TestGetPluginInfoUnspecifiedVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.GetPluginInfoRequest{}
+	resp, err := client.GetPluginInfo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != false {
+		t.Fatal("Expected CallerMustNotRetry to be false")
+	}
+	if error.GetErrorDescription() != "" {
+		t.Fatalf("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
 	}
 }
 
