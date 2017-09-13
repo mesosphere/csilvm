@@ -50,16 +50,16 @@ func TestNewLibHandle(t *testing.T) {
 }
 
 func TestCreatePhysicalDevice(t *testing.T) {
-	handle, err := NewLibHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer handle.Close()
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -69,16 +69,16 @@ func TestCreatePhysicalDevice(t *testing.T) {
 }
 
 func TestListPhysicalVolumes(t *testing.T) {
-	handle, err := NewLibHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer handle.Close()
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -98,16 +98,16 @@ func TestListPhysicalVolumes(t *testing.T) {
 }
 
 func TestLookupPhysicalVolume(t *testing.T) {
-	handle, err := NewLibHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer handle.Close()
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -124,16 +124,16 @@ func TestLookupPhysicalVolume(t *testing.T) {
 }
 
 func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
-	handle, err := NewLibHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer handle.Close()
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -182,19 +182,29 @@ func TestErr(t *testing.T) {
 }
 
 func TestListVolumeGroupNames(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg1, cleanup1, err := createVolumeGroup(handle, pvsize)
+	vg1, cleanup1, err := createVolumeGroup(handle, loop1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cleanup1()
 	// Create the second volume group.
-	vg2, cleanup2, err := createVolumeGroup(handle, pvsize)
+	vg2, cleanup2, err := createVolumeGroup(handle, loop2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,13 +231,18 @@ func TestListVolumeGroupNames(t *testing.T) {
 }
 
 func TestCreateVolumeGroup(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
 	// Create the volume group.
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,12 +282,17 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 }
 
 func TestLookupVolumeGroup(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,12 +307,17 @@ func TestLookupVolumeGroup(t *testing.T) {
 }
 
 func TestLookupVolumeGroupNonExistent(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -307,13 +332,18 @@ func TestLookupVolumeGroupNonExistent(t *testing.T) {
 }
 
 func TestVolumeGroupBytesTotal(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,13 +364,18 @@ func TestVolumeGroupBytesTotal(t *testing.T) {
 }
 
 func TestVolumeGroupBytesFree(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,12 +396,17 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 }
 
 func TestCreateLogicalVolume(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,12 +424,17 @@ func TestCreateLogicalVolume(t *testing.T) {
 }
 
 func TestCreateLogicalVolumeInvalidName(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,12 +455,17 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 }
 
 func TestCreateLogicalVolumeTooLarge(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -436,12 +486,17 @@ func TestCreateLogicalVolumeTooLarge(t *testing.T) {
 }
 
 func TestLookupLogicalVolume(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,12 +521,17 @@ func TestLookupLogicalVolume(t *testing.T) {
 }
 
 func TestLookupLogicalVolumeNonExistent(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
 	handle, err := NewLibHandle()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, pvsize)
+	vg, cleanup, err := createVolumeGroup(handle, loop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -495,20 +555,16 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 	}
 }
 
-func createVolumeGroup(handle *LibHandle, size uint64) (*VolumeGroup, func(), error) {
-	// Create a loop device to back the physical volume.
-	loop, err := CreateLoopDevice(size)
-	if err != nil {
-		return nil, nil, err
-	}
-	var cleanup cleanupSteps
+func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(), error) {
+	var (
+		err     error
+		cleanup cleanupSteps
+	)
 	defer func() {
 		if err != nil {
 			cleanup.unwind()
 		}
 	}()
-	cleanup.add(loop.Close)
-
 	// Create a physical volume using the loop device.
 	var pvs []*PhysicalVolume
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
@@ -517,7 +573,6 @@ func createVolumeGroup(handle *LibHandle, size uint64) (*VolumeGroup, func(), er
 	}
 	cleanup.add(func() error { return pv.Remove() })
 	pvs = append(pvs, pv)
-
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := handle.CreateVolumeGroup(vgname, pvs)
