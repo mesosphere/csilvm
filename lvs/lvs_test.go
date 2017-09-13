@@ -21,7 +21,8 @@ var (
 func TestGetSupportedVersions(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	resp, err := client.GetSupportedVersions(context.Background(), &csi.GetSupportedVersionsRequest{})
+	req := &csi.GetSupportedVersionsRequest{}
+	resp, err := client.GetSupportedVersions(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +37,54 @@ func TestGetSupportedVersions(t *testing.T) {
 	exp := csi.Version{0, 1, 0}
 	if got != exp {
 		t.Fatalf("Expected version %#v but got %#v", exp, got)
+	}
+}
+
+func TestGetPluginInfoGoodVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	resp, err := client.GetPluginInfo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Error: %+v", resp.GetError())
+	}
+	if result.GetName() != PluginName {
+		t.Fatal("Expected plugin name %s but got %s", PluginName, result.GetName())
+	}
+	if result.GetVendorVersion() != PluginVersion {
+		t.Fatal("Expected plugin version %s but got %s", PluginVersion, result.GetVendorVersion())
+	}
+	if result.GetManifest() != nil {
+		t.Fatal("Expected a nil manifest but got %s", result.GetManifest())
+	}
+}
+
+func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 2, 0}}
+	resp, err := client.GetPluginInfo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	if error.GetErrorDescription() != "" {
+		t.Fatal("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
 	}
 }
 

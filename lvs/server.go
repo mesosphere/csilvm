@@ -6,7 +6,16 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
+const PluginName = "com.mesosphere/lvs"
+const PluginVersion = "0.1.0"
+
 type Server struct {
+}
+
+func (s *Server) supportedVersions() []*csi.Version {
+	return []*csi.Version{
+		&csi.Version{0, 1, 0},
+	}
 }
 
 func NewServer() *Server {
@@ -19,9 +28,7 @@ func (s *Server) GetSupportedVersions(
 	response := &csi.GetSupportedVersionsResponse{
 		&csi.GetSupportedVersionsResponse_Result_{
 			&csi.GetSupportedVersionsResponse_Result{
-				[]*csi.Version{
-					&csi.Version{0, 1, 0},
-				},
+				s.supportedVersions(),
 			},
 		},
 	}
@@ -31,5 +38,37 @@ func (s *Server) GetSupportedVersions(
 func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	return &csi.GetPluginInfoResponse{}, nil
+	version := request.GetVersion()
+	if version == nil {
+		response := &csi.GetPluginInfoResponse{
+			&csi.GetPluginInfoResponse_Error{
+				&csi.Error{
+					&csi.Error_GeneralError_{
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, ""},
+					},
+				},
+			},
+		}
+		return response, nil
+	}
+	for _, v := range s.supportedVersions() {
+		if *v == *version {
+			response := &csi.GetPluginInfoResponse{
+				&csi.GetPluginInfoResponse_Result_{
+					&csi.GetPluginInfoResponse_Result{PluginName, PluginVersion, nil},
+				},
+			}
+			return response, nil
+		}
+	}
+	response := &csi.GetPluginInfoResponse{
+		&csi.GetPluginInfoResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, ""},
+				},
+			},
+		},
+	}
+	return response, nil
 }
