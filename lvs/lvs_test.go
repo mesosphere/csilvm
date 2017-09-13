@@ -29,10 +29,10 @@ func TestGetSupportedVersions(t *testing.T) {
 	if result == nil {
 		t.Fatalf("Error: %+v", resp.GetError())
 	}
-	if len(result.SupportedVersions) != 1 {
+	if len(result.GetSupportedVersions()) != 1 {
 		t.Fatalf("Expected only one supported version, got %d", len(result.SupportedVersions))
 	}
-	got := *result.SupportedVersions[0]
+	got := *result.GetSupportedVersions()[0]
 	exp := csi.Version{0, 1, 0}
 	if got != exp {
 		t.Fatalf("Expected version %#v but got %#v", exp, got)
