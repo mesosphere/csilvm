@@ -1,9 +1,11 @@
 package lvm
 
 import (
-	losetup "gopkg.in/freddierice/go-losetup.v1"
 	"io/ioutil"
 	"os"
+
+	"github.com/mesosphere/csilvm"
+	losetup "gopkg.in/freddierice/go-losetup.v1"
 )
 
 // This file abstracts operations regarding LVM on loopback devices.
@@ -21,10 +23,10 @@ type LoopDevice struct {
 //
 // CreateLoopDevice may panic if an error occurs during error recovery.
 func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
-	var cleanup cleanupSteps
+	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if err != nil {
-			cleanup.unwind()
+			cleanup.Unwind()
 		}
 	}()
 
@@ -34,7 +36,7 @@ func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
 		return nil, err
 	}
 	// If anything goes wrong, remove the tempfile.
-	cleanup.add(func() error { return os.Remove(file.Name()) })
+	cleanup.Add(func() error { return os.Remove(file.Name()) })
 	// Close the file as we're not going to manipulate its
 	// contents manually.
 	if err := file.Close(); err != nil {
@@ -54,7 +56,7 @@ func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
 	if err != nil {
 		return nil, err
 	}
-	cleanup.add(func() error { return lodev.Detach() })
+	cleanup.Add(func() error { return lodev.Detach() })
 	// https://www.howtogeek.com/howto/40702/how-to-manage-and-use-lvm-logical-volume-management-in-ubuntu/
 	return &LoopDevice{lodev, file.Name()}, nil
 }
@@ -73,35 +75,4 @@ func (d *LoopDevice) Close() error {
 		return err
 	}
 	return os.Remove(d.backingFilePath)
-}
-
-// cleanupSteps performs deferred cleanup on condition that an error
-// was returned in the caller. This simplifies code where earlier
-// steps need to be undone if a later step fails.  It is not currently
-// resilient to panics as this library is not expected to panic.
-type cleanupSteps []func() error
-
-// add appends the given cleanup function to those that will be called
-// if an error occurs.
-func (fns *cleanupSteps) add(fn func() error) {
-	*fns = append(*fns, fn)
-}
-
-// unwindOnError calls the cleanup funcions in LIFO order. It panics
-// if any of them return an error as failure during recovery is
-// itself unrecoverable.
-func (fns *cleanupSteps) unwind() {
-	// There was some error. Preform cleanup and return. If any of
-	// the cleanup functions return and error, we do the only
-	// sensible thing and panic.
-	for _, fn := range *fns {
-		defer func(clean func() error) { checkError(clean) }(fn)
-	}
-}
-
-// checkError calls `fn` and panics if it returns an error.
-func checkError(fn func() error) {
-	if err := fn(); err != nil {
-		panic(err)
-	}
 }
