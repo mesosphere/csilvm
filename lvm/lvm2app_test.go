@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/mesosphere/csilvm"
 )
 
 const (
@@ -556,13 +557,11 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 }
 
 func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(), error) {
-	var (
-		err     error
-		cleanup cleanupSteps
-	)
+	var err error
+	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if err != nil {
-			cleanup.unwind()
+			cleanup.Unwind()
 		}
 	}()
 	// Create a physical volume using the loop device.
@@ -571,7 +570,7 @@ func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(
 	if err != nil {
 		return nil, nil, err
 	}
-	cleanup.add(func() error { return pv.Remove() })
+	cleanup.Add(func() error { return pv.Remove() })
 	pvs = append(pvs, pv)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
@@ -579,6 +578,6 @@ func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(
 	if err != nil {
 		return nil, nil, err
 	}
-	cleanup.add(vg.Remove)
-	return vg, cleanup.unwind, nil
+	cleanup.Add(vg.Remove)
+	return vg, cleanup.Unwind, nil
 }
