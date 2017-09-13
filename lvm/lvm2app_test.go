@@ -1,6 +1,7 @@
 package lvm
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"testing"
@@ -61,6 +62,9 @@ func TestCreatePhysicalDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
+	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+		t.Fatal(err)
+	}
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -80,6 +84,9 @@ func TestListPhysicalVolumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
+	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+		t.Fatal(err)
+	}
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -109,6 +116,9 @@ func TestLookupPhysicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
+	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+		t.Fatal(err)
+	}
 	// Create a physical volume using the loop device.
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
@@ -136,6 +146,9 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create a physical volume using the loop device.
+	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+		t.Fatal(err)
+	}
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
 	if err != nil {
 		t.Fatal(err)
@@ -564,6 +577,9 @@ func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(
 			cleanup.Unwind()
 		}
 	}()
+	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+		return nil, nil, err
+	}
 	// Create a physical volume using the loop device.
 	var pvs []*PhysicalVolume
 	pv, err := handle.CreatePhysicalVolume(loop.Path())

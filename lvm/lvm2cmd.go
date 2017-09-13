@@ -165,3 +165,9 @@ func run(ctx context.Context, cmdline string) error {
 	}
 	return LVM2CMDError(rc)
 }
+
+// ScanForDevice scans the device at `dev` and adds it to the LVM
+// metadata cache if `lvmetad` is running.
+func ScanForDevice(ctx context.Context, dev string) error {
+	return run(ctx, "pvscan --cache "+dev)
+}
