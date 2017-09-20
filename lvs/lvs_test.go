@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net"
+	"reflect"
 	"testing"
 	"time"
 
@@ -83,8 +84,9 @@ func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
 	if error.GetCallerMustNotRetry() != true {
 		t.Fatal("Expected CallerMustNotRetry to be true")
 	}
-	if error.GetErrorDescription() != "" {
-		t.Fatalf("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
+	expdesc := "The requested version is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -108,12 +110,140 @@ func TestGetPluginInfoUnspecifiedVersion(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	if error.GetErrorDescription() != "" {
-		t.Fatalf("Expected ErrorDescription to be '' but was '%s'", error.GetErrorDescription())
+	expdesc := "The version must be specified."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
-func startTest() (client csi.IdentityClient, cleanupFn func()) {
+func TestControllerGetCapabilitiesInfoGoodVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Error: %+v", resp.GetError())
+	}
+	expected := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+	}
+	got := []csi.ControllerServiceCapability_RPC_Type{}
+	for _, capability := range result.GetCapabilities() {
+		got = append(got, capability.GetRpc().Type)
+	}
+	if !reflect.DeepEqual(expected, got) {
+		t.Fatalf("Expected capabilities %+v but got %+v", expected, got)
+	}
+}
+
+func TestControllerGetCapabilitiesInfoUnsupportedVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 2, 0}}
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "The requested version is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestControllerGetCapabilitiesInfoUnspecifiedVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{}
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != false {
+		t.Fatal("Expected CallerMustNotRetry to be false")
+	}
+	expdesc := "The version must be specified."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestControllerPublishVolumeNotSupported(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerPublishVolumeRequest{}
+	resp, err := client.ControllerPublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetControllerPublishVolumeError()
+	expcode := csi.Error_ControllerPublishVolumeError_CALL_NOT_IMPLEMENTED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	expdesc := "The ControllerPublishVolume RPC is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+	if error.GetNodeIds() != nil {
+		t.Fatalf("Expected NodeIds to be nil but was '%s'", error.GetNodeIds())
+	}
+}
+
+func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerUnpublishVolumeRequest{}
+	resp, err := client.ControllerUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetControllerUnpublishVolumeError()
+	expcode := csi.Error_ControllerUnpublishVolumeError_CALL_NOT_IMPLEMENTED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	expdesc := "The ControllerUnpublishVolume RPC is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func startTest() (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if x := recover(); x != nil {
@@ -131,6 +261,7 @@ func startTest() (client csi.IdentityClient, cleanupFn func()) {
 	grpcServer := grpc.NewServer(opts...)
 	s := NewServer()
 	csi.RegisterIdentityServer(grpcServer, s)
+	csi.RegisterControllerServer(grpcServer, s)
 	go grpcServer.Serve(lis)
 
 	// Start a grpc client connected to the server.
@@ -146,6 +277,5 @@ func startTest() (client csi.IdentityClient, cleanupFn func()) {
 		panic(err)
 	}
 	cleanup.Add(conn.Close)
-	client = csi.NewIdentityClient(conn)
-	return client, cleanup.Unwind
+	return NewClient(conn), cleanup.Unwind
 }

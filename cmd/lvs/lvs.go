@@ -25,5 +25,6 @@ func main() {
 	grpcServer := grpc.NewServer(opts...)
 	s := lvs.NewServer()
 	csi.RegisterIdentityServer(grpcServer, s)
+	csi.RegisterControllerServer(grpcServer, s)
 	grpcServer.Serve(lis)
 }
