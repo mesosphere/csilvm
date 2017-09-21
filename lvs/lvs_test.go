@@ -43,10 +43,15 @@ func TestGetSupportedVersions(t *testing.T) {
 	}
 }
 
+func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
+	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	return req
+}
+
 func TestGetPluginInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	req := testGetPluginInfoRequest()
 	resp, err := client.GetPluginInfo(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -68,9 +73,7 @@ func TestGetPluginInfo(t *testing.T) {
 
 // ControllerService RPCs
 
-func TestCreateVolume(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 	const requiredBytes = 100 << 20
 	const limitBytes = 1000 << 20
 	volumeCapabilities := []*csi.VolumeCapability{
@@ -91,6 +94,13 @@ func TestCreateVolume(t *testing.T) {
 		nil,
 		nil,
 	}
+	return req
+}
+
+func TestCreateVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
 	resp, err := client.CreateVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -102,9 +112,7 @@ func TestCreateVolume(t *testing.T) {
 	}
 }
 
-func TestDeleteVolume(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testDeleteVolumeRequest() *csi.DeleteVolumeRequest {
 	volumeHandle := &csi.VolumeHandle{
 		"test-volume",
 		nil,
@@ -114,6 +122,13 @@ func TestDeleteVolume(t *testing.T) {
 		volumeHandle,
 		nil,
 	}
+	return req
+}
+
+func TestDeleteVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testDeleteVolumeRequest()
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -174,9 +189,7 @@ func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
 	}
 }
 
-func TestValidateVolumeCapabilities(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testValidateVolumeCapabilitiesRequest() *csi.ValidateVolumeCapabilitiesRequest {
 	const capacityBytes = 100 << 20
 	volumeHandle := &csi.VolumeHandle{
 		"test-volume",
@@ -201,6 +214,13 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 		volumeInfo,
 		volumeCapabilities,
 	}
+	return req
+}
+
+func TestValidateVolumeCapabilities(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testValidateVolumeCapabilitiesRequest()
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -212,14 +232,19 @@ func TestValidateVolumeCapabilities(t *testing.T) {
 	}
 }
 
-func TestListVolumes(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testListVolumesRequest() *csi.ListVolumesRequest {
 	req := &csi.ListVolumesRequest{
 		&csi.Version{0, 1, 0},
 		0,
 		"",
 	}
+	return req
+}
+
+func TestListVolumes(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testListVolumesRequest()
 	resp, err := client.ListVolumes(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -231,9 +256,7 @@ func TestListVolumes(t *testing.T) {
 	}
 }
 
-func TestGetCapacity(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testGetCapacityRequest() *csi.GetCapacityRequest {
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			&csi.VolumeCapability_Block{
@@ -249,6 +272,13 @@ func TestGetCapacity(t *testing.T) {
 		volumeCapabilities,
 		nil,
 	}
+	return req
+}
+
+func TestGetCapacity(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetCapacityRequest()
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -288,9 +318,7 @@ func TestControllerGetCapabilities(t *testing.T) {
 
 // NodeService RPCs
 
-func TestNodePublishVolume(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testNodePublishVolumeRequest() *csi.NodePublishVolumeRequest {
 	volumeHandle := &csi.VolumeHandle{
 		"test-volume",
 		nil,
@@ -314,6 +342,13 @@ func TestNodePublishVolume(t *testing.T) {
 		readonly,
 		nil,
 	}
+	return req
+}
+
+func TestNodePublishVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodePublishVolumeRequest()
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -325,9 +360,7 @@ func TestNodePublishVolume(t *testing.T) {
 	}
 }
 
-func TestNodeUnpublishVolume(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testNodeUnpublishVolumeRequest() *csi.NodeUnpublishVolumeRequest {
 	volumeHandle := &csi.VolumeHandle{
 		"test-volume",
 		nil,
@@ -339,6 +372,13 @@ func TestNodeUnpublishVolume(t *testing.T) {
 		targetPath,
 		nil,
 	}
+	return req
+}
+
+func TestNodeUnpublishVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodeUnpublishVolumeRequest()
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -350,12 +390,17 @@ func TestNodeUnpublishVolume(t *testing.T) {
 	}
 }
 
-func TestGetNodeID(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testGetNodeIDRequest() *csi.GetNodeIDRequest {
 	req := &csi.GetNodeIDRequest{
 		&csi.Version{0, 1, 0},
 	}
+	return req
+}
+
+func TestGetNodeID(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetNodeIDRequest()
 	resp, err := client.GetNodeID(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -367,12 +412,17 @@ func TestGetNodeID(t *testing.T) {
 	}
 }
 
-func TestProbeNode(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testProbeNodeRequest() *csi.ProbeNodeRequest {
 	req := &csi.ProbeNodeRequest{
 		&csi.Version{0, 1, 0},
 	}
+	return req
+}
+
+func TestProbeNode(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testProbeNodeRequest()
 	resp, err := client.ProbeNode(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -384,12 +434,17 @@ func TestProbeNode(t *testing.T) {
 	}
 }
 
-func TestNodeGetCapabilities(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
+func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
 	req := &csi.NodeGetCapabilitiesRequest{
 		&csi.Version{0, 1, 0},
 	}
+	return req
+}
+
+func TestNodeGetCapabilities(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodeGetCapabilitiesRequest()
 	resp, err := client.NodeGetCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)

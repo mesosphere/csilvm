@@ -4,6 +4,11 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
+const (
+	callerMustNotRetry = true
+	callerMayRetry     = false
+)
+
 // IdentityService RPCs
 
 func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, bool) {
@@ -13,7 +18,7 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 			&csi.GetPluginInfoResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -32,7 +37,7 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 			&csi.GetPluginInfoResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -51,7 +56,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 			&csi.CreateVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -70,7 +75,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 			&csi.CreateVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -83,7 +88,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 			&csi.CreateVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The name field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The name field must be specified."},
 					},
 				},
 			},
@@ -96,7 +101,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 			&csi.CreateVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
 					},
 				},
 			},
@@ -110,7 +115,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 				&csi.CreateVolumeResponse_Error{
 					&csi.Error{
 						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "One or more volume_capabilities must be specified."},
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
 						},
 					},
 				},
@@ -124,7 +129,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 					&csi.CreateVolumeResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_type field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
 							},
 						},
 					},
@@ -137,7 +142,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 					&csi.CreateVolumeResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
 							},
 						},
 					},
@@ -150,7 +155,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 						&csi.CreateVolumeResponse_Error{
 							&csi.Error{
 								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode.mode field must be specified."},
+									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
 								},
 							},
 						},
@@ -170,7 +175,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 			&csi.DeleteVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -189,7 +194,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 			&csi.DeleteVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -202,7 +207,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 			&csi.DeleteVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_handle field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
 					},
 				},
 			},
@@ -215,7 +220,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 				&csi.DeleteVolumeResponse_Error{
 					&csi.Error{
 						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_handle.id field must be specified."},
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
 						},
 					},
 				},
@@ -233,7 +238,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -252,7 +257,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -265,7 +270,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_info field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info field must be specified."},
 					},
 				},
 			},
@@ -278,7 +283,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				&csi.ValidateVolumeCapabilitiesResponse_Error{
 					&csi.Error{
 						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_info.handle field must be specified."},
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info.handle field must be specified."},
 						},
 					},
 				},
@@ -291,7 +296,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 					&csi.ValidateVolumeCapabilitiesResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_info.handle.id field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info.handle.id field must be specified."},
 							},
 						},
 					},
@@ -306,7 +311,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
 					},
 				},
 			},
@@ -320,7 +325,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				&csi.ValidateVolumeCapabilitiesResponse_Error{
 					&csi.Error{
 						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "One or more volume_capabilities must be specified."},
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
 						},
 					},
 				},
@@ -334,7 +339,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 					&csi.ValidateVolumeCapabilitiesResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_type field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
 							},
 						},
 					},
@@ -347,7 +352,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 					&csi.ValidateVolumeCapabilitiesResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
 							},
 						},
 					},
@@ -360,7 +365,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 						&csi.ValidateVolumeCapabilitiesResponse_Error{
 							&csi.Error{
 								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode.mode field must be specified."},
+									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
 								},
 							},
 						},
@@ -380,7 +385,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 			&csi.ListVolumesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -399,7 +404,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 			&csi.ListVolumesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -416,7 +421,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 			&csi.GetCapacityResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -435,7 +440,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 			&csi.GetCapacityResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -454,7 +459,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 					&csi.GetCapacityResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_type field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
 							},
 						},
 					},
@@ -467,7 +472,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 					&csi.GetCapacityResponse_Error{
 						&csi.Error{
 							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode field must be specified."},
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
 							},
 						},
 					},
@@ -480,7 +485,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 						&csi.GetCapacityResponse_Error{
 							&csi.Error{
 								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capabilities.access_mode.mode field must be specified."},
+									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
 								},
 							},
 						},
@@ -500,7 +505,7 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 			&csi.ControllerGetCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -519,7 +524,7 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 			&csi.ControllerGetCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -538,7 +543,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -557,7 +562,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -570,19 +575,33 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_handle must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
 					},
 				},
 			},
 		}
 		return response, false
+	} else {
+		id := volumeHandle.GetId()
+		if id == "" {
+			response := &csi.NodePublishVolumeResponse{
+				&csi.NodePublishVolumeResponse_Error{
+					&csi.Error{
+						&csi.Error_GeneralError_{
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
+						},
+					},
+				},
+			}
+			return response, false
+		}
 	}
 	if request.GetPublishVolumeInfo() != nil {
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNDEFINED, true, "The publish_volume_info field must not be set."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNDEFINED, callerMustNotRetry, "The publish_volume_info field must not be specified."},
 					},
 				},
 			},
@@ -595,7 +614,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The target_path field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."},
 					},
 				},
 			},
@@ -608,12 +627,53 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_capability field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability field must be specified."},
 					},
 				},
 			},
 		}
 		return response, false
+	} else {
+		accessType := volumeCapability.GetAccessType()
+		if accessType == nil {
+			response := &csi.NodePublishVolumeResponse{
+				&csi.NodePublishVolumeResponse_Error{
+					&csi.Error{
+						&csi.Error_GeneralError_{
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_type field must be specified."},
+						},
+					},
+				},
+			}
+			return response, false
+		}
+		accessMode := volumeCapability.GetAccessMode()
+		if accessMode == nil {
+			response := &csi.NodePublishVolumeResponse{
+				&csi.NodePublishVolumeResponse_Error{
+					&csi.Error{
+						&csi.Error_GeneralError_{
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode field must be specified."},
+						},
+					},
+				},
+			}
+			return response, false
+		} else {
+			mode := accessMode.GetMode()
+			if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
+				response := &csi.NodePublishVolumeResponse{
+					&csi.NodePublishVolumeResponse_Error{
+						&csi.Error{
+							&csi.Error_GeneralError_{
+								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode.mode field must be specified."},
+							},
+						},
+					},
+				}
+				return response, false
+			}
+		}
 	}
 	return nil, true
 }
@@ -625,7 +685,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 			&csi.NodeUnpublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -644,7 +704,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 			&csi.NodeUnpublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -657,12 +717,26 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 			&csi.NodeUnpublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The volume_handle must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
 					},
 				},
 			},
 		}
 		return response, false
+	} else {
+		id := volumeHandle.GetId()
+		if id == "" {
+			response := &csi.NodeUnpublishVolumeResponse{
+				&csi.NodeUnpublishVolumeResponse_Error{
+					&csi.Error{
+						&csi.Error_GeneralError_{
+							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
+						},
+					},
+				},
+			}
+			return response, false
+		}
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
@@ -670,7 +744,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 			&csi.NodeUnpublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The target_path field must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."},
 					},
 				},
 			},
@@ -687,7 +761,7 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 			&csi.GetNodeIDResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -706,7 +780,7 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 			&csi.GetNodeIDResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -723,7 +797,7 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 			&csi.ProbeNodeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
 					},
 				},
 			},
@@ -742,7 +816,7 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 			&csi.ProbeNodeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
@@ -759,7 +833,7 @@ func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabili
 			&csi.NodeGetCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version field must be specified."},
 					},
 				},
 			},
@@ -778,7 +852,7 @@ func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabili
 			&csi.NodeGetCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
+						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
 					},
 				},
 			},
