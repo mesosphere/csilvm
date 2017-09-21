@@ -262,6 +262,7 @@ func startTest() (client *Client, cleanupFn func()) {
 	s := NewServer()
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
+	csi.RegisterNodeServer(grpcServer, s)
 	go grpcServer.Serve(lis)
 
 	// Start a grpc client connected to the server.
