@@ -3,7 +3,6 @@
 .PHONY: test
 test:
 	go test -v .
-	go test -v ./lvs
 
 .PHONY: sudo-test
 sudo-test:
@@ -11,7 +10,8 @@ sudo-test:
 	sudo ./csilvm.test -test.v
 	go test -c -i ./lvm
 	sudo ./lvm.test -test.v
-	go test ./lvs -test.v
+	go test -c -i ./lvs
+	sudo ./lvs.test -test.v
 
 .PHONY: all
 all: sudo-test

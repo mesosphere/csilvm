@@ -13,6 +13,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm"
+	"github.com/mesosphere/csilvm/lvm"
 )
 
 var (
@@ -469,10 +470,42 @@ func startTest() (client *Client, cleanupFn func()) {
 		panic(err)
 	}
 	cleanup.Add(lis.Close)
+
+	// Create a volume group for the server to manage.
+	handle, err := lvm.NewLibHandle()
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(handle.Close)
+
+	const pvsize = 100 << 20 // 100MiB
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(loop.Close)
+
+	// Create a physical volume using the loop device.
+	var pvs []*lvm.PhysicalVolume
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(func() error { return pv.Remove() })
+	pvs = append(pvs, pv)
+
+	// Create a volume group containing the physical volume.
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := handle.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(vg.Remove)
+
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer()
+	s := NewServer(vg)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)

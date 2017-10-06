@@ -4,12 +4,14 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/mesosphere/csilvm/lvm"
 )
 
 const PluginName = "com.mesosphere/lvs"
 const PluginVersion = "0.1.0"
 
 type Server struct {
+	VolumeGroup *lvm.VolumeGroup
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -18,8 +20,10 @@ func (s *Server) supportedVersions() []*csi.Version {
 	}
 }
 
-func NewServer() *Server {
-	return new(Server)
+// NewServer returns a new Server that will manage the given LVM
+// volume group.
+func NewServer(vg *lvm.VolumeGroup) *Server {
+	return &Server{vg}
 }
 
 // IdentityService RPCs
