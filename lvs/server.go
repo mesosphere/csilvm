@@ -40,36 +40,12 @@ func (s *Server) GetSupportedVersions(
 func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	version := request.GetVersion()
-	if version == nil {
-		response := &csi.GetPluginInfoResponse{
-			&csi.GetPluginInfoResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
-					},
-				},
-			},
-		}
+	if response, ok := s.validateGetPluginInfoRequest(request); !ok {
 		return response, nil
 	}
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			response := &csi.GetPluginInfoResponse{
-				&csi.GetPluginInfoResponse_Result_{
-					&csi.GetPluginInfoResponse_Result{PluginName, PluginVersion, nil},
-				},
-			}
-			return response, nil
-		}
-	}
 	response := &csi.GetPluginInfoResponse{
-		&csi.GetPluginInfoResponse_Error{
-			&csi.Error{
-				&csi.Error_GeneralError_{
-					&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
-				},
-			},
+		&csi.GetPluginInfoResponse_Result_{
+			&csi.GetPluginInfoResponse_Result{PluginName, PluginVersion, nil},
 		},
 	}
 	return response, nil
@@ -80,13 +56,21 @@ func (s *Server) GetPluginInfo(
 func (s *Server) CreateVolume(
 	ctx context.Context,
 	request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	panic("not implemented")
+	if response, ok := s.validateCreateVolumeRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.CreateVolumeResponse{}
+	return response, nil
 }
 
 func (s *Server) DeleteVolume(
 	ctx context.Context,
 	request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	panic("not implemented")
+	if response, ok := s.validateDeleteVolumeRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.DeleteVolumeResponse{}
+	return response, nil
 }
 
 func (s *Server) ControllerPublishVolume(
@@ -122,54 +106,37 @@ func (s *Server) ControllerUnpublishVolume(
 func (s *Server) ValidateVolumeCapabilities(
 	ctx context.Context,
 	request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	panic("not implemented")
+	if response, ok := s.validateValidateVolumeCapabilitiesRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.ValidateVolumeCapabilitiesResponse{}
+	return response, nil
 }
 
 func (s *Server) ListVolumes(
 	ctx context.Context,
 	request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	panic("not implemented")
+	if response, ok := s.validateListVolumesRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.ListVolumesResponse{}
+	return response, nil
 }
 
 func (s *Server) GetCapacity(
 	ctx context.Context,
 	request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	panic("not implemented")
+	if response, ok := s.validateGetCapacityRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.GetCapacityResponse{}
+	return response, nil
 }
 
 func (s *Server) ControllerGetCapabilities(
 	ctx context.Context,
 	request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	version := request.GetVersion()
-	if version == nil {
-		response := &csi.ControllerGetCapabilitiesResponse{
-			&csi.ControllerGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version must be specified."},
-					},
-				},
-			},
-		}
-		return response, nil
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.ControllerGetCapabilitiesResponse{
-			&csi.ControllerGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, true, "The requested version is not supported."},
-					},
-				},
-			},
-		}
+	if response, ok := s.validateControllerGetCapabilitiesRequest(request); !ok {
 		return response, nil
 	}
 	capabilities := []*csi.ControllerServiceCapability{
@@ -211,5 +178,57 @@ func (s *Server) ControllerGetCapabilities(
 			},
 		},
 	}
+	return response, nil
+}
+
+// NodeService RPCs
+
+func (s *Server) NodePublishVolume(
+	ctx context.Context,
+	request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	if response, ok := s.validateNodePublishVolumeRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.NodePublishVolumeResponse{}
+	return response, nil
+}
+
+func (s *Server) NodeUnpublishVolume(
+	ctx context.Context,
+	request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	if response, ok := s.validateNodeUnpublishVolumeRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.NodeUnpublishVolumeResponse{}
+	return response, nil
+}
+
+func (s *Server) GetNodeID(
+	ctx context.Context,
+	request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, error) {
+	if response, ok := s.validateGetNodeIDRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.GetNodeIDResponse{}
+	return response, nil
+}
+
+func (s *Server) ProbeNode(
+	ctx context.Context,
+	request *csi.ProbeNodeRequest) (*csi.ProbeNodeResponse, error) {
+	if response, ok := s.validateProbeNodeRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.ProbeNodeResponse{}
+	return response, nil
+}
+
+func (s *Server) NodeGetCapabilities(
+	ctx context.Context,
+	request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
+	if response, ok := s.validateNodeGetCapabilitiesRequest(request); !ok {
+		return response, nil
+	}
+	response := &csi.NodeGetCapabilitiesResponse{}
 	return response, nil
 }

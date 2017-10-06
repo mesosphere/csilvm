@@ -19,6 +19,8 @@ var (
 	socketFile = flag.String("socket_file", "", "The path to the listening unix socket file")
 )
 
+// IdentityService RPCs
+
 func TestGetSupportedVersions(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -41,10 +43,15 @@ func TestGetSupportedVersions(t *testing.T) {
 	}
 }
 
-func TestGetPluginInfoGoodVersion(t *testing.T) {
+func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
+	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	return req
+}
+
+func TestGetPluginInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	req := testGetPluginInfoRequest()
 	resp, err := client.GetPluginInfo(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -64,133 +71,72 @@ func TestGetPluginInfoGoodVersion(t *testing.T) {
 	}
 }
 
-func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
+// ControllerService RPCs
+
+func testCreateVolumeRequest() *csi.CreateVolumeRequest {
+	const requiredBytes = 100 << 20
+	const limitBytes = 1000 << 20
+	volumeCapabilities := []*csi.VolumeCapability{
+		{
+			&csi.VolumeCapability_Block{
+				&csi.VolumeCapability_BlockVolume{},
+			},
+			&csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		},
+	}
+	req := &csi.CreateVolumeRequest{
+		&csi.Version{0, 1, 0},
+		"test-volume",
+		&csi.CapacityRange{requiredBytes, limitBytes},
+		volumeCapabilities,
+		nil,
+		nil,
+	}
+	return req
+}
+
+func TestCreateVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 2, 0}}
-	resp, err := client.GetPluginInfo(context.Background(), req)
+	req := testCreateVolumeRequest()
+	resp, err := client.CreateVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	result := resp.GetResult()
+	// Method is still stubbed...
 	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+		t.Fatalf("method is still stubbed")
 	}
 }
 
-func TestGetPluginInfoUnspecifiedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := &csi.GetPluginInfoRequest{}
-	resp, err := client.GetPluginInfo(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
+func testDeleteVolumeRequest() *csi.DeleteVolumeRequest {
+	volumeHandle := &csi.VolumeHandle{
+		"test-volume",
+		nil,
 	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	req := &csi.DeleteVolumeRequest{
+		&csi.Version{0, 1, 0},
+		volumeHandle,
+		nil,
 	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
+	return req
 }
 
-func TestControllerGetCapabilitiesInfoGoodVersion(t *testing.T) {
+func TestDeleteVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
-	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	req := testDeleteVolumeRequest()
+	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Error: %+v", resp.GetError())
-	}
-	expected := []csi.ControllerServiceCapability_RPC_Type{
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
-		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
-	}
-	got := []csi.ControllerServiceCapability_RPC_Type{}
-	for _, capability := range result.GetCapabilities() {
-		got = append(got, capability.GetRpc().Type)
-	}
-	if !reflect.DeepEqual(expected, got) {
-		t.Fatalf("Expected capabilities %+v but got %+v", expected, got)
-	}
-}
-
-func TestControllerGetCapabilitiesInfoUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 2, 0}}
-	resp, err := client.ControllerGetCapabilities(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
+	// Method is still stubbed...
 	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestControllerGetCapabilitiesInfoUnspecifiedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{}
-	resp, err := client.ControllerGetCapabilities(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+		t.Fatalf("method is still stubbed")
 	}
 }
 
@@ -243,6 +189,273 @@ func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
 	}
 }
 
+func testValidateVolumeCapabilitiesRequest() *csi.ValidateVolumeCapabilitiesRequest {
+	const capacityBytes = 100 << 20
+	volumeHandle := &csi.VolumeHandle{
+		"test-volume",
+		nil,
+	}
+	volumeInfo := &csi.VolumeInfo{
+		100 << 20,
+		volumeHandle,
+	}
+	volumeCapabilities := []*csi.VolumeCapability{
+		{
+			&csi.VolumeCapability_Block{
+				&csi.VolumeCapability_BlockVolume{},
+			},
+			&csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		},
+	}
+	req := &csi.ValidateVolumeCapabilitiesRequest{
+		&csi.Version{0, 1, 0},
+		volumeInfo,
+		volumeCapabilities,
+	}
+	return req
+}
+
+func TestValidateVolumeCapabilities(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testValidateVolumeCapabilitiesRequest()
+	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testListVolumesRequest() *csi.ListVolumesRequest {
+	req := &csi.ListVolumesRequest{
+		&csi.Version{0, 1, 0},
+		0,
+		"",
+	}
+	return req
+}
+
+func TestListVolumes(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testListVolumesRequest()
+	resp, err := client.ListVolumes(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testGetCapacityRequest() *csi.GetCapacityRequest {
+	volumeCapabilities := []*csi.VolumeCapability{
+		{
+			&csi.VolumeCapability_Block{
+				&csi.VolumeCapability_BlockVolume{},
+			},
+			&csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		},
+	}
+	req := &csi.GetCapacityRequest{
+		&csi.Version{0, 1, 0},
+		volumeCapabilities,
+		nil,
+	}
+	return req
+}
+
+func TestGetCapacity(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetCapacityRequest()
+	resp, err := client.GetCapacity(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func TestControllerGetCapabilities(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Error: %+v", resp.GetError())
+	}
+	expected := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+	}
+	got := []csi.ControllerServiceCapability_RPC_Type{}
+	for _, capability := range result.GetCapabilities() {
+		got = append(got, capability.GetRpc().Type)
+	}
+	if !reflect.DeepEqual(expected, got) {
+		t.Fatalf("Expected capabilities %+v but got %+v", expected, got)
+	}
+}
+
+// NodeService RPCs
+
+func testNodePublishVolumeRequest() *csi.NodePublishVolumeRequest {
+	volumeHandle := &csi.VolumeHandle{
+		"test-volume",
+		nil,
+	}
+	const targetPath = "/run/dcos/lvs/mnt/test-volume"
+	volumeCapability := &csi.VolumeCapability{
+		&csi.VolumeCapability_Block{
+			&csi.VolumeCapability_BlockVolume{},
+		},
+		&csi.VolumeCapability_AccessMode{
+			csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+		},
+	}
+	const readonly = false
+	req := &csi.NodePublishVolumeRequest{
+		&csi.Version{0, 1, 0},
+		volumeHandle,
+		nil,
+		targetPath,
+		volumeCapability,
+		readonly,
+		nil,
+	}
+	return req
+}
+
+func TestNodePublishVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodePublishVolumeRequest()
+	resp, err := client.NodePublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testNodeUnpublishVolumeRequest() *csi.NodeUnpublishVolumeRequest {
+	volumeHandle := &csi.VolumeHandle{
+		"test-volume",
+		nil,
+	}
+	const targetPath = "/run/dcos/lvs/mnt/test-volume"
+	req := &csi.NodeUnpublishVolumeRequest{
+		&csi.Version{0, 1, 0},
+		volumeHandle,
+		targetPath,
+		nil,
+	}
+	return req
+}
+
+func TestNodeUnpublishVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodeUnpublishVolumeRequest()
+	resp, err := client.NodeUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testGetNodeIDRequest() *csi.GetNodeIDRequest {
+	req := &csi.GetNodeIDRequest{
+		&csi.Version{0, 1, 0},
+	}
+	return req
+}
+
+func TestGetNodeID(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetNodeIDRequest()
+	resp, err := client.GetNodeID(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testProbeNodeRequest() *csi.ProbeNodeRequest {
+	req := &csi.ProbeNodeRequest{
+		&csi.Version{0, 1, 0},
+	}
+	return req
+}
+
+func TestProbeNode(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testProbeNodeRequest()
+	resp, err := client.ProbeNode(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
+func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
+	req := &csi.NodeGetCapabilitiesRequest{
+		&csi.Version{0, 1, 0},
+	}
+	return req
+}
+
+func TestNodeGetCapabilities(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodeGetCapabilitiesRequest()
+	resp, err := client.NodeGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Method is still stubbed...
+	if result != nil {
+		t.Fatalf("method is still stubbed")
+	}
+}
+
 func startTest() (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
@@ -262,6 +475,7 @@ func startTest() (client *Client, cleanupFn func()) {
 	s := NewServer()
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
+	csi.RegisterNodeServer(grpcServer, s)
 	go grpcServer.Serve(lis)
 
 	// Start a grpc client connected to the server.
