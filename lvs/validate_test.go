@@ -285,7 +285,7 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 func TestDeleteVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testDeleteVolumeRequest()
+	req := testDeleteVolumeRequest("test-volume")
 	req.Version = nil
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -312,7 +312,7 @@ func TestDeleteVolumeMissingVersion(t *testing.T) {
 func TestDeleteVolumeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testDeleteVolumeRequest()
+	req := testDeleteVolumeRequest("test-volume")
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -339,7 +339,7 @@ func TestDeleteVolumeUnsupportedVersion(t *testing.T) {
 func TestDeleteVolumeMissingVolumeHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testDeleteVolumeRequest()
+	req := testDeleteVolumeRequest("test-volume")
 	req.VolumeHandle = nil
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -366,7 +366,7 @@ func TestDeleteVolumeMissingVolumeHandle(t *testing.T) {
 func TestDeleteVolumeMissingVolumeHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testDeleteVolumeRequest()
+	req := testDeleteVolumeRequest("test-volume")
 	req.VolumeHandle.Id = ""
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {

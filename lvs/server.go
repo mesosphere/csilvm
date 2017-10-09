@@ -139,7 +139,19 @@ func (s *Server) DeleteVolume(
 	if response, ok := s.validateDeleteVolumeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.DeleteVolumeResponse{}
+	id := request.GetVolumeHandle().GetId()
+	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	if err != nil {
+		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
+	}
+	if err := lv.Remove(); err != nil {
+		return ErrDeleteVolume_GeneralError_Undefined(err), nil
+	}
+	response := &csi.DeleteVolumeResponse{
+		&csi.DeleteVolumeResponse_Result_{
+			&csi.DeleteVolumeResponse_Result{},
+		},
+	}
 	return response, nil
 }
 

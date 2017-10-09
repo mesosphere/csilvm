@@ -232,9 +232,9 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	}
 }
 
-func testDeleteVolumeRequest() *csi.DeleteVolumeRequest {
+func testDeleteVolumeRequest(volumeId string) *csi.DeleteVolumeRequest {
 	volumeHandle := &csi.VolumeHandle{
-		"test-volume",
+		volumeId,
 		nil,
 	}
 	req := &csi.DeleteVolumeRequest{
@@ -248,15 +248,42 @@ func testDeleteVolumeRequest() *csi.DeleteVolumeRequest {
 func TestDeleteVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testDeleteVolumeRequest()
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if createResp.GetError() != nil {
+		t.Fatal("CreateVolume failed.")
+	}
+	req := testDeleteVolumeRequest(createReq.GetName())
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	if resp.GetResult() == nil || resp.GetError() != nil {
+		t.Fatal("DeleteVolume failed.")
+	}
+}
+
+func TestDeleteVolumeUnknownVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testDeleteVolumeRequest("missing-volume")
+	resp, err := client.DeleteVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := resp.GetError()
+	errorCode := grpcErr.GetDeleteVolumeError().GetErrorCode()
+	errorDesc := grpcErr.GetDeleteVolumeError().GetErrorDescription()
+	expCode := csi.Error_DeleteVolumeError_VOLUME_DOES_NOT_EXIST
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := lvm.ErrLogicalVolumeNotFound.Error()
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
