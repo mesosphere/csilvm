@@ -35,7 +35,6 @@ char** csilvm_get_strings_from_lvm_str_list(const struct dm_list *list)
 	return results;
 }
 
-
 // Returns the device names of the physical volumes in the given list.
 char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
 {
@@ -53,8 +52,29 @@ char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
 	return results;
 }
 
+// Returns the names of the logical volumes in the given list.
+char** csilvm_get_lv_names_lvm_lv_list(const struct dm_list *list)
+{
+	struct lvm_lv_list *lvl;
+	char **results;
+	unsigned int list_size;
+
+	list_size = dm_list_size(list);
+	results = malloc(sizeof (char *) * list_size);
+	int ii = 0;
+	dm_list_iterate_items(lvl, list) {
+		results[ii] = strdup(lvm_lv_get_name(lvl->lv));
+		ii++;
+	}
+	return results;
+}
+
 */
 import "C"
+
+// MaxSize states that all available space should be used by the
+// create operation.
+const MaxSize uint64 = 0
 
 // LibraryGetVersion corresponds to `lvm_library_get_version` in `lvm2app.h`.
 func LibraryGetVersion() string {
@@ -475,7 +495,7 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	// size in number of extents, but the source code appears to
 	// disagree and calculates the number of extents required.
 	//
-	// See https://github.com/twitter/bittern/blob/master/lvm2/liblvm/lvm_lv.c#L244
+	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/liblvm/lvm_lv.c#L244
 	lv := C.lvm_vg_create_lv_linear(vg.vg, cname, C.uint64_t(sizeInBytes))
 	if lv == nil {
 		return nil, vg.handle.err()
@@ -491,6 +511,15 @@ func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_lv_name_validate(vg.vg, cname)
 	if res != 0 {
+		// It appears that there is a bug in lvm2app where an error
+		// returned by lvm_lv_name_validate does not get automatically
+		// cleared when a subsequent call to lvm_vg_list_lvs is made.
+		// Instead the error must be read by the caller explicitly.
+		// We do this by calling handle.err() after
+		// lvm_lv_name_validate and discarding the result.
+		//
+		// Clear error on handle since we ignore it.
+		_ = vg.handle.err()
 		return ErrInvalidName
 	}
 	return nil
@@ -516,6 +545,28 @@ func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) 
 	}
 	actualSize := uint64(C.lvm_lv_get_size(lv))
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
+}
+
+// ListLogicalVolumes returns the names of the logical volumes in this volume group.
+func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
+	vg.handle.lk.Lock()
+	defer vg.handle.lk.Unlock()
+	if err := vg.open(openReadOnly); err != nil {
+		return nil, err
+	}
+	defer vg.close()
+	dm_list := C.lvm_vg_list_lvs(vg.vg)
+	if dm_list == nil {
+		return nil, vg.handle.err()
+	}
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	clvnames := C.csilvm_get_lv_names_lvm_lv_list(dm_list)
+	// Transform the array of C strings into a []string.
+	lvnames := goStrings(size, clvnames)
+	return lvnames, nil
 }
 
 // Remove removes the volume group from disk.
@@ -587,6 +638,10 @@ type LogicalVolume struct {
 	lv          C.lv_t
 	vg          *VolumeGroup
 	sizeInBytes uint64
+}
+
+func (lv *LogicalVolume) SizeInBytes() uint64 {
+	return lv.sizeInBytes
 }
 
 func (lv *LogicalVolume) Remove() error {
