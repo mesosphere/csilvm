@@ -63,7 +63,49 @@ func (s *Server) CreateVolume(
 	if response, ok := s.validateCreateVolumeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.CreateVolumeResponse{}
+	// Check whether a logical volume with the given name already
+	// exists in this volume group.
+	name := request.GetName()
+	if _, err := s.VolumeGroup.LookupLogicalVolume(name); err == nil {
+		return ErrCreateVolume_VolumeAlreadyExists(err), nil
+	}
+	// Determine the capacity, default to maximum size.
+	size := lvm.MaxSize
+	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
+		bytesFree, err := s.VolumeGroup.BytesFree()
+		if err != nil {
+			return ErrCreateVolume_GeneralError_Undefined(err), nil
+		}
+		// Check whether there is enough free space available.
+		if bytesFree < capacityRange.GetRequiredBytes() {
+			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+		}
+		// Set the volume size to the minimum requested  size.
+		size = capacityRange.GetRequiredBytes()
+	}
+	lv, err := s.VolumeGroup.CreateLogicalVolume(name, size)
+	if err != nil {
+		if err == lvm.ErrInvalidName {
+			return ErrCreateVolume_InvalidVolumeName(err), nil
+		}
+		if err == lvm.ErrNoSpace {
+			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+		}
+		return ErrCreateVolume_GeneralError_Undefined(err), nil
+	}
+	response := &csi.CreateVolumeResponse{
+		&csi.CreateVolumeResponse_Result_{
+			&csi.CreateVolumeResponse_Result{
+				&csi.VolumeInfo{
+					lv.SizeInBytes(),
+					&csi.VolumeHandle{
+						name,
+						nil,
+					},
+				},
+			},
+		},
+	}
 	return response, nil
 }
 
