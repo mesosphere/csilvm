@@ -11,7 +11,8 @@ const PluginName = "com.mesosphere/lvs"
 const PluginVersion = "0.1.0"
 
 type Server struct {
-	VolumeGroup *lvm.VolumeGroup
+	VolumeGroup       *lvm.VolumeGroup
+	defaultVolumeSize uint64
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -21,9 +22,32 @@ func (s *Server) supportedVersions() []*csi.Version {
 }
 
 // NewServer returns a new Server that will manage the given LVM
-// volume group.
-func NewServer(vg *lvm.VolumeGroup) *Server {
-	return &Server{vg}
+// volume group. It accepts a variadic list of ServerOpt with which
+// the server's default options can be overwritten.
+func NewServer(vg *lvm.VolumeGroup, opts ...ServerOpt) *Server {
+	const (
+		// Unless overwritten by the DefaultVolumeSize
+		// ServerOpt the default size for new volumes is
+		// 10GiB.
+		defaultVolumeSize = 10 << 30
+	)
+	s := &Server{vg, defaultVolumeSize}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+type ServerOpt func(*Server)
+
+// DefaultVolumeSize sets the default size in bytes of new volumes if
+// no volume capacity is specified. To specify that a new volume
+// should consist of all available space on the volume group you can
+// pass `lvm.MaxSize` to this option.
+func DefaultVolumeSize(size uint64) func(s *Server) {
+	return func(s *Server) {
+		s.defaultVolumeSize = size
+	}
 }
 
 // IdentityService RPCs
@@ -70,7 +94,7 @@ func (s *Server) CreateVolume(
 		return ErrCreateVolume_VolumeAlreadyExists(err), nil
 	}
 	// Determine the capacity, default to maximum size.
-	size := lvm.MaxSize
+	size := s.defaultVolumeSize
 	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
 		bytesFree, err := s.VolumeGroup.BytesFree()
 		if err != nil {

@@ -122,6 +122,31 @@ func TestCreateVolume(t *testing.T) {
 	}
 }
 
+func TestCreateVolumeDefaultSize(t *testing.T) {
+	const defaultVolumeSize = uint64(20 << 20)
+	client, cleanup := startTest(DefaultVolumeSize(defaultVolumeSize))
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Specify no CapacityRange so the volume gets the default
+	// size.
+	req.CapacityRange = nil
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("error: %#v", err)
+	}
+	result := resp.GetResult()
+	info := result.VolumeInfo
+	if info.GetCapacityBytes() != defaultVolumeSize {
+		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
+	}
+	if info.GetHandle().GetId() != req.GetName() {
+		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	}
+}
+
 func TestCreateVolumeAlreadyExists(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -551,7 +576,7 @@ func TestNodeGetCapabilities(t *testing.T) {
 	}
 }
 
-func startTest() (client *Client, cleanupFn func()) {
+func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if x := recover(); x != nil {
@@ -616,7 +641,7 @@ func startTest() (client *Client, cleanupFn func()) {
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer(vg)
+	s := NewServer(vg, serverOpts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
