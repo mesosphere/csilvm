@@ -201,7 +201,7 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	if errorCode != exp {
 		t.Fatalf("Expected error code %v but got %v.", exp, errorCode)
 	}
-	expDesc := lvm.ErrInvalidName.Error()
+	expDesc := "lvm: validateLogicalVolumeName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. (-1)"
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description %v but got %v.", expDesc, errorDesc)
 	}

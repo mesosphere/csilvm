@@ -72,6 +72,19 @@ char** csilvm_get_lv_names_lvm_lv_list(const struct dm_list *list)
 */
 import "C"
 
+type invalidNameError string
+
+func (err invalidNameError) Error() string {
+	return string(err)
+}
+
+// IsInvalidName returns true if the error is due to an invalid name
+// and false otherwise.
+func IsInvalidName(err error) bool {
+	_, ok := err.(invalidNameError)
+	return ok
+}
+
 // MaxSize states that all available space should be used by the
 // create operation.
 const MaxSize uint64 = 0
@@ -299,7 +312,7 @@ func (handle *LibHandle) validateVolumeGroupName(name string) error {
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_vg_name_validate(handle.handle, cname)
 	if res != 0 {
-		return ErrInvalidName
+		return invalidNameError(handle.err().Error())
 	}
 	return nil
 }
@@ -504,23 +517,12 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
 }
 
-const ErrInvalidName = simpleError("lvm: name is invalid")
-
 func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_lv_name_validate(vg.vg, cname)
 	if res != 0 {
-		// It appears that there is a bug in lvm2app where an error
-		// returned by lvm_lv_name_validate does not get automatically
-		// cleared when a subsequent call to lvm_vg_list_lvs is made.
-		// Instead the error must be read by the caller explicitly.
-		// We do this by calling handle.err() after
-		// lvm_lv_name_validate and discarding the result.
-		//
-		// Clear error on handle since we ignore it.
-		_ = vg.handle.err()
-		return ErrInvalidName
+		return invalidNameError(vg.handle.err().Error())
 	}
 	return nil
 }

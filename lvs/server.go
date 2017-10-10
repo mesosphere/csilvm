@@ -85,7 +85,7 @@ func (s *Server) CreateVolume(
 	}
 	lv, err := s.VolumeGroup.CreateLogicalVolume(name, size)
 	if err != nil {
-		if err == lvm.ErrInvalidName {
+		if lvm.IsInvalidName(err) {
 			return ErrCreateVolume_InvalidVolumeName(err), nil
 		}
 		if err == lvm.ErrNoSpace {

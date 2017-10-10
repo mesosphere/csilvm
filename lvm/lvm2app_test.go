@@ -269,9 +269,9 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	defer handle.Close()
 	// Try to create the volume group with a bad name.
 	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
-	if err != ErrInvalidName {
+	if !IsInvalidName(err) {
 		vg.Remove()
-		t.Fatal("Expected ErrInvalidName.")
+		t.Fatal("Expected invalidNameError got %#v.", err)
 	}
 	if vg != nil {
 		vg.Remove()
@@ -494,9 +494,9 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 	lv, err := vg.CreateLogicalVolume("bad name :)", size)
-	if err != ErrInvalidName {
+	if !IsInvalidName(err) {
 		lv.Remove()
-		t.Fatal("Expected an invalid name error.")
+		t.Fatal("Expected an invalidNameError but got %#v.", err)
 	}
 	if lv != nil {
 		lv.Remove()
