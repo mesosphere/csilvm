@@ -195,11 +195,6 @@ func (handle *LibHandle) listVolumeGroupNames() ([]string, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list_names)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cvgnames := C.csilvm_get_strings_from_lvm_str_list(dm_list_names)
 	// Transform the array of C strings into a []string.
 	vgnames := goStrings(size, cvgnames)
@@ -229,11 +224,6 @@ func (handle *LibHandle) ListVolumeGroupUUIDs() ([]string, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list_uuids)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cvguuids := C.csilvm_get_strings_from_lvm_str_list(dm_list_uuids)
 	// Transform the array of C strings into a []string.
 	vguuids := goStrings(size, cvguuids)
@@ -356,11 +346,6 @@ func (handle *LibHandle) listPhysicalVolumes() ([]*PhysicalVolume, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cdevnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
 	// Transform the array of C strings into a []string.
 	devnames := goStrings(size, cdevnames)
