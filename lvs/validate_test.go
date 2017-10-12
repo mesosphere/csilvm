@@ -2,6 +2,7 @@ package lvs
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -904,10 +905,16 @@ func TestControllerGetCapabilitiesInfoUnsupportedVersion(t *testing.T) {
 
 // NodeService RPCs
 
+func fakeVolumeHandle() *csi.VolumeHandle {
+	return &csi.VolumeHandle{"test-volume", nil}
+}
+
+var fakeMountDir = "/run/dcos/csilvm/mnt"
+
 func TestNodePublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.Version = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -934,7 +941,7 @@ func TestNodePublishVolumeMissingVersion(t *testing.T) {
 func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -961,7 +968,7 @@ func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeHandle = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -988,7 +995,7 @@ func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeHandle.Id = ""
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1015,7 +1022,7 @@ func TestNodePublishVolumeMissingVolumeHandleId(t *testing.T) {
 func TestNodePublishVolumeNotMissingPublishVolumeInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.PublishVolumeInfo = &csi.PublishVolumeInfo{nil}
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1042,7 +1049,7 @@ func TestNodePublishVolumeNotMissingPublishVolumeInfo(t *testing.T) {
 func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.TargetPath = ""
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1069,7 +1076,7 @@ func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeCapability = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1096,7 +1103,7 @@ func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeCapability.AccessType = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1123,7 +1130,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1150,7 +1157,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1174,10 +1181,35 @@ func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
+func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "ext4", nil)
+	resp, err := client.NodePublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetNodePublishVolumeError()
+	expcode := csi.Error_NodePublishVolumeError_UNSUPPORTED_FS_TYPE
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	expdesc := "Requested filesystem type is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+var fakeTargetPath = filepath.Join(fakeMountDir, fakeVolumeHandle().GetId())
+
 func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
 	req.Version = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1204,7 +1236,7 @@ func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1231,7 +1263,7 @@ func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
 func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
 	req.VolumeHandle = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1258,7 +1290,7 @@ func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
 func TestNodeUnpublishVolumeMissingVolumeHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
 	req.VolumeHandle.Id = ""
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1285,7 +1317,7 @@ func TestNodeUnpublishVolumeMissingVolumeHandleId(t *testing.T) {
 func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
 	req.TargetPath = ""
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
