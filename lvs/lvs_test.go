@@ -117,7 +117,7 @@ func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 	return req
 }
 
-func TestCreateVolumeBlockVolume(t *testing.T) {
+func TestCreateVolume_BlockVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testCreateVolumeRequest()
@@ -133,12 +133,12 @@ func TestCreateVolumeBlockVolume(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if info.GetHandle().GetId() != req.GetName() {
-		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	if !strings.HasSuffix(info.GetHandle().GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetHandle().GetId(), req.GetName())
 	}
 }
 
-func TestCreateVolumeMountVolume(t *testing.T) {
+func TestCreateVolume_MountVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testCreateVolumeRequest()
@@ -154,8 +154,8 @@ func TestCreateVolumeMountVolume(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if info.GetHandle().GetId() != req.GetName() {
-		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	if !strings.HasSuffix(info.GetHandle().GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetHandle().GetId(), req.GetName())
 	}
 }
 
@@ -179,8 +179,8 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	if info.GetCapacityBytes() != defaultVolumeSize {
 		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
 	}
-	if info.GetHandle().GetId() != req.GetName() {
-		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	if !strings.HasSuffix(info.GetHandle().GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetHandle().GetId(), req.GetName())
 	}
 }
 
@@ -293,13 +293,16 @@ func TestDeleteVolume(t *testing.T) {
 	if createResp.GetError() != nil {
 		t.Fatal("CreateVolume failed.")
 	}
-	req := testDeleteVolumeRequest(createReq.GetName())
+	result := createResp.GetResult()
+	info := result.VolumeInfo
+	id := info.GetHandle().GetId()
+	req := testDeleteVolumeRequest(id)
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resp.GetResult() == nil || resp.GetError() != nil {
-		t.Fatal("DeleteVolume failed.")
+		t.Fatalf("DeleteVolume failed: %+v", resp.GetError())
 	}
 }
 
@@ -504,7 +507,7 @@ func TestControllerGetCapabilities(t *testing.T) {
 
 func testNodePublishVolumeRequest(volumeHandle *csi.VolumeHandle, targetPath string, filesystem string, mountOpts []string) *csi.NodePublishVolumeRequest {
 	var volumeCapability *csi.VolumeCapability
-	if filesystem == "" {
+	if filesystem == "block" {
 		volumeCapability = &csi.VolumeCapability{
 			&csi.VolumeCapability_Block{
 				&csi.VolumeCapability_BlockVolume{},
@@ -583,7 +586,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 	}
 	defer os.Remove(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
-	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "", nil)
+	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "block", nil)
 	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
 		t.Fatal(err)
