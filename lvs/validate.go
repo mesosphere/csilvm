@@ -346,6 +346,13 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				}
 				return response, false
 			}
+			if mnt := volumeCapability.GetMount(); mnt != nil {
+				// This is a MOUNT_VOLUME request.
+				fstype := mnt.GetFsType()
+				if _, ok := s.supportedFilesystems[fstype]; !ok {
+					return ErrValidateVolumeCapabilities_UnsupportedFsType(), false
+				}
+			}
 			accessMode := volumeCapability.GetAccessMode()
 			if accessMode == nil {
 				response := &csi.ValidateVolumeCapabilitiesResponse{

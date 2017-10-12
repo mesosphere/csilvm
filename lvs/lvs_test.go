@@ -376,20 +376,27 @@ func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
 	}
 }
 
-func testValidateVolumeCapabilitiesRequest() *csi.ValidateVolumeCapabilitiesRequest {
+func testValidateVolumeCapabilitiesRequest(volumeHandle *csi.VolumeHandle, filesystem string, mountOpts []string) *csi.ValidateVolumeCapabilitiesRequest {
 	const capacityBytes = 100 << 20
-	volumeHandle := &csi.VolumeHandle{
-		"test-volume",
-		nil,
-	}
 	volumeInfo := &csi.VolumeInfo{
-		100 << 20,
+		capacityBytes,
 		volumeHandle,
 	}
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			&csi.VolumeCapability_Block{
 				&csi.VolumeCapability_BlockVolume{},
+			},
+			&csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		},
+		{
+			&csi.VolumeCapability_Mount{
+				&csi.VolumeCapability_MountVolume{
+					filesystem,
+					mountOpts,
+				},
 			},
 			&csi.VolumeCapability_AccessMode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -404,18 +411,148 @@ func testValidateVolumeCapabilitiesRequest() *csi.ValidateVolumeCapabilitiesRequ
 	return req
 }
 
-func TestValidateVolumeCapabilities(t *testing.T) {
+func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult := createResp.GetResult()
+	volumeHandle := createResult.VolumeInfo.GetHandle()
+	req := testValidateVolumeCapabilitiesRequest(volumeHandle, "xfs", nil)
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	if !result.GetSupported() {
+		t.Fatal("Expected requested volume capabilities to be supported.")
+	}
+}
+
+func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult := createResp.GetResult()
+	volumeHandle := createResult.VolumeInfo.GetHandle()
+	// Publish the volume with fstype 'xfs' then unmount it.
+	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
+	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult := publishResp.GetResult()
+	if publishResult == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	// Unpublish the volume now that it has been formatted.
+	unpublishReq := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+	resp, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	validateReq := testValidateVolumeCapabilitiesRequest(volumeHandle, "xfs", nil)
+	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateResult := validateResp.GetResult()
+	if !validateResult.GetSupported() {
+		t.Fatal("Expected requested volume capabilities to be supported.")
+	}
+}
+
+func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult := createResp.GetResult()
+	volumeHandle := createResult.VolumeInfo.GetHandle()
+	// Publish the volume with fstype 'xfs' then unmount it.
+	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
+	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult := publishResp.GetResult()
+	if publishResult == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	// Unpublish the volume now that it has been formatted.
+	unpublishReq := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+	resp, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	validateReq := testValidateVolumeCapabilitiesRequest(volumeHandle, "ext4", nil)
+	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateResult := validateResp.GetResult()
+	if validateResult.GetSupported() {
+		t.Fatal("Expected requested volume capabilities to not be supported.")
 	}
 }
 
