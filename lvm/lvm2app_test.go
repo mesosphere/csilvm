@@ -179,22 +179,6 @@ func TestValidateVolumeGroupName(t *testing.T) {
 	}
 }
 
-func TestErr(t *testing.T) {
-	handle, err := NewLibHandle()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer handle.Close()
-	// Call `lvm_vg_name_validate` with an invalid name to trigger
-	// a failure and therefore populate the handle's error.
-	handle.validateVolumeGroupName("bad ^^^")
-	exp := `lvm: TestErr: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. New volume group name "bad ^^^" is invalid. (-1)`
-	err = handle.err()
-	if err.Error() != exp {
-		t.Fatalf("Expected '%s' but got '%s'", exp, err.Error())
-	}
-}
-
 func TestListVolumeGroupNames(t *testing.T) {
 	loop1, err := CreateLoopDevice(pvsize)
 	if err != nil {
@@ -285,13 +269,18 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	defer handle.Close()
 	// Try to create the volume group with a bad name.
 	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
-	if err != ErrInvalidName {
+	if !IsInvalidName(err) {
 		vg.Remove()
-		t.Fatal("Expected ErrInvalidName.")
+		t.Fatal("Expected invalidNameError got %#v.", err)
 	}
 	if vg != nil {
 		vg.Remove()
 		t.Fatal("Expected no volume group in response")
+	}
+	// Perform a known good operation to ensure that the error was
+	// cleared from the handle.
+	if _, err := handle.ListPhysicalVolumes(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -437,6 +426,53 @@ func TestCreateLogicalVolume(t *testing.T) {
 	defer lv.Remove()
 }
 
+func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg1, cleanup, err := createVolumeGroup(handle, loop1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg1.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv1, err := vg1.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv1.Remove()
+	vg2, cleanup, err := createVolumeGroup(handle, loop2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err = vg2.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv2, err := vg2.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv2.Remove()
+}
+
 func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
@@ -458,13 +494,25 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 	lv, err := vg.CreateLogicalVolume("bad name :)", size)
-	if err != ErrInvalidName {
+	if !IsInvalidName(err) {
 		lv.Remove()
-		t.Fatal("Expected an invalid name error.")
+		t.Fatal("Expected an invalidNameError but got %#v.", err)
 	}
 	if lv != nil {
 		lv.Remove()
 		t.Fatal("Expected no logical volume in response.")
+	}
+	// It appears that there is a bug in lvm2app where an error
+	// returned by lvm_lv_name_validate does not get automatically
+	// cleared when a subsequent call to lvm_vg_list_lvs is made.
+	// Instead the error must be read by the caller explicitly.
+	// We do this by calling handle.err() after
+	// lvm_lv_name_validate and discarding the result. Here we
+	// test that this works as intended by calling
+	// ListLogicalVolumeNames after logical volume name validation
+	// has failed and checking that no error gets returned.
+	if _, err := vg.ListLogicalVolumeNames(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -566,6 +614,89 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 	}
 	if lv2 != nil {
 		t.Fatal("Expected result to be nil.")
+	}
+}
+
+func TestLogicalVolumeSizeInBytes(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	if lv.SizeInBytes() != size {
+		t.Fatalf("Expected size %v but got %v.", size, lv.SizeInBytes())
+	}
+}
+
+func TestVolumeGroupListLogicalVolumeNames(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name1 := "test-lv-" + uuid.New().String()
+	lv1, err := vg.CreateLogicalVolume(name1, size/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv1.Remove()
+	name2 := "test-lv-" + uuid.New().String()
+	lv2, err := vg.CreateLogicalVolume(name2, size/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv2.Remove()
+	lvnames, err := vg.ListLogicalVolumeNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lvnames) != 2 {
+		t.Fatalf("Expected 2 logical volume but got %d.", len(lvnames))
+	}
+	for _, name := range []string{name1, name2} {
+		had := false
+		for _, lvname := range lvnames {
+			if name == lvname {
+				had = true
+			}
+		}
+		if !had {
+			t.Fatalf("Expected to find logical volume %v but did not.", name)
+		}
 	}
 }
 

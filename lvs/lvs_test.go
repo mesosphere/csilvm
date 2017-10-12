@@ -13,7 +13,11 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm"
+	"github.com/mesosphere/csilvm/lvm"
 )
+
+// The size of the physical volumes we create in our tests.
+const pvsize = 100 << 20 // 100MiB
 
 var (
 	socketFile = flag.String("socket_file", "", "The path to the listening unix socket file")
@@ -74,7 +78,7 @@ func TestGetPluginInfo(t *testing.T) {
 // ControllerService RPCs
 
 func testCreateVolumeRequest() *csi.CreateVolumeRequest {
-	const requiredBytes = 100 << 20
+	const requiredBytes = 80 << 20
 	const limitBytes = 1000 << 20
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
@@ -105,10 +109,126 @@ func TestCreateVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("error: %#v", err)
+	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	info := result.VolumeInfo
+	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
+		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
+	}
+	if info.GetHandle().GetId() != req.GetName() {
+		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	}
+}
+
+func TestCreateVolumeDefaultSize(t *testing.T) {
+	const defaultVolumeSize = uint64(20 << 20)
+	client, cleanup := startTest(DefaultVolumeSize(defaultVolumeSize))
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Specify no CapacityRange so the volume gets the default
+	// size.
+	req.CapacityRange = nil
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("error: %#v", err)
+	}
+	result := resp.GetResult()
+	info := result.VolumeInfo
+	if info.GetCapacityBytes() != defaultVolumeSize {
+		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
+	}
+	if info.GetHandle().GetId() != req.GetName() {
+		t.Fatalf("Expected volume ID (%v) to match name (%v).", info.GetHandle().GetId(), req.GetName())
+	}
+}
+
+func TestCreateVolumeAlreadyExists(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.CapacityRange.RequiredBytes /= 2
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil || resp.GetError() != nil {
+		t.Fatalf("unexpected error")
+	}
+	// Check that trying to create the volume again fails with
+	// VOLUME_ALREADY_EXISTS.
+	resp, err = client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetResult() != nil {
+		t.Fatal(err)
+	}
+	grpcErr := resp.GetError()
+	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
+	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
+	expCode := csi.Error_CreateVolumeError_VOLUME_ALREADY_EXISTS
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := "A logical volume with that name already exists."
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestCreateVolumeUnsupportedCapacityRange(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.CapacityRange.RequiredBytes = pvsize * 2
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := resp.GetError()
+	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
+	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
+	expCode := csi.Error_CreateVolumeError_UNSUPPORTED_CAPACITY_RANGE
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v.", expCode, errorCode)
+	}
+	expDesc := "Not enough free space."
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description %v but got %v.", expDesc, errorDesc)
+	}
+}
+
+func TestCreateVolumeInvalidVolumeName(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.Name = "invalid name : /"
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := resp.GetError()
+	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
+	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
+	exp := csi.Error_CreateVolumeError_INVALID_VOLUME_NAME
+	if errorCode != exp {
+		t.Fatalf("Expected error code %v but got %v.", exp, errorCode)
+	}
+	expDesc := "lvm: validateLogicalVolumeName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. (-1)"
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description %v but got %v.", expDesc, errorDesc)
 	}
 }
 
@@ -456,7 +576,7 @@ func TestNodeGetCapabilities(t *testing.T) {
 	}
 }
 
-func startTest() (client *Client, cleanupFn func()) {
+func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if x := recover(); x != nil {
@@ -469,10 +589,59 @@ func startTest() (client *Client, cleanupFn func()) {
 		panic(err)
 	}
 	cleanup.Add(lis.Close)
+
+	// Create a volume group for the server to manage.
+	handle, err := lvm.NewLibHandle()
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(handle.Close)
+
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(loop.Close)
+
+	// Create a physical volume using the loop device.
+	var pvs []*lvm.PhysicalVolume
+	pv, err := handle.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(func() error { return pv.Remove() })
+	pvs = append(pvs, pv)
+
+	// Create a volume group containing the physical volume.
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := handle.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(vg.Remove)
+
+	// Clean up any remaining logical volumes.
+	cleanup.Add(func() error {
+		lvnames, err := vg.ListLogicalVolumeNames()
+		if err != nil {
+			panic(err)
+		}
+		for _, lvname := range lvnames {
+			lv, err := vg.LookupLogicalVolume(lvname)
+			if err != nil {
+				panic(err)
+			}
+			if err := lv.Remove(); err != nil {
+				panic(err)
+			}
+		}
+		return nil
+	})
+
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer()
+	s := NewServer(vg, serverOpts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)

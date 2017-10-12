@@ -35,7 +35,6 @@ char** csilvm_get_strings_from_lvm_str_list(const struct dm_list *list)
 	return results;
 }
 
-
 // Returns the device names of the physical volumes in the given list.
 char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
 {
@@ -53,8 +52,42 @@ char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
 	return results;
 }
 
+// Returns the names of the logical volumes in the given list.
+char** csilvm_get_lv_names_lvm_lv_list(const struct dm_list *list)
+{
+	struct lvm_lv_list *lvl;
+	char **results;
+	unsigned int list_size;
+
+	list_size = dm_list_size(list);
+	results = malloc(sizeof (char *) * list_size);
+	int ii = 0;
+	dm_list_iterate_items(lvl, list) {
+		results[ii] = strdup(lvm_lv_get_name(lvl->lv));
+		ii++;
+	}
+	return results;
+}
+
 */
 import "C"
+
+type invalidNameError string
+
+func (err invalidNameError) Error() string {
+	return string(err)
+}
+
+// IsInvalidName returns true if the error is due to an invalid name
+// and false otherwise.
+func IsInvalidName(err error) bool {
+	_, ok := err.(invalidNameError)
+	return ok
+}
+
+// MaxSize states that all available space should be used by the
+// create operation.
+const MaxSize uint64 = 0
 
 // LibraryGetVersion corresponds to `lvm_library_get_version` in `lvm2app.h`.
 func LibraryGetVersion() string {
@@ -162,11 +195,6 @@ func (handle *LibHandle) listVolumeGroupNames() ([]string, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list_names)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cvgnames := C.csilvm_get_strings_from_lvm_str_list(dm_list_names)
 	// Transform the array of C strings into a []string.
 	vgnames := goStrings(size, cvgnames)
@@ -196,11 +224,6 @@ func (handle *LibHandle) ListVolumeGroupUUIDs() ([]string, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list_uuids)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cvguuids := C.csilvm_get_strings_from_lvm_str_list(dm_list_uuids)
 	// Transform the array of C strings into a []string.
 	vguuids := goStrings(size, cvguuids)
@@ -279,7 +302,7 @@ func (handle *LibHandle) validateVolumeGroupName(name string) error {
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_vg_name_validate(handle.handle, cname)
 	if res != 0 {
-		return ErrInvalidName
+		return invalidNameError(handle.err().Error())
 	}
 	return nil
 }
@@ -323,11 +346,6 @@ func (handle *LibHandle) listPhysicalVolumes() ([]*PhysicalVolume, error) {
 		return nil, nil
 	}
 	size := C.dm_list_size(dm_list)
-	if int(size) == 0 {
-		// We just checked that the lists is non-empty so we
-		// expect it's size to be greater than zero.
-		panic("lvm2app: unexpected zero-length list")
-	}
 	cdevnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
 	// Transform the array of C strings into a []string.
 	devnames := goStrings(size, cdevnames)
@@ -475,7 +493,7 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	// size in number of extents, but the source code appears to
 	// disagree and calculates the number of extents required.
 	//
-	// See https://github.com/twitter/bittern/blob/master/lvm2/liblvm/lvm_lv.c#L244
+	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/liblvm/lvm_lv.c#L244
 	lv := C.lvm_vg_create_lv_linear(vg.vg, cname, C.uint64_t(sizeInBytes))
 	if lv == nil {
 		return nil, vg.handle.err()
@@ -484,14 +502,12 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
 }
 
-const ErrInvalidName = simpleError("lvm: name is invalid")
-
 func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 	res := C.lvm_lv_name_validate(vg.vg, cname)
 	if res != 0 {
-		return ErrInvalidName
+		return invalidNameError(vg.handle.err().Error())
 	}
 	return nil
 }
@@ -516,6 +532,28 @@ func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) 
 	}
 	actualSize := uint64(C.lvm_lv_get_size(lv))
 	return &LogicalVolume{name, lv, vg, actualSize}, nil
+}
+
+// ListLogicalVolumes returns the names of the logical volumes in this volume group.
+func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
+	vg.handle.lk.Lock()
+	defer vg.handle.lk.Unlock()
+	if err := vg.open(openReadOnly); err != nil {
+		return nil, err
+	}
+	defer vg.close()
+	dm_list := C.lvm_vg_list_lvs(vg.vg)
+	if dm_list == nil {
+		return nil, vg.handle.err()
+	}
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	clvnames := C.csilvm_get_lv_names_lvm_lv_list(dm_list)
+	// Transform the array of C strings into a []string.
+	lvnames := goStrings(size, clvnames)
+	return lvnames, nil
 }
 
 // Remove removes the volume group from disk.
@@ -587,6 +625,10 @@ type LogicalVolume struct {
 	lv          C.lv_t
 	vg          *VolumeGroup
 	sizeInBytes uint64
+}
+
+func (lv *LogicalVolume) SizeInBytes() uint64 {
+	return lv.sizeInBytes
 }
 
 func (lv *LogicalVolume) Remove() error {

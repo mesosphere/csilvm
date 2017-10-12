@@ -4,12 +4,15 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/mesosphere/csilvm/lvm"
 )
 
 const PluginName = "com.mesosphere/lvs"
 const PluginVersion = "0.1.0"
 
 type Server struct {
+	VolumeGroup       *lvm.VolumeGroup
+	defaultVolumeSize uint64
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -18,8 +21,33 @@ func (s *Server) supportedVersions() []*csi.Version {
 	}
 }
 
-func NewServer() *Server {
-	return new(Server)
+// NewServer returns a new Server that will manage the given LVM
+// volume group. It accepts a variadic list of ServerOpt with which
+// the server's default options can be overwritten.
+func NewServer(vg *lvm.VolumeGroup, opts ...ServerOpt) *Server {
+	const (
+		// Unless overwritten by the DefaultVolumeSize
+		// ServerOpt the default size for new volumes is
+		// 10GiB.
+		defaultVolumeSize = 10 << 30
+	)
+	s := &Server{vg, defaultVolumeSize}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+type ServerOpt func(*Server)
+
+// DefaultVolumeSize sets the default size in bytes of new volumes if
+// no volume capacity is specified. To specify that a new volume
+// should consist of all available space on the volume group you can
+// pass `lvm.MaxSize` to this option.
+func DefaultVolumeSize(size uint64) func(s *Server) {
+	return func(s *Server) {
+		s.defaultVolumeSize = size
+	}
 }
 
 // IdentityService RPCs
@@ -59,7 +87,49 @@ func (s *Server) CreateVolume(
 	if response, ok := s.validateCreateVolumeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.CreateVolumeResponse{}
+	// Check whether a logical volume with the given name already
+	// exists in this volume group.
+	name := request.GetName()
+	if _, err := s.VolumeGroup.LookupLogicalVolume(name); err == nil {
+		return ErrCreateVolume_VolumeAlreadyExists(err), nil
+	}
+	// Determine the capacity, default to maximum size.
+	size := s.defaultVolumeSize
+	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
+		bytesFree, err := s.VolumeGroup.BytesFree()
+		if err != nil {
+			return ErrCreateVolume_GeneralError_Undefined(err), nil
+		}
+		// Check whether there is enough free space available.
+		if bytesFree < capacityRange.GetRequiredBytes() {
+			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+		}
+		// Set the volume size to the minimum requested  size.
+		size = capacityRange.GetRequiredBytes()
+	}
+	lv, err := s.VolumeGroup.CreateLogicalVolume(name, size)
+	if err != nil {
+		if lvm.IsInvalidName(err) {
+			return ErrCreateVolume_InvalidVolumeName(err), nil
+		}
+		if err == lvm.ErrNoSpace {
+			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+		}
+		return ErrCreateVolume_GeneralError_Undefined(err), nil
+	}
+	response := &csi.CreateVolumeResponse{
+		&csi.CreateVolumeResponse_Result_{
+			&csi.CreateVolumeResponse_Result{
+				&csi.VolumeInfo{
+					lv.SizeInBytes(),
+					&csi.VolumeHandle{
+						name,
+						nil,
+					},
+				},
+			},
+		},
+	}
 	return response, nil
 }
 
