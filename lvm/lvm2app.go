@@ -69,6 +69,19 @@ char** csilvm_get_lv_names_lvm_lv_list(const struct dm_list *list)
 	return results;
 }
 
+// Returns the lv_path of the logical volume.
+const char* csilvm_get_lv_path(const lv_t lv)
+{
+	lvm_property_value_t v;
+	char *prop_name = "lv_path";
+
+	v = lvm_lv_get_property(lv, prop_name);
+	if (!v.is_valid) {
+		return 0;
+	}
+	return v.value.string;
+}
+
 */
 import "C"
 
@@ -261,7 +274,7 @@ func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
 }
 
 // CreateVolumeGroup creates a new volume group.
-func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, opts ...VolumeGroupOpt) (*VolumeGroup, error) {
+func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume) (*VolumeGroup, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
 	// Validate the volume group name.
@@ -306,8 +319,6 @@ func (handle *LibHandle) validateVolumeGroupName(name string) error {
 	}
 	return nil
 }
-
-type VolumeGroupOpt func(*VolumeGroup) error
 
 // Scan scans for new devices and volume groups.
 func (handle *LibHandle) Scan() error {
@@ -415,6 +426,10 @@ type VolumeGroup struct {
 	name   string
 	vg     C.vg_t
 	handle *LibHandle
+}
+
+func (vg *VolumeGroup) Name() string {
+	return vg.name
 }
 
 // BytesTotal returns the current size in bytes of the volume group.
@@ -627,8 +642,36 @@ type LogicalVolume struct {
 	sizeInBytes uint64
 }
 
+func (lv *LogicalVolume) Name() string {
+	return lv.name
+}
+
 func (lv *LogicalVolume) SizeInBytes() uint64 {
 	return lv.sizeInBytes
+}
+
+func (lv *LogicalVolume) Path() (string, error) {
+	lv.vg.handle.lk.Lock()
+	defer lv.vg.handle.lk.Unlock()
+	if err := lv.vg.open(openReadWrite); err != nil {
+		return "", err
+	}
+	defer lv.vg.close()
+	cname := C.CString(lv.name)
+	defer C.free(unsafe.Pointer(cname))
+	// The memory for the logical volume handle is tied to the
+	// vg_t and does not need to be freed on its own.
+	// For example:
+	// https://github.com/malachheb/liblvm/blob/master/ext/liblvm.c#L164-L183
+	clv := C.lvm_lv_from_name(lv.vg.vg, cname)
+	if clv == nil {
+		return "", lv.vg.handle.err()
+	}
+	path := C.csilvm_get_lv_path(clv)
+	if path == nil {
+		return "", lv.vg.handle.err()
+	}
+	return C.GoString(path), nil
 }
 
 func (lv *LogicalVolume) Remove() error {
@@ -674,9 +717,8 @@ func Scan() error {
 // CreateVolumeGroup creates a new volume group.
 func CreateVolumeGroup(
 	name string,
-	pvs []*PhysicalVolume,
-	opts ...VolumeGroupOpt) (*VolumeGroup, error) {
-	return defaultHandle.CreateVolumeGroup(name, pvs, opts...)
+	pvs []*PhysicalVolume) (*VolumeGroup, error) {
+	return defaultHandle.CreateVolumeGroup(name, pvs)
 }
 
 // LookupVolumeGroup returns the volume group with the given name.
