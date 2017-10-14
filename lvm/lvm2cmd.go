@@ -1,9 +1,8 @@
 package lvm
 
 import (
-	"context"
 	"log"
-	"sync/atomic"
+	"os/exec"
 	"unsafe"
 )
 
@@ -102,72 +101,31 @@ var (
 	}
 )
 
-type contextKey int
-
-const (
-	contextKeyInvalid contextKey = iota // Treat the zero-value as invalid.
-	contextKeyHandle                    // lvm2 handle
-)
-
-var handleCount int32
-
-func newContext(ctx context.Context) (context.Context, func()) {
-	if ctx == nil {
-		return nil, func() {}
-	}
-
-	// TODO(jdef): unsure about the thread-safety of `handle`; if I close it at the same time
-	// that someone else is using it, what happens?
-	handle := unsafe.Pointer(C.lvm2_init())
-
-	if handle == nil {
-		return ctx, func() {}
-	}
-
-	atomic.AddInt32(&handleCount, 1)
-
-	ctx, cancel := context.WithCancel(context.WithValue(ctx, contextKeyHandle, handle))
-
-	return ctx, func() {
-		defer func() {
-			C.lvm2_exit(handle)
-			c := atomic.AddInt32(&handleCount, -1)
-			if c < 0 {
-				panic("lvm: handle count should never fall below zero")
-			}
-		}()
-		cancel()
-	}
-}
-
-func fromContext(ctx context.Context) (p unsafe.Pointer, ok bool) {
-	if ctx != nil {
-		p, ok = ctx.Value(contextKeyHandle).(unsafe.Pointer)
-	}
-	return
-}
-
 func init() {
 	C.lvm2_log_fn(C.lvm2_log_fn_t(C.logging_bridge))
 }
 
-// run invokes an LVM2 command line and returns the raw result
-func run(ctx context.Context, cmdline string) error {
+// run_lvm2cmd invokes an LVM2 command line and returns the raw result
+func run_lvm2cmd(cmdline string) error {
+	panic("lvm: calling this function leaks memory, see DCOS-")
 	cmd := C.CString(cmdline)
 	defer C.free(unsafe.Pointer(cmd))
-
-	var (
-		handle, _ = fromContext(ctx) // handle may be nil, lvm2 API says that's OK
-		rc        = C.lvm2_run(handle, cmd)
-	)
+	rc := C.lvm2_run(nil, cmd)
 	if rc == C.LVM2_COMMAND_SUCCEEDED {
 		return nil
 	}
 	return LVM2CMDError(rc)
 }
 
-// ScanForDevice scans the device at `dev` and adds it to the LVM
-// metadata cache if `lvmetad` is running.
-func ScanForDevice(ctx context.Context, dev string) error {
-	return run(ctx, "pvscan --cache "+dev)
+// PVScan runs the `pvscan --cache <dev>` command. It scans for the
+// device at `dev` and adds it to the LVM metadata cache if `lvmetad`
+// is running. If `dev` is an empty string, it scans all devices.
+func PVScan(dev string) error {
+	// This function used to call run_lvm2cmd but it was determined that that
+	// function leaks memory. We now call the binary instead.
+	args := []string{"--cache"}
+	if dev != "" {
+		args = append(args, dev)
+	}
+	return exec.Command("pvscan", args...).Run()
 }
