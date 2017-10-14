@@ -107,7 +107,7 @@ func init() {
 
 // run_lvm2cmd invokes an LVM2 command line and returns the raw result
 func run_lvm2cmd(cmdline string) error {
-	panic("lvm: calling this function leaks memory, see DCOS-")
+	panic("lvm: calling this function leaks memory, see DCOS-19141")
 	cmd := C.CString(cmdline)
 	defer C.free(unsafe.Pointer(cmd))
 	rc := C.lvm2_run(nil, cmd)
