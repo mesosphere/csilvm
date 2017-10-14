@@ -571,6 +571,28 @@ func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
 	return lvnames, nil
 }
 
+// ListPhysicalVolumeNames returns the names of the physical volumes in this volume group.
+func (vg *VolumeGroup) ListPhysicalVolumeNames() ([]string, error) {
+	vg.handle.lk.Lock()
+	defer vg.handle.lk.Unlock()
+	if err := vg.open(openReadOnly); err != nil {
+		return nil, err
+	}
+	defer vg.close()
+	dm_list := C.lvm_vg_list_pvs(vg.vg)
+	if dm_list == nil {
+		return nil, vg.handle.err()
+	}
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	cpvnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
+	// Transform the array of C strings into a []string.
+	pvnames := goStrings(size, cpvnames)
+	return pvnames, nil
+}
+
 // Remove removes the volume group from disk.
 //
 // It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the

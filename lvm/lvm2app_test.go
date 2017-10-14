@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -768,7 +770,40 @@ func TestVolumeGroupListLogicalVolumeNames(t *testing.T) {
 	}
 }
 
-func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(), error) {
+func TestVolumeGroupListPhysicalVolumeNames(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, loop1, loop2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	exp := []string{loop1.Path(), loop2.Path()}
+	sort.Strings(exp)
+	pvnames, err := vg.ListPhysicalVolumeNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(pvnames)
+	if !reflect.DeepEqual(exp, pvnames) {
+		t.Fatalf("Expected pvs %+v but got %+v.", exp, pvnames)
+	}
+}
+
+func createVolumeGroup(handle *LibHandle, loopdevs ...*LoopDevice) (*VolumeGroup, func(), error) {
 	var err error
 	var cleanup csilvm.CleanupSteps
 	defer func() {
@@ -776,17 +811,19 @@ func createVolumeGroup(handle *LibHandle, loop *LoopDevice) (*VolumeGroup, func(
 			cleanup.Unwind()
 		}
 	}()
-	if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
-		return nil, nil, err
-	}
 	// Create a physical volume using the loop device.
 	var pvs []*PhysicalVolume
-	pv, err := handle.CreatePhysicalVolume(loop.Path())
-	if err != nil {
-		return nil, nil, err
+	for _, loop := range loopdevs {
+		if err := ScanForDevice(context.Background(), loop.Path()); err != nil {
+			return nil, nil, err
+		}
+		pv, err := handle.CreatePhysicalVolume(loop.Path())
+		if err != nil {
+			return nil, nil, err
+		}
+		cleanup.Add(func() error { return pv.Remove() })
+		pvs = append(pvs, pv)
 	}
-	cleanup.Add(func() error { return pv.Remove() })
-	pvs = append(pvs, pv)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := handle.CreateVolumeGroup(vgname, pvs)
