@@ -226,7 +226,7 @@ func ErrNodeUnpublishVolume_GeneralError_Undefined(err error) *csi.NodeUnpublish
 	}
 }
 
-// ValdiateVolumeCapabilities errors
+// ValidateVolumeCapabilities errors
 
 func ErrValidateVolumeCapabilities_VolumeDoesNotExist(err error) *csi.ValidateVolumeCapabilitiesResponse {
 	return &csi.ValidateVolumeCapabilitiesResponse{
@@ -261,6 +261,39 @@ func ErrValidateVolumeCapabilities_UnsupportedFsType() *csi.ValidateVolumeCapabi
 func ErrValidateVolumeCapabilities_GeneralError_Undefined(err error) *csi.ValidateVolumeCapabilitiesResponse {
 	return &csi.ValidateVolumeCapabilitiesResponse{
 		&csi.ValidateVolumeCapabilitiesResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{
+						csi.Error_GeneralError_UNDEFINED,
+						callerMayRetry,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
+
+// ProbeNode errors
+
+func ErrProbeNode_BadPluginConfig(err error) *csi.ProbeNodeResponse {
+	return &csi.ProbeNodeResponse{
+		&csi.ProbeNodeResponse_Error{
+			&csi.Error{
+				&csi.Error_ProbeNodeError_{
+					&csi.Error_ProbeNodeError{
+						csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
+
+func ErrProbeNode_GeneralError_Undefined(err error) *csi.ProbeNodeResponse {
+	return &csi.ProbeNodeResponse{
+		&csi.ProbeNodeResponse_Error{
 			&csi.Error{
 				&csi.Error_GeneralError_{
 					&csi.Error_GeneralError{
