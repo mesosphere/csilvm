@@ -308,7 +308,17 @@ func (s *Server) GetCapacity(
 	if response, ok := s.validateGetCapacityRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.GetCapacityResponse{}
+	bytesFree, err := s.volumeGroup.BytesFree()
+	if err != nil {
+		return ErrGetCapacity_GeneralError_Undefined(err), nil
+	}
+	response := &csi.GetCapacityResponse{
+		&csi.GetCapacityResponse_Result_{
+			&csi.GetCapacityResponse_Result{
+				bytesFree,
+			},
+		},
+	}
 	return response, nil
 }
 

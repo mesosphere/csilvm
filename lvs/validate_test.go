@@ -742,7 +742,7 @@ func TestListVolumesUnsupportedVersion(t *testing.T) {
 func TestGetCapacityMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	req.Version = nil
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
@@ -769,7 +769,7 @@ func TestGetCapacityMissingVersion(t *testing.T) {
 func TestGetCapacityUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
@@ -796,7 +796,7 @@ func TestGetCapacityUnsupportedVersion(t *testing.T) {
 func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessType = nil
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
@@ -820,10 +820,27 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	}
 }
 
+func TestGetCapacity_BadFilesystem(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetCapacityRequest("ext4")
+	resp, err := client.GetCapacity(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result.GetAvailableCapacity() != 0 {
+		t.Fatalf("Expected 0 bytes for unsupported filesystem but got %v.", result.GetAvailableCapacity())
+	}
+}
+
 func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode = nil
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
@@ -850,7 +867,7 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
