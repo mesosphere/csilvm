@@ -574,7 +574,7 @@ func testListVolumesRequest() *csi.ListVolumesRequest {
 	return req
 }
 
-func TestListVolumes(t *testing.T) {
+func TestListVolumes_NoVolumes(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testListVolumesRequest()
@@ -582,10 +582,67 @@ func TestListVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := resp.GetError(); err != nil {
+		t.Fatal(err)
+	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	if len(result.GetEntries()) != 0 {
+		t.Fatal("Expected no entries.")
+	}
+}
+
+func TestListVolumes_TwoVolumes(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	var infos []*csi.VolumeInfo
+	// Add the first volume.
+	req := testCreateVolumeRequest()
+	req.Name = "test-volume-1"
+	req.CapacityRange.RequiredBytes /= 2
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	infos = append(infos, resp.GetResult().GetVolumeInfo())
+	// Add the second volume.
+	req = testCreateVolumeRequest()
+	req.Name = "test-volume-2"
+	req.CapacityRange.RequiredBytes /= 2
+	resp, err = client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	infos = append(infos, resp.GetResult().GetVolumeInfo())
+	// Check that ListVolumes returns the two volumes.
+	listReq := testListVolumesRequest()
+	listResp, err := client.ListVolumes(context.Background(), listReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := listResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+	entries := listResp.GetResult().GetEntries()
+	if len(entries) != len(infos) {
+		t.Fatalf("ListVolumes returned %v entries, expected %d.", len(entries), len(infos))
+	}
+	for _, entry := range entries {
+		had := false
+		for _, info := range infos {
+			if reflect.DeepEqual(info, entry.GetVolumeInfo()) {
+				had = true
+				break
+			}
+		}
+		if !had {
+			t.Fatalf("Cannot find volume info %+v in %+v.", entry.GetVolumeInfo(), infos)
+		}
 	}
 }
 

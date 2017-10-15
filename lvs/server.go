@@ -116,7 +116,7 @@ func (s *Server) CreateVolume(
 	}
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
-	volumeId := s.volumeGroup.Name() + "_" + request.GetName()
+	volumeId := s.volumeNameToId(request.GetName())
 	if _, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
 		return ErrCreateVolume_VolumeAlreadyExists(err), nil
 	}
@@ -261,13 +261,44 @@ func (s *Server) ValidateVolumeCapabilities(
 	return response, nil
 }
 
+func (s *Server) volumeNameToId(volname string) string {
+	return s.volumeGroup.Name() + "_" + volname
+}
+
 func (s *Server) ListVolumes(
 	ctx context.Context,
 	request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	if response, ok := s.validateListVolumesRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.ListVolumesResponse{}
+	volnames, err := s.volumeGroup.ListLogicalVolumeNames()
+	if err != nil {
+		return ErrListVolumes_GeneralError_Undefined(err), nil
+	}
+	var entries []*csi.ListVolumesResponse_Result_Entry
+	for _, volname := range volnames {
+		lv, err := s.volumeGroup.LookupLogicalVolume(volname)
+		if err != nil {
+			return ErrListVolumes_GeneralError_Undefined(err), nil
+		}
+		info := &csi.VolumeInfo{
+			lv.SizeInBytes(),
+			&csi.VolumeHandle{
+				volname,
+				nil,
+			},
+		}
+		entry := &csi.ListVolumesResponse_Result_Entry{info}
+		entries = append(entries, entry)
+	}
+	response := &csi.ListVolumesResponse{
+		&csi.ListVolumesResponse_Result_{
+			&csi.ListVolumesResponse_Result{
+				entries,
+				"",
+			},
+		},
+	}
 	return response, nil
 }
 
