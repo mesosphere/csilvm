@@ -324,3 +324,21 @@ func ErrListVolumes_GeneralError_Undefined(err error) *csi.ListVolumesResponse {
 		},
 	}
 }
+
+// GetCapacity errors
+
+func ErrGetCapacity_GeneralError_Undefined(err error) *csi.GetCapacityResponse {
+	return &csi.GetCapacityResponse{
+		&csi.GetCapacityResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{
+						csi.Error_GeneralError_UNDEFINED,
+						callerMayRetry,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}

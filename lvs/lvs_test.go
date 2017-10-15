@@ -646,11 +646,22 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	}
 }
 
-func testGetCapacityRequest() *csi.GetCapacityRequest {
+func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			&csi.VolumeCapability_Block{
 				&csi.VolumeCapability_BlockVolume{},
+			},
+			&csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
+			},
+		},
+		{
+			&csi.VolumeCapability_Mount{
+				&csi.VolumeCapability_MountVolume{
+					fstype,
+					nil,
+				},
 			},
 			&csi.VolumeCapability_AccessMode{
 				csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -665,18 +676,49 @@ func testGetCapacityRequest() *csi.GetCapacityRequest {
 	return req
 }
 
-func TestGetCapacity(t *testing.T) {
+func TestGetCapacity_NoVolumes(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testGetCapacityRequest()
+	req := testGetCapacityRequest("xfs")
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	// Two extents are reserved for metadata.
+	const extentSize = uint64(2 << 20)
+	const metadataExtents = 2
+	exp := pvsize - extentSize*metadataExtents
+	if result.GetAvailableCapacity() != exp {
+		t.Fatalf("Expected %d bytes free but got %v.", exp, result.GetAvailableCapacity())
+	}
+}
+
+func TestGetCapacity_OneVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	createReq := testCreateVolumeRequest()
+	createReq.Name = "test-volume-1"
+	createReq.CapacityRange.RequiredBytes /= 2
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	req := testGetCapacityRequest("xfs")
+	resp, err := client.GetCapacity(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	// Two extents are reserved for metadata.
+	const extentSize = uint64(2 << 20)
+	const metadataExtents = 2
+	exp := pvsize - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
+	if result.GetAvailableCapacity() != exp {
+		t.Fatalf("Expected %d bytes free but got %v.", exp, result.GetAvailableCapacity())
 	}
 }
 
