@@ -306,3 +306,21 @@ func ErrProbeNode_GeneralError_Undefined(err error) *csi.ProbeNodeResponse {
 		},
 	}
 }
+
+// ListVolumes errors
+
+func ErrListVolumes_GeneralError_Undefined(err error) *csi.ListVolumesResponse {
+	return &csi.ListVolumesResponse{
+		&csi.ListVolumesResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{
+						csi.Error_GeneralError_UNDEFINED,
+						callerMayRetry,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
