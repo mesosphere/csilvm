@@ -3,6 +3,7 @@ package lvs
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
@@ -27,6 +28,14 @@ const pvsize = 100 << 20 // 100MiB
 var (
 	socketFile = flag.String("socket_file", "", "The path to the listening unix socket file")
 )
+
+func init() {
+	// Refresh the LVM metadata held by the lvmetad process to
+	// clear any metadata left over from a previous run.
+	if err := lvm.PVScan(""); err != nil {
+		panic(err)
+	}
+}
 
 // IdentityService RPCs
 
@@ -1221,9 +1230,11 @@ func TestGetNodeID(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
+	}
+	if result.GetNodeId() != nil {
+		t.Fatalf("Expected node_id to be nil.")
 	}
 }
 
@@ -1234,18 +1245,235 @@ func testProbeNodeRequest() *csi.ProbeNodeRequest {
 	return req
 }
 
-func TestProbeNode(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testProbeNodeRequest()
-	resp, err := client.ProbeNode(context.Background(), req)
+func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProbeNode_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
+	pvnames := []string{"/dev/does/not/exist"}
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := "lvm: CreatePhysicalVolume: Device /dev/does/not/exist not found (or ignored by filtering). (-1)"
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	// Format and mount loop1 so it appears busy.
+	if err := formatDevice(loop1.Path(), "xfs"); err != nil {
+		t.Fatal(err)
+	}
+	targetPath, err := ioutil.TempDir("", "lvs_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	if err := syscall.Mount(loop1.Path(), targetPath, "xfs", 0, ""); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := syscall.Unmount(targetPath, 0); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := "lvm: CreatePhysicalVolume: Can't open /dev/loop20 exclusively.  Mounted filesystem? (-1)"
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := probeResp.GetResult()
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := "Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]"
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes []", []string{loop2.Path()})
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -1265,13 +1493,12 @@ func TestNodeGetCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := resp.GetResult()
-	// Method is still stubbed...
-	if result != nil {
-		t.Fatalf("method is still stubbed")
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
 	}
 }
 
-func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+func prepareProbeNodeTest(vgname string, pvnames []string) (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if x := recover(); x != nil {
@@ -1285,58 +1512,10 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	}
 	cleanup.Add(lis.Close)
 
-	// Create a volume group for the server to manage.
-	handle, err := lvm.NewLibHandle()
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(handle.Close)
-
-	loop, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(loop.Close)
-
-	// Create a physical volume using the loop device.
-	var pvs []*lvm.PhysicalVolume
-	pv, err := handle.CreatePhysicalVolume(loop.Path())
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(func() error { return pv.Remove() })
-	pvs = append(pvs, pv)
-
-	// Create a volume group containing the physical volume.
-	vgname := "test-vg-" + uuid.New().String()
-	vg, err := handle.CreateVolumeGroup(vgname, pvs)
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(vg.Remove)
-
-	// Clean up any remaining logical volumes.
-	cleanup.Add(func() error {
-		lvnames, err := vg.ListLogicalVolumeNames()
-		if err != nil {
-			panic(err)
-		}
-		for _, lvname := range lvnames {
-			lv, err := vg.LookupLogicalVolume(lvname)
-			if err != nil {
-				panic(err)
-			}
-			if err := lv.Remove(); err != nil {
-				panic(err)
-			}
-		}
-		return nil
-	})
-
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer(vg, "xfs", serverOpts...)
+	s := NewServer(vgname, pvnames, "xfs")
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
@@ -1355,5 +1534,92 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 		panic(err)
 	}
 	cleanup.Add(conn.Close)
-	return NewClient(conn), cleanup.Unwind
+	client = NewClient(conn)
+	return client, cleanup.Unwind
+}
+
+func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+	var cleanup csilvm.CleanupSteps
+	defer func() {
+		if x := recover(); x != nil {
+			cleanup.Unwind()
+			panic(x)
+		}
+	}()
+	lis, err := net.Listen("unix", "@/lvs-test-"+uuid.New().String())
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(lis.Close)
+	// Create a volume group for the server to manage.
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(loop.Close)
+	// Create a physical volume using the loop device.
+	var pvnames []string
+	var pvs []*lvm.PhysicalVolume
+	pv, err := lvm.CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(func() error { return pv.Remove() })
+	pvnames = append(pvnames, loop.Path())
+	pvs = append(pvs, pv)
+	// Create a volume group containing the physical volume.
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(vg.Remove)
+	// Clean up any remaining logical volumes.
+	cleanup.Add(func() error {
+		lvnames, err := vg.ListLogicalVolumeNames()
+		if err != nil {
+			panic(err)
+		}
+		for _, lvname := range lvnames {
+			lv, err := vg.LookupLogicalVolume(lvname)
+			if err != nil {
+				panic(err)
+			}
+			if err := lv.Remove(); err != nil {
+				panic(err)
+			}
+		}
+		return nil
+	})
+	var opts []grpc.ServerOption
+	// Start a grpc server listening on the socket.
+	grpcServer := grpc.NewServer(opts...)
+	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
+	csi.RegisterIdentityServer(grpcServer, s)
+	csi.RegisterControllerServer(grpcServer, s)
+	csi.RegisterNodeServer(grpcServer, s)
+	go grpcServer.Serve(lis)
+	// Start a grpc client connected to the server.
+	unixDialer := func(addr string, timeout time.Duration) (net.Conn, error) {
+		return net.DialTimeout("unix", addr, timeout)
+	}
+	clientOpts := []grpc.DialOption{
+		grpc.WithDialer(unixDialer),
+		grpc.WithInsecure(),
+	}
+	conn, err := grpc.Dial(lis.Addr().String(), clientOpts...)
+	if err != nil {
+		panic(err)
+	}
+	cleanup.Add(conn.Close)
+	client = NewClient(conn)
+	// Initialize the Server by calling ProbeNode.
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		panic(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		panic(err)
+	}
+	return client, cleanup.Unwind
 }

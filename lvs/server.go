@@ -17,7 +17,9 @@ const PluginName = "com.mesosphere/lvs"
 const PluginVersion = "0.1.0"
 
 type Server struct {
-	VolumeGroup          *lvm.VolumeGroup
+	vgname               string
+	pvnames              []string
+	volumeGroup          *lvm.VolumeGroup
 	defaultVolumeSize    uint64
 	supportedFilesystems map[string]string
 }
@@ -31,7 +33,7 @@ func (s *Server) supportedVersions() []*csi.Version {
 // NewServer returns a new Server that will manage the given LVM
 // volume group. It accepts a variadic list of ServerOpt with which
 // the server's default options can be overwritten.
-func NewServer(vg *lvm.VolumeGroup, defaultFs string, opts ...ServerOpt) *Server {
+func NewServer(vgname string, pvnames []string, defaultFs string, opts ...ServerOpt) *Server {
 	const (
 		// Unless overwritten by the DefaultVolumeSize
 		// ServerOpt the default size for new volumes is
@@ -39,7 +41,9 @@ func NewServer(vg *lvm.VolumeGroup, defaultFs string, opts ...ServerOpt) *Server
 		defaultVolumeSize = 10 << 30
 	)
 	s := &Server{
-		vg,
+		vgname,
+		pvnames,
+		nil,
 		defaultVolumeSize,
 		map[string]string{
 			"":        defaultFs,
@@ -112,14 +116,14 @@ func (s *Server) CreateVolume(
 	}
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
-	volumeId := s.VolumeGroup.Name() + "_" + request.GetName()
-	if _, err := s.VolumeGroup.LookupLogicalVolume(volumeId); err == nil {
+	volumeId := s.volumeGroup.Name() + "_" + request.GetName()
+	if _, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
 		return ErrCreateVolume_VolumeAlreadyExists(err), nil
 	}
 	// Determine the capacity, default to maximum size.
 	size := s.defaultVolumeSize
 	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
-		bytesFree, err := s.VolumeGroup.BytesFree()
+		bytesFree, err := s.volumeGroup.BytesFree()
 		if err != nil {
 			return ErrCreateVolume_GeneralError_Undefined(err), nil
 		}
@@ -130,7 +134,7 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = capacityRange.GetRequiredBytes()
 	}
-	lv, err := s.VolumeGroup.CreateLogicalVolume(volumeId, size)
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size)
 	if err != nil {
 		if lvm.IsInvalidName(err) {
 			return ErrCreateVolume_InvalidVolumeName(err), nil
@@ -163,7 +167,7 @@ func (s *Server) DeleteVolume(
 		return response, nil
 	}
 	id := request.GetVolumeHandle().GetId()
-	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
 	}
@@ -215,7 +219,7 @@ func (s *Server) ValidateVolumeCapabilities(
 		return response, nil
 	}
 	id := request.GetVolumeInfo().GetHandle().GetId()
-	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		return ErrValidateVolumeCapabilities_VolumeDoesNotExist(err), nil
 	}
@@ -334,7 +338,7 @@ func (s *Server) NodePublishVolume(
 		return response, nil
 	}
 	id := request.GetVolumeHandle().GetId()
-	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		return ErrNodePublishVolume_VolumeDoesNotExist(err), nil
 	}
@@ -438,7 +442,7 @@ func (s *Server) NodeUnpublishVolume(
 		return response, nil
 	}
 	id := request.GetVolumeHandle().GetId()
-	_, err := s.VolumeGroup.LookupLogicalVolume(id)
+	_, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		return ErrNodeUnpublishVolume_VolumeDoesNotExist(err), nil
 	}
@@ -461,17 +465,94 @@ func (s *Server) GetNodeID(
 	if response, ok := s.validateGetNodeIDRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.GetNodeIDResponse{}
+	response := &csi.GetNodeIDResponse{
+		&csi.GetNodeIDResponse_Result_{
+			&csi.GetNodeIDResponse_Result{},
+		},
+	}
 	return response, nil
 }
 
+// ProbeNode initializes the Server by creating or opening the VolumeGroup.
 func (s *Server) ProbeNode(
 	ctx context.Context,
 	request *csi.ProbeNodeRequest) (*csi.ProbeNodeResponse, error) {
 	if response, ok := s.validateProbeNodeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.ProbeNodeResponse{}
+	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
+	if err == lvm.ErrVolumeGroupNotFound {
+		// The volume group does not exist yet so see if we can create it.
+		// We check if the physical volumes are available.
+		var pvs []*lvm.PhysicalVolume
+		for _, pvname := range s.pvnames {
+			pv, err := lvm.LookupPhysicalVolume(pvname)
+			if err == nil {
+				pvs = append(pvs, pv)
+				continue
+			}
+			if err == lvm.ErrPhysicalVolumeNotFound {
+				// The physical volume cannot be found. Try to create it.
+				pv, err := lvm.CreatePhysicalVolume(pvname)
+				if err != nil {
+					return ErrProbeNode_BadPluginConfig(err), nil
+				}
+				pvs = append(pvs, pv)
+				continue
+			}
+			return ErrProbeNode_GeneralError_Undefined(err), nil
+		}
+		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs)
+		if err != nil {
+			return ErrProbeNode_GeneralError_Undefined(err), nil
+		}
+
+	} else if err != nil {
+		return ErrProbeNode_GeneralError_Undefined(err), nil
+	}
+	// The volume group already exists. We check that the list of
+	// physical volumes matches the provided list.
+	existing, err := volumeGroup.ListPhysicalVolumeNames()
+	if err != nil {
+		return ErrProbeNode_GeneralError_Undefined(err), nil
+	}
+	missing := []string{}
+	unexpected := []string{}
+	for _, epvname := range existing {
+		had := false
+		for _, pvname := range s.pvnames {
+			if epvname == pvname {
+				had = true
+				break
+			}
+		}
+		if !had {
+			unexpected = append(unexpected, epvname)
+		}
+	}
+	for _, pvname := range s.pvnames {
+		had := false
+		for _, epvname := range existing {
+			if epvname == pvname {
+				had = true
+				break
+			}
+		}
+		if !had {
+			missing = append(missing, pvname)
+		}
+	}
+	if len(missing) != 0 || len(unexpected) != 0 {
+		err := fmt.Errorf("Volume group contains unexpected volumes %v and is missing volumes %v", unexpected, missing)
+		return ErrProbeNode_BadPluginConfig(err), nil
+	}
+	// The volume group is configured as expected.
+	s.volumeGroup = volumeGroup
+	response := &csi.ProbeNodeResponse{
+		&csi.ProbeNodeResponse_Result_{
+			&csi.ProbeNodeResponse_Result{},
+		},
+	}
 	return response, nil
 }
 
@@ -481,6 +562,10 @@ func (s *Server) NodeGetCapabilities(
 	if response, ok := s.validateNodeGetCapabilitiesRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.NodeGetCapabilitiesResponse{}
+	response := &csi.NodeGetCapabilitiesResponse{
+		&csi.NodeGetCapabilitiesResponse_Result_{
+			&csi.NodeGetCapabilitiesResponse_Result{},
+		},
+	}
 	return response, nil
 }
