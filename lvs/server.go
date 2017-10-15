@@ -214,7 +214,46 @@ func (s *Server) ValidateVolumeCapabilities(
 	if response, ok := s.validateValidateVolumeCapabilitiesRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.ValidateVolumeCapabilitiesResponse{}
+	id := request.GetVolumeInfo().GetHandle().GetId()
+	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	if err != nil {
+		return ErrValidateVolumeCapabilities_VolumeDoesNotExist(err), nil
+	}
+	sourcePath, err := lv.Path()
+	if err != nil {
+		return ErrValidateVolumeCapabilities_GeneralError_Undefined(err), nil
+	}
+	existingFstype, err := determineFilesystemType(sourcePath)
+	if err != nil {
+		return ErrValidateVolumeCapabilities_GeneralError_Undefined(err), nil
+	}
+	for _, capability := range request.GetVolumeCapabilities() {
+		if mnt := capability.GetMount(); mnt != nil {
+			if existingFstype != "" {
+				// The volume has already been formatted.
+				if mnt.GetFsType() != "" && existingFstype != mnt.GetFsType() {
+					// The requested fstype does not match the existing one.
+					response := &csi.ValidateVolumeCapabilitiesResponse{
+						&csi.ValidateVolumeCapabilitiesResponse_Result_{
+							&csi.ValidateVolumeCapabilitiesResponse_Result{
+								false,
+								"The requested fs_type does not match the existing filesystem on the volume.",
+							},
+						},
+					}
+					return response, nil
+				}
+			}
+		}
+	}
+	response := &csi.ValidateVolumeCapabilitiesResponse{
+		&csi.ValidateVolumeCapabilitiesResponse_Result_{
+			&csi.ValidateVolumeCapabilitiesResponse_Result{
+				true,
+				"",
+			},
+		},
+	}
 	return response, nil
 }
 

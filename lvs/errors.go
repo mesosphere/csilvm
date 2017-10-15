@@ -225,3 +225,51 @@ func ErrNodeUnpublishVolume_GeneralError_Undefined(err error) *csi.NodeUnpublish
 		},
 	}
 }
+
+// ValdiateVolumeCapabilities errors
+
+func ErrValidateVolumeCapabilities_VolumeDoesNotExist(err error) *csi.ValidateVolumeCapabilitiesResponse {
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		&csi.ValidateVolumeCapabilitiesResponse_Error{
+			&csi.Error{
+				&csi.Error_ValidateVolumeCapabilitiesError_{
+					&csi.Error_ValidateVolumeCapabilitiesError{
+						csi.Error_ValidateVolumeCapabilitiesError_VOLUME_DOES_NOT_EXIST,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
+
+func ErrValidateVolumeCapabilities_UnsupportedFsType() *csi.ValidateVolumeCapabilitiesResponse {
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		&csi.ValidateVolumeCapabilitiesResponse_Error{
+			&csi.Error{
+				&csi.Error_ValidateVolumeCapabilitiesError_{
+					&csi.Error_ValidateVolumeCapabilitiesError{
+						csi.Error_ValidateVolumeCapabilitiesError_UNSUPPORTED_FS_TYPE,
+						"Requested filesystem type is not supported.",
+					},
+				},
+			},
+		},
+	}
+}
+
+func ErrValidateVolumeCapabilities_GeneralError_Undefined(err error) *csi.ValidateVolumeCapabilitiesResponse {
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		&csi.ValidateVolumeCapabilitiesResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{
+						csi.Error_GeneralError_UNDEFINED,
+						callerMayRetry,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}

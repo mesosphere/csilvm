@@ -394,7 +394,7 @@ func TestDeleteVolumeMissingVolumeHandleId(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.Version = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -421,7 +421,7 @@ func TestValidateVolumeCapabilitiesMissingVersion(t *testing.T) {
 func TestValidateVolumeCapabilitiesUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -448,7 +448,7 @@ func TestValidateVolumeCapabilitiesUnsupportedVersion(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVolumeInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeInfo = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -475,7 +475,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeInfo(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVolumeInfoHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeInfo.Handle = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -502,7 +502,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeInfoHandle(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVolumeInfoHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeInfo.Handle.Id = ""
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -529,7 +529,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeInfoHandleId(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilities(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeCapabilities = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -557,7 +557,7 @@ func TestValidateVolumeCapabilitiesEmptyVolumeCapabilities(t *testing.T) {
 	t.Skip("gRPC apparently unmarshals an empty list as nil.")
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeCapabilities = req.VolumeCapabilities[:0]
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -584,7 +584,7 @@ func TestValidateVolumeCapabilitiesEmptyVolumeCapabilities(t *testing.T) {
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeCapabilities[0].AccessType = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -608,10 +608,33 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testin
 	}
 }
 
+func TestValidateVolumeCapabilitiesNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "ext4", nil)
+	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetValidateVolumeCapabilitiesError()
+	expcode := csi.Error_ValidateVolumeCapabilitiesError_UNSUPPORTED_FS_TYPE
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	expdesc := "Requested filesystem type is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeCapabilities[0].AccessMode = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -638,7 +661,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testin
 func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
