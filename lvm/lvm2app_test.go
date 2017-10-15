@@ -2,6 +2,7 @@ package lvm
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"strings"
 	"testing"
@@ -617,6 +618,37 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 	}
 }
 
+func TestLogicalVolumeName(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	if lv.Name() != name {
+		t.Fatalf("Expected name %v but got %v.", name, lv.Name())
+	}
+}
+
 func TestLogicalVolumeSizeInBytes(t *testing.T) {
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
@@ -645,6 +677,42 @@ func TestLogicalVolumeSizeInBytes(t *testing.T) {
 	defer lv.Remove()
 	if lv.SizeInBytes() != size {
 		t.Fatalf("Expected size %v but got %v.", size, lv.SizeInBytes())
+	}
+}
+
+func TestLogicalVolumePath(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	vg, cleanup, err := createVolumeGroup(handle, loop)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	size, err := vg.BytesFree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	lv, err := vg.CreateLogicalVolume(name, size)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	path, err := lv.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := fmt.Sprintf("/dev/%s/%s", vg.Name(), lv.Name())
+	if path != exp {
+		t.Fatalf("Expected path %v but got %v.", exp, path)
 	}
 }
 

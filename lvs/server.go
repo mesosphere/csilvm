@@ -1,6 +1,12 @@
 package lvs
 
 import (
+	"errors"
+	"fmt"
+	"os/exec"
+	"strings"
+	"syscall"
+
 	"golang.org/x/net/context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -11,8 +17,9 @@ const PluginName = "com.mesosphere/lvs"
 const PluginVersion = "0.1.0"
 
 type Server struct {
-	VolumeGroup       *lvm.VolumeGroup
-	defaultVolumeSize uint64
+	VolumeGroup          *lvm.VolumeGroup
+	defaultVolumeSize    uint64
+	supportedFilesystems map[string]string
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -24,14 +31,21 @@ func (s *Server) supportedVersions() []*csi.Version {
 // NewServer returns a new Server that will manage the given LVM
 // volume group. It accepts a variadic list of ServerOpt with which
 // the server's default options can be overwritten.
-func NewServer(vg *lvm.VolumeGroup, opts ...ServerOpt) *Server {
+func NewServer(vg *lvm.VolumeGroup, defaultFs string, opts ...ServerOpt) *Server {
 	const (
 		// Unless overwritten by the DefaultVolumeSize
 		// ServerOpt the default size for new volumes is
 		// 10GiB.
 		defaultVolumeSize = 10 << 30
 	)
-	s := &Server{vg, defaultVolumeSize}
+	s := &Server{
+		vg,
+		defaultVolumeSize,
+		map[string]string{
+			"":        defaultFs,
+			defaultFs: defaultFs,
+		},
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -44,9 +58,18 @@ type ServerOpt func(*Server)
 // no volume capacity is specified. To specify that a new volume
 // should consist of all available space on the volume group you can
 // pass `lvm.MaxSize` to this option.
-func DefaultVolumeSize(size uint64) func(s *Server) {
+func DefaultVolumeSize(size uint64) ServerOpt {
 	return func(s *Server) {
 		s.defaultVolumeSize = size
+	}
+}
+
+func SupportedFilesystem(fstype string) ServerOpt {
+	if fstype == "" {
+		panic("lvs: SupportedFilesystem: filesystem type not provided")
+	}
+	return func(s *Server) {
+		s.supportedFilesystems[fstype] = fstype
 	}
 }
 
@@ -89,8 +112,8 @@ func (s *Server) CreateVolume(
 	}
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
-	name := request.GetName()
-	if _, err := s.VolumeGroup.LookupLogicalVolume(name); err == nil {
+	volumeId := s.VolumeGroup.Name() + "_" + request.GetName()
+	if _, err := s.VolumeGroup.LookupLogicalVolume(volumeId); err == nil {
 		return ErrCreateVolume_VolumeAlreadyExists(err), nil
 	}
 	// Determine the capacity, default to maximum size.
@@ -107,7 +130,7 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = capacityRange.GetRequiredBytes()
 	}
-	lv, err := s.VolumeGroup.CreateLogicalVolume(name, size)
+	lv, err := s.VolumeGroup.CreateLogicalVolume(volumeId, size)
 	if err != nil {
 		if lvm.IsInvalidName(err) {
 			return ErrCreateVolume_InvalidVolumeName(err), nil
@@ -123,7 +146,7 @@ func (s *Server) CreateVolume(
 				&csi.VolumeInfo{
 					lv.SizeInBytes(),
 					&csi.VolumeHandle{
-						name,
+						volumeId,
 						nil,
 					},
 				},
@@ -139,7 +162,19 @@ func (s *Server) DeleteVolume(
 	if response, ok := s.validateDeleteVolumeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.DeleteVolumeResponse{}
+	id := request.GetVolumeHandle().GetId()
+	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	if err != nil {
+		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
+	}
+	if err := lv.Remove(); err != nil {
+		return ErrDeleteVolume_GeneralError_Undefined(err), nil
+	}
+	response := &csi.DeleteVolumeResponse{
+		&csi.DeleteVolumeResponse_Result_{
+			&csi.DeleteVolumeResponse_Result{},
+		},
+	}
 	return response, nil
 }
 
@@ -259,8 +294,102 @@ func (s *Server) NodePublishVolume(
 	if response, ok := s.validateNodePublishVolumeRequest(request); !ok {
 		return response, nil
 	}
-	response := &csi.NodePublishVolumeResponse{}
+	id := request.GetVolumeHandle().GetId()
+	lv, err := s.VolumeGroup.LookupLogicalVolume(id)
+	if err != nil {
+		return ErrNodePublishVolume_VolumeDoesNotExist(err), nil
+	}
+	sourcePath, err := lv.Path()
+	if err != nil {
+		return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+	}
+	targetPath := request.GetTargetPath()
+	switch accessType := request.GetVolumeCapability().GetAccessType().(type) {
+	case *csi.VolumeCapability_Block:
+		// Perform a bind mount of the raw block device. The
+		// `filesystemtype` and `data` parameters to the
+		// mount(2) system call are ignored in this case.
+		flags := uintptr(syscall.MS_BIND)
+		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
+		if readonly {
+			flags |= syscall.MS_RDONLY
+		}
+		if err := syscall.Mount(sourcePath, targetPath, "", flags, ""); err != nil {
+			_, ok := err.(syscall.Errno)
+			if !ok {
+				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+			}
+			return ErrNodePublishVolume_MountError(err), nil
+		}
+	case *csi.VolumeCapability_Mount:
+		var flags uintptr
+		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
+		if readonly {
+			flags |= syscall.MS_RDONLY
+		}
+		fstype := request.GetVolumeCapability().GetMount().GetFsType()
+		// Request validation ensures that the fstype is among
+		// our list of supported filesystems.
+		if fstype == "" {
+			// If the fstype was not specified, pick the default.
+			fstype = s.supportedFilesystems[""]
+		}
+		existingFstype, err := determineFilesystemType(sourcePath)
+		if err != nil {
+			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+		}
+		if existingFstype == "" {
+			// There is no existing filesystem on the
+			// device, format it with the requested
+			// filesystem.
+			if err := formatDevice(sourcePath, fstype); err != nil {
+				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+			}
+			existingFstype = fstype
+		}
+		if fstype != existingFstype {
+			err := errors.New("The volume's existing filesystem does not match the one requested.")
+			return ErrNodePublishVolume_MountError(err), nil
+		}
+		mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
+		mountOptionsStr := strings.Join(mountOptions, ",")
+		// Try to mount the volume by assuming it is correctly formatted.
+		if err := syscall.Mount(sourcePath, targetPath, fstype, flags, mountOptionsStr); err != nil {
+			_, ok := err.(syscall.Errno)
+			if !ok {
+				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+			}
+			return ErrNodePublishVolume_MountError(err), nil
+		}
+	default:
+		panic(fmt.Sprintf("lvm: unknown access_type: %+v", accessType))
+	}
+	response := &csi.NodePublishVolumeResponse{
+		&csi.NodePublishVolumeResponse_Result_{
+			&csi.NodePublishVolumeResponse_Result{},
+		},
+	}
 	return response, nil
+}
+
+func determineFilesystemType(devicePath string) (string, error) {
+	output, err := exec.Command("lsblk", "-o", "FSTYPE", devicePath).CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(string(output), "\n")
+	if len(lines) != 3 || strings.TrimSpace(lines[0]) != "FSTYPE" {
+		return "", errors.New("Cannot parse output of lsblk.")
+	}
+	return strings.TrimSpace(lines[1]), nil
+}
+
+func formatDevice(devicePath, fstype string) error {
+	output, err := exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
+	if err != nil {
+		return errors.New("lvs: formatDevice: " + string(output))
+	}
+	return nil
 }
 
 func (s *Server) NodeUnpublishVolume(
@@ -268,6 +397,20 @@ func (s *Server) NodeUnpublishVolume(
 	request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	if response, ok := s.validateNodeUnpublishVolumeRequest(request); !ok {
 		return response, nil
+	}
+	id := request.GetVolumeHandle().GetId()
+	_, err := s.VolumeGroup.LookupLogicalVolume(id)
+	if err != nil {
+		return ErrNodeUnpublishVolume_VolumeDoesNotExist(err), nil
+	}
+	targetPath := request.GetTargetPath()
+	const umountFlags = 0
+	if err := syscall.Unmount(targetPath, umountFlags); err != nil {
+		_, ok := err.(syscall.Errno)
+		if !ok {
+			return ErrNodeUnpublishVolume_GeneralError_Undefined(err), nil
+		}
+		return ErrNodeUnpublishVolume_UnmountError(err), nil
 	}
 	response := &csi.NodeUnpublishVolumeResponse{}
 	return response, nil
