@@ -32,5 +32,6 @@ func main() {
 	s := lvs.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
+	csi.RegisterNodeServer(grpcServer, s)
 	grpcServer.Serve(lis)
 }
