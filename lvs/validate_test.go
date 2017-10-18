@@ -223,7 +223,7 @@ func TestCreateVolumeMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_type field must be specified."
+	expdesc := "The volume_capability.access_type field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -250,7 +250,7 @@ func TestCreateVolumeMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode field must be specified."
+	expdesc := "The volume_capability.access_mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -277,7 +277,7 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode.mode field must be specified."
+	expdesc := "The volume_capability.access_mode.mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -358,7 +358,7 @@ func TestDeleteVolumeMissingVolumeHandle(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_handle field must be specified."
+	expdesc := "The volume handle must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -493,7 +493,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeInfoHandle(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_info.handle field must be specified."
+	expdesc := "The volume handle must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -520,7 +520,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeInfoHandleId(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_info.handle.id field must be specified."
+	expdesc := "The volume_handle.id field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -602,7 +602,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testin
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_type field must be specified."
+	expdesc := "The volume_capability.access_type field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -652,7 +652,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testin
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode field must be specified."
+	expdesc := "The volume_capability.access_mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -679,7 +679,7 @@ func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testin
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode.mode field must be specified."
+	expdesc := "The volume_capability.access_mode.mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -814,7 +814,7 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_type field must be specified."
+	expdesc := "The volume_capability.access_type field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -858,7 +858,7 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode field must be specified."
+	expdesc := "The volume_capability.access_mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -885,7 +885,7 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_capabilities.access_mode.mode field must be specified."
+	expdesc := "The volume_capability.access_mode.mode field must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -1026,7 +1026,7 @@ func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_handle field must be specified."
+	expdesc := "The volume handle must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -1321,7 +1321,7 @@ func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
 	if error.GetCallerMustNotRetry() != false {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
-	expdesc := "The volume_handle field must be specified."
+	expdesc := "The volume handle must be specified."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}

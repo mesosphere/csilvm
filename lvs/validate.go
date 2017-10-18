@@ -9,12 +9,7 @@ const (
 	callerMayRetry     = false
 )
 
-type versionGetter interface {
-	GetVersion() *csi.Version
-}
-
-func (s *Server) validateVersion(v versionGetter) *csi.Error {
-	version := v.GetVersion()
+func (s *Server) validateVersion(version *csi.Version) *csi.Error {
 	if version == nil {
 		return &csi.Error{
 			&csi.Error_GeneralError_{
@@ -47,10 +42,94 @@ func (s *Server) validateVersion(v versionGetter) *csi.Error {
 	return nil
 }
 
+func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapability, unsupportedFsErr *csi.Error) *csi.Error {
+	if volumeCapabilities == nil {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
+			},
+		}
+	} else {
+		// This still requires clarification. See
+		// https://github.com/container-storage-interface/spec/issues/90
+		if len(volumeCapabilities) == 0 {
+			return &csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
+				},
+			}
+		}
+		for _, volumeCapability := range volumeCapabilities {
+			if err := s.validateVolumeCapability(volumeCapability, unsupportedFsErr); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability, unsupportedFsErr *csi.Error) *csi.Error {
+	accessType := volumeCapability.GetAccessType()
+	if accessType == nil {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_type field must be specified."},
+			},
+		}
+	}
+	if mnt := volumeCapability.GetMount(); mnt != nil {
+		// This is a MOUNT_VOLUME request.
+		fstype := mnt.GetFsType()
+		// If unsupportedFsErr is nil we don't treat an
+		// unsupported fs as an error.
+		if _, ok := s.supportedFilesystems[fstype]; !ok && unsupportedFsErr != nil {
+			return unsupportedFsErr
+		}
+	}
+	accessMode := volumeCapability.GetAccessMode()
+	if accessMode == nil {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode field must be specified."},
+			},
+		}
+	} else {
+		mode := accessMode.GetMode()
+		if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
+			return &csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode.mode field must be specified."},
+				},
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Server) validateVolumeHandle(volumeHandle *csi.VolumeHandle) *csi.Error {
+	if volumeHandle == nil {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume handle must be specified."},
+			},
+		}
+	} else {
+		id := volumeHandle.GetId()
+		if id == "" {
+			return &csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
+				},
+			}
+		}
+	}
+	return nil
+}
+
 // IdentityService RPCs
 
 func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetPluginInfoResponse{
 			&csi.GetPluginInfoResponse_Error{
 				err,
@@ -64,7 +143,7 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 // ControllerService RPCs
 
 func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.CreateVolumeResponse{
 			&csi.CreateVolumeResponse_Error{
 				err,
@@ -85,81 +164,27 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 		}
 		return response, false
 	}
-	volumeCapabilities := request.GetVolumeCapabilities()
-	if volumeCapabilities == nil {
+	unsupportedFsErr := &csi.Error{
+		&csi.Error_CreateVolumeError_{
+			&csi.Error_CreateVolumeError{
+				csi.Error_CreateVolumeError_INVALID_PARAMETER_VALUE,
+				"Unsupported filesystem type",
+			},
+		},
+	}
+	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities(), unsupportedFsErr); err != nil {
 		response := &csi.CreateVolumeResponse{
 			&csi.CreateVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
-	} else {
-		// This still requires clarification. See
-		// https://github.com/container-storage-interface/spec/issues/90
-		if len(volumeCapabilities) == 0 {
-			response := &csi.CreateVolumeResponse{
-				&csi.CreateVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		}
-		for _, volumeCapability := range volumeCapabilities {
-			accessType := volumeCapability.GetAccessType()
-			if accessType == nil {
-				response := &csi.CreateVolumeResponse{
-					&csi.CreateVolumeResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			}
-			accessMode := volumeCapability.GetAccessMode()
-			if accessMode == nil {
-				response := &csi.CreateVolumeResponse{
-					&csi.CreateVolumeResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			} else {
-				mode := accessMode.GetMode()
-				if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
-					response := &csi.CreateVolumeResponse{
-						&csi.CreateVolumeResponse_Error{
-							&csi.Error{
-								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
-								},
-							},
-						},
-					}
-					return response, false
-				}
-			}
-		}
 	}
 	return nil, true
 }
 
 func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.DeleteVolumeResponse{
 			&csi.DeleteVolumeResponse_Error{
 				err,
@@ -167,38 +192,19 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 		}
 		return response, false
 	}
-	volumeHandle := request.GetVolumeHandle()
-	if volumeHandle == nil {
+	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
 		response := &csi.DeleteVolumeResponse{
 			&csi.DeleteVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
-	} else {
-		id := volumeHandle.GetId()
-		if id == "" {
-			response := &csi.DeleteVolumeResponse{
-				&csi.DeleteVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		}
 	}
 	return nil, true
 }
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				err,
@@ -219,116 +225,36 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 		}
 		return response, false
 	} else {
-		volumeHandle := volumeInfo.GetHandle()
-		if volumeHandle == nil {
+		if err := s.validateVolumeHandle(volumeInfo.GetHandle()); err != nil {
 			response := &csi.ValidateVolumeCapabilitiesResponse{
 				&csi.ValidateVolumeCapabilitiesResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info.handle field must be specified."},
-						},
-					},
+					err,
 				},
 			}
 			return response, false
-		} else {
-			id := volumeHandle.GetId()
-			if id == "" {
-				response := &csi.ValidateVolumeCapabilitiesResponse{
-					&csi.ValidateVolumeCapabilitiesResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info.handle.id field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			}
 		}
 	}
-	volumeCapabilities := request.GetVolumeCapabilities()
-	if volumeCapabilities == nil {
+	unsupportedFsErr := &csi.Error{
+		&csi.Error_ValidateVolumeCapabilitiesError_{
+			&csi.Error_ValidateVolumeCapabilitiesError{
+				csi.Error_ValidateVolumeCapabilitiesError_UNSUPPORTED_FS_TYPE,
+				"Requested filesystem type is not supported.",
+			},
+		},
+	}
+	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities(), unsupportedFsErr); err != nil {
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
-	} else {
-		// This still requires clarification. See
-		// https://github.com/container-storage-interface/spec/issues/90
-		if len(volumeCapabilities) == 0 {
-			response := &csi.ValidateVolumeCapabilitiesResponse{
-				&csi.ValidateVolumeCapabilitiesResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		}
-		for _, volumeCapability := range volumeCapabilities {
-			accessType := volumeCapability.GetAccessType()
-			if accessType == nil {
-				response := &csi.ValidateVolumeCapabilitiesResponse{
-					&csi.ValidateVolumeCapabilitiesResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			}
-			if mnt := volumeCapability.GetMount(); mnt != nil {
-				// This is a MOUNT_VOLUME request.
-				fstype := mnt.GetFsType()
-				if _, ok := s.supportedFilesystems[fstype]; !ok {
-					return ErrValidateVolumeCapabilities_UnsupportedFsType(), false
-				}
-			}
-			accessMode := volumeCapability.GetAccessMode()
-			if accessMode == nil {
-				response := &csi.ValidateVolumeCapabilitiesResponse{
-					&csi.ValidateVolumeCapabilitiesResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			} else {
-				mode := accessMode.GetMode()
-				if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
-					response := &csi.ValidateVolumeCapabilitiesResponse{
-						&csi.ValidateVolumeCapabilitiesResponse_Error{
-							&csi.Error{
-								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
-								},
-							},
-						},
-					}
-					return response, false
-				}
-			}
-		}
 	}
 	return nil, true
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ListVolumesResponse{
 			&csi.ListVolumesResponse_Error{
 				err,
@@ -340,7 +266,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetCapacityResponse{
 			&csi.GetCapacityResponse_Error{
 				err,
@@ -354,19 +280,21 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 	} else {
 		// If it is provided, the individual elements must be validated.
 		for _, volumeCapability := range volumeCapabilities {
-			accessType := volumeCapability.GetAccessType()
-			if accessType == nil {
+			// We don't treat "unsupported fs type" as an
+			// error for GetCapacity. We just return '0'
+			// capacity.
+			if err := s.validateVolumeCapability(volumeCapability, nil); err != nil {
 				response := &csi.GetCapacityResponse{
 					&csi.GetCapacityResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_type field must be specified."},
-							},
-						},
+						err,
 					},
 				}
 				return response, false
+
 			}
+			// Check for unsupported filesystem type in
+			// order to return 0 capacity if it isn't
+			// supported.
 			if mnt := volumeCapability.GetMount(); mnt != nil {
 				// This is a MOUNT_VOLUME request.
 				fstype := mnt.GetFsType()
@@ -382,40 +310,13 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 					return response, false
 				}
 			}
-			accessMode := volumeCapability.GetAccessMode()
-			if accessMode == nil {
-				response := &csi.GetCapacityResponse{
-					&csi.GetCapacityResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			} else {
-				mode := accessMode.GetMode()
-				if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
-					response := &csi.GetCapacityResponse{
-						&csi.GetCapacityResponse_Error{
-							&csi.Error{
-								&csi.Error_GeneralError_{
-									&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities.access_mode.mode field must be specified."},
-								},
-							},
-						},
-					}
-					return response, false
-				}
-			}
 		}
 	}
 	return nil, true
 }
 
 func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ControllerGetCapabilitiesResponse{
 			&csi.ControllerGetCapabilitiesResponse_Error{
 				err,
@@ -429,7 +330,7 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 // NodeService RPCs
 
 func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
 				err,
@@ -437,32 +338,13 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 		}
 		return response, false
 	}
-	volumeHandle := request.GetVolumeHandle()
-	if volumeHandle == nil {
+	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
-	} else {
-		id := volumeHandle.GetId()
-		if id == "" {
-			response := &csi.NodePublishVolumeResponse{
-				&csi.NodePublishVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		}
 	}
 	if request.GetPublishVolumeInfo() != nil {
 		response := &csi.NodePublishVolumeResponse{
@@ -502,59 +384,28 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 		}
 		return response, false
 	} else {
-		accessType := volumeCapability.GetAccessType()
-		if accessType == nil {
+		unsupportedFsErr := &csi.Error{
+			&csi.Error_NodePublishVolumeError_{
+				&csi.Error_NodePublishVolumeError{
+					csi.Error_NodePublishVolumeError_UNSUPPORTED_FS_TYPE,
+					"Requested filesystem type is not supported.",
+				},
+			},
+		}
+		if err := s.validateVolumeCapability(volumeCapability, unsupportedFsErr); err != nil {
 			response := &csi.NodePublishVolumeResponse{
 				&csi.NodePublishVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_type field must be specified."},
-						},
-					},
+					err,
 				},
 			}
 			return response, false
-		}
-		if mnt := volumeCapability.GetMount(); mnt != nil {
-			// This is a MOUNT_VOLUME request.
-			fstype := mnt.GetFsType()
-			if _, ok := s.supportedFilesystems[fstype]; !ok {
-				return ErrNodePublishVolume_UnsupportedFsType(), false
-			}
-		}
-		accessMode := volumeCapability.GetAccessMode()
-		if accessMode == nil {
-			response := &csi.NodePublishVolumeResponse{
-				&csi.NodePublishVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode field must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		} else {
-			mode := accessMode.GetMode()
-			if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
-				response := &csi.NodePublishVolumeResponse{
-					&csi.NodePublishVolumeResponse_Error{
-						&csi.Error{
-							&csi.Error_GeneralError_{
-								&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode.mode field must be specified."},
-							},
-						},
-					},
-				}
-				return response, false
-			}
 		}
 	}
 	return nil, true
 }
 
 func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodeUnpublishVolumeResponse{
 			&csi.NodeUnpublishVolumeResponse_Error{
 				err,
@@ -562,32 +413,13 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 		}
 		return response, false
 	}
-	volumeHandle := request.GetVolumeHandle()
-	if volumeHandle == nil {
+	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
 		response := &csi.NodeUnpublishVolumeResponse{
 			&csi.NodeUnpublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle field must be specified."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
-	} else {
-		id := volumeHandle.GetId()
-		if id == "" {
-			response := &csi.NodeUnpublishVolumeResponse{
-				&csi.NodeUnpublishVolumeResponse_Error{
-					&csi.Error{
-						&csi.Error_GeneralError_{
-							&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
-						},
-					},
-				},
-			}
-			return response, false
-		}
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
@@ -606,7 +438,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 }
 
 func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetNodeIDResponse{
 			&csi.GetNodeIDResponse_Error{
 				err,
@@ -618,7 +450,7 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 }
 
 func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.ProbeNodeResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ProbeNodeResponse{
 			&csi.ProbeNodeResponse_Error{
 				err,
@@ -630,7 +462,7 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 }
 
 func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, bool) {
-	if err := s.validateVersion(request); err != nil {
+	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodeGetCapabilitiesResponse{
 			&csi.NodeGetCapabilitiesResponse_Error{
 				err,
