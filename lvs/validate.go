@@ -9,21 +9,22 @@ const (
 	callerMayRetry     = false
 )
 
-// IdentityService RPCs
+type versionGetter interface {
+	GetVersion() *csi.Version
+}
 
-func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, bool) {
-	version := request.GetVersion()
+func (s *Server) validateVersion(v versionGetter) *csi.Error {
+	version := v.GetVersion()
 	if version == nil {
-		response := &csi.GetPluginInfoResponse{
-			&csi.GetPluginInfoResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{
+					csi.Error_GeneralError_MISSING_REQUIRED_FIELD,
+					callerMayRetry,
+					"The version field must be specified.",
 				},
 			},
 		}
-		return response, false
 	}
 	supportedVersion := false
 	for _, v := range s.supportedVersions() {
@@ -33,13 +34,26 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 		}
 	}
 	if !supportedVersion {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{
+					csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION,
+					callerMustNotRetry,
+					"The requested version is not supported.",
+				},
+			},
+		}
+	}
+	return nil
+}
+
+// IdentityService RPCs
+
+func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, bool) {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.GetPluginInfoResponse{
 			&csi.GetPluginInfoResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -50,34 +64,10 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 // ControllerService RPCs
 
 func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.CreateVolumeResponse{
 			&csi.CreateVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.CreateVolumeResponse{
-			&csi.CreateVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -169,34 +159,10 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 }
 
 func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.DeleteVolumeResponse{
 			&csi.DeleteVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.DeleteVolumeResponse{
-			&csi.DeleteVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -232,34 +198,10 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 }
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.ValidateVolumeCapabilitiesResponse{
-			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -386,34 +328,10 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.ListVolumesResponse{
 			&csi.ListVolumesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.ListVolumesResponse{
-			&csi.ListVolumesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -422,34 +340,10 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.GetCapacityResponse{
 			&csi.GetCapacityResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.GetCapacityResponse{
-			&csi.GetCapacityResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -521,34 +415,10 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 }
 
 func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.ControllerGetCapabilitiesResponse{
 			&csi.ControllerGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.ControllerGetCapabilitiesResponse{
-			&csi.ControllerGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -559,34 +429,10 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 // NodeService RPCs
 
 func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -708,34 +554,10 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 }
 
 func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.NodeUnpublishVolumeResponse{
 			&csi.NodeUnpublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.NodeUnpublishVolumeResponse{
-			&csi.NodeUnpublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -784,34 +606,10 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 }
 
 func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.GetNodeIDResponse{
 			&csi.GetNodeIDResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.GetNodeIDResponse{
-			&csi.GetNodeIDResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -820,34 +618,10 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 }
 
 func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.ProbeNodeResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.ProbeNodeResponse{
 			&csi.ProbeNodeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.ProbeNodeResponse{
-			&csi.ProbeNodeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
@@ -856,34 +630,10 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 }
 
 func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, bool) {
-	version := request.GetVersion()
-	if version == nil {
+	if err := s.validateVersion(request); err != nil {
 		response := &csi.NodeGetCapabilitiesResponse{
 			&csi.NodeGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, false, "The version field must be specified."},
-					},
-				},
-			},
-		}
-		return response, false
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		response := &csi.NodeGetCapabilitiesResponse{
-			&csi.NodeGetCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION, callerMustNotRetry, "The requested version is not supported."},
-					},
-				},
+				err,
 			},
 		}
 		return response, false
