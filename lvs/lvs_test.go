@@ -1433,7 +1433,7 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := "lvm: CreatePhysicalVolume: Can't open /dev/loop20 exclusively.  Mounted filesystem? (-1)"
+	expDesc := fmt.Sprintf("lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem? (-1)", loop1.Path())
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
