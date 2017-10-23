@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -185,6 +186,13 @@ func (s *Server) DeleteVolume(
 	if err != nil {
 		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
 	}
+	path, err := lv.Path()
+	if err != nil {
+		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
+	}
+	if err := deleteDataOnDevice(path); err != nil {
+		return ErrDeleteVolume_GeneralError_Undefined(err), nil
+	}
 	if err := lv.Remove(); err != nil {
 		return ErrDeleteVolume_GeneralError_Undefined(err), nil
 	}
@@ -194,6 +202,29 @@ func (s *Server) DeleteVolume(
 		},
 	}
 	return response, nil
+}
+
+func deleteDataOnDevice(devicePath string) error {
+	// This method is the go equivalent of
+	// `dd if=/dev/zero of=PhysicalVolume`.
+	file, err := os.OpenFile(devicePath, os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	devzero, err := os.Open("/dev/zero")
+	if err != nil {
+		return err
+	}
+	defer devzero.Close()
+	if _, err := io.Copy(file, devzero); err != nil {
+		// We expect to stop when we get ENOSPC.
+		if perr, ok := err.(*os.PathError); ok && perr.Err == syscall.ENOSPC {
+			return nil
+		}
+		return err
+	}
+	panic("lvs: expected ENOSPC when erasing data")
 }
 
 func (s *Server) ControllerPublishVolume(
@@ -536,13 +567,15 @@ func zeroPartitionTable(devicePath string) error {
 		return err
 	}
 	defer file.Close()
-	if _, err := file.Seek(0, 0); err != nil {
-		return err
-	}
 	if _, err := file.Write(bytes.Repeat([]byte{0}, 512)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func statDevice(devicePath string) error {
+	_, err := os.Stat(devicePath)
+	return err
 }
 
 // ProbeNode initializes the Server by creating or opening the VolumeGroup.
@@ -578,6 +611,9 @@ func (s *Server) ProbeNode(
 				// The physical volume cannot be found. Try to create it.
 				// First, wipe the partition table on the device in accordance
 				// with the `pvcreate` man page.
+				if err := statDevice(pvname); err != nil {
+					return ErrProbeNode_BadPluginConfig(err), nil
+				}
 				if err := zeroPartitionTable(pvname); err != nil {
 					return ErrProbeNode_GeneralError_Undefined(err), nil
 				}
