@@ -13,8 +13,8 @@ import (
 	"github.com/mesosphere/csilvm/lvm"
 )
 
-const PluginName = "com.mesosphere/lvs"
-const PluginVersion = "0.1.0"
+const PluginName = "io.mesosphere.dcos.storage/lvs"
+const PluginVersion = "1.11.0"
 
 type Server struct {
 	vgname               string
