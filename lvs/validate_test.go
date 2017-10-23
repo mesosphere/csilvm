@@ -66,6 +66,33 @@ func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
 
 // ControllerService RPCs
 
+func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.Version = nil
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestCreateVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -283,6 +310,33 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
+func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testDeleteVolumeRequest("test-volume")
+	req.Version = nil
+	resp, err := client.DeleteVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestDeleteVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -386,6 +440,33 @@ func TestDeleteVolumeMissingVolumeHandleId(t *testing.T) {
 		t.Fatal("Expected CallerMustNotRetry to be false")
 	}
 	expdesc := "The volume_handle.id field must be specified."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req.Version = nil
+	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -685,6 +766,33 @@ func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testin
 	}
 }
 
+func TestListVolumesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testListVolumesRequest()
+	req.Version = nil
+	resp, err := client.ListVolumes(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestListVolumesMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -734,6 +842,33 @@ func TestListVolumesUnsupportedVersion(t *testing.T) {
 		t.Fatal("Expected CallerMustNotRetry to be true")
 	}
 	expdesc := "The requested version is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestGetCapacityRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testGetCapacityRequest("xfs")
+	req.Version = nil
+	resp, err := client.GetCapacity(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
@@ -891,6 +1026,33 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
+func TestControllerGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{}
+	req.Version = nil
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestControllerGetCapabilitiesInfoMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -950,6 +1112,33 @@ func fakeVolumeHandle() *csi.VolumeHandle {
 }
 
 var fakeMountDir = "/run/dcos/csilvm/mnt"
+
+func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req.Version = nil
+	resp, err := client.NodePublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
 
 func TestNodePublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
@@ -1246,6 +1435,33 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testi
 
 var fakeTargetPath = filepath.Join(fakeMountDir, fakeVolumeHandle().GetId())
 
+func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req.Version = nil
+	resp, err := client.NodeUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -1381,6 +1597,33 @@ func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	}
 }
 
+func TestGetNodeID_RemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testGetNodeIDRequest()
+	req.Version = nil
+	resp, err := client.GetNodeID(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestGetNodeIDMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -1484,6 +1727,33 @@ func TestProbeNodeUnsupportedVersion(t *testing.T) {
 		t.Fatal("Expected CallerMustNotRetry to be true")
 	}
 	expdesc := "The requested version is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testNodeGetCapabilitiesRequest()
+	req.Version = nil
+	resp, err := client.NodeGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNDEFINED
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "This service is running in 'remove volume group' mode."
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
