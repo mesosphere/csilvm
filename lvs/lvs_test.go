@@ -1,12 +1,15 @@
 package lvs
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -1481,6 +1484,69 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	expDesc := fmt.Sprintf("lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem? (-1)", loop1.Path())
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	if err := exec.Command("mkfs", "-t", "xfs", loop2.Path()).Run(); err != nil {
+		t.Fatal(err)
+	}
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readPartitionTable(devicePath string) []byte {
+	file, err := os.Open(devicePath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	buf := make([]byte, 512)
+	if _, err := io.ReadFull(file, buf); err != nil {
+		panic(err)
+	}
+	return buf
+}
+
+func TestZeroPartitionTable(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	if err := exec.Command("mkfs", "-t", "xfs", loop1.Path()).Run(); err != nil {
+		t.Fatal(err)
+	}
+	zerosector := bytes.Repeat([]byte{0}, 512)
+	before := readPartitionTable(loop1.Path())
+	if reflect.DeepEqual(before, zerosector) {
+		t.Fatal("Expected non-zero partition table.")
+	}
+	if err := zeroPartitionTable(loop1.Path()); err != nil {
+		t.Fatal(err)
+	}
+	after := readPartitionTable(loop1.Path())
+	if !reflect.DeepEqual(after, zerosector) {
+		t.Fatal("Expected zeroed partition table.")
 	}
 }
 
