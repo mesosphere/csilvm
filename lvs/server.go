@@ -1,8 +1,10 @@
 package lvs
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -526,6 +528,23 @@ func (s *Server) GetNodeID(
 	return response, nil
 }
 
+func zeroPartitionTable(devicePath string) error {
+	// This method is the go equivalent of
+	// `dd if=/dev/zero of=PhysicalVolume bs=512 count=1`.
+	file, err := os.OpenFile(devicePath, os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+	if _, err := file.Write(bytes.Repeat([]byte{0}, 512)); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ProbeNode initializes the Server by creating or opening the VolumeGroup.
 func (s *Server) ProbeNode(
 	ctx context.Context,
@@ -557,6 +576,11 @@ func (s *Server) ProbeNode(
 			}
 			if err == lvm.ErrPhysicalVolumeNotFound {
 				// The physical volume cannot be found. Try to create it.
+				// First, wipe the partition table on the device in accordance
+				// with the `pvcreate` man page.
+				if err := zeroPartitionTable(pvname); err != nil {
+					return ErrProbeNode_GeneralError_Undefined(err), nil
+				}
 				pv, err := lvm.CreatePhysicalVolume(pvname)
 				if err != nil {
 					return ErrProbeNode_BadPluginConfig(err), nil
