@@ -61,6 +61,28 @@ func TestGetSupportedVersions(t *testing.T) {
 	}
 }
 
+func TestGetSupportedVersionsRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := &csi.GetSupportedVersionsRequest{}
+	resp, err := client.GetSupportedVersions(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Error: %+v", resp.GetError())
+	}
+	if len(result.GetSupportedVersions()) != 1 {
+		t.Fatalf("Expected only one supported version, got %d", len(result.SupportedVersions))
+	}
+	got := *result.GetSupportedVersions()[0]
+	exp := csi.Version{0, 1, 0}
+	if got != exp {
+		t.Fatalf("Expected version %#v but got %#v", exp, got)
+	}
+}
+
 func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
 	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
 	return req
@@ -68,6 +90,29 @@ func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
 
 func TestGetPluginInfo(t *testing.T) {
 	client, cleanup := startTest()
+	defer cleanup()
+	req := testGetPluginInfoRequest()
+	resp, err := client.GetPluginInfo(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Error: %+v", resp.GetError())
+	}
+	if result.GetName() != PluginName {
+		t.Fatal("Expected plugin name %s but got %s", PluginName, result.GetName())
+	}
+	if result.GetVendorVersion() != PluginVersion {
+		t.Fatal("Expected plugin version %s but got %s", PluginVersion, result.GetVendorVersion())
+	}
+	if result.GetManifest() != nil {
+		t.Fatal("Expected a nil manifest but got %s", result.GetManifest())
+	}
+}
+
+func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testGetPluginInfoRequest()
 	resp, err := client.GetPluginInfo(context.Background(), req)
@@ -1439,6 +1484,30 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	}
 }
 
+func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, RemoveVolumeGroup())
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProbeNode_ExistingVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
@@ -1576,6 +1645,113 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.
 	}
 }
 
+func TestProbeNode_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, RemoveVolumeGroup())
+	defer cleanup()
+	vgnamesBefore, err := lvm.ListVolumeGroupNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vgnamesExpect []string
+	for _, name := range vgnamesBefore {
+		if name == vgname {
+			continue
+		}
+		vgnamesExpect = append(vgnamesExpect, name)
+	}
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := probeResp.GetResult()
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
+	}
+	vgnamesAfter, err := lvm.ListVolumeGroupNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(vgnamesExpect, vgnamesAfter) {
+		t.Fatalf("Expected volume groups %v after ProbeNode but got %v", vgnamesExpect, vgnamesAfter)
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, RemoveVolumeGroup())
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes []", []string{loop2.Path()})
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
 func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
 	req := &csi.NodeGetCapabilitiesRequest{
 		&csi.Version{0, 1, 0},
@@ -1597,7 +1773,7 @@ func TestNodeGetCapabilities(t *testing.T) {
 	}
 }
 
-func prepareProbeNodeTest(vgname string, pvnames []string) (client *Client, cleanupFn func()) {
+func prepareProbeNodeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	var cleanup csilvm.CleanupSteps
 	defer func() {
 		if x := recover(); x != nil {
@@ -1614,7 +1790,7 @@ func prepareProbeNodeTest(vgname string, pvnames []string) (client *Client, clea
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer(vgname, pvnames, "xfs")
+	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
@@ -1672,9 +1848,27 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	if err != nil {
 		panic(err)
 	}
-	cleanup.Add(vg.Remove)
+	cleanup.Add(func() error {
+		_, err := lvm.LookupVolumeGroup(vgname)
+		if err == lvm.ErrVolumeGroupNotFound {
+			// Already removed this volume group in the test.
+			return nil
+		}
+		if err != nil {
+			panic(err)
+		}
+		return vg.Remove()
+	})
 	// Clean up any remaining logical volumes.
 	cleanup.Add(func() error {
+		_, err := lvm.LookupVolumeGroup(vgname)
+		if err == lvm.ErrVolumeGroupNotFound {
+			// Already removed this volume group in the test.
+			return nil
+		}
+		if err != nil {
+			panic(err)
+		}
 		lvnames, err := vg.ListLogicalVolumeNames()
 		if err != nil {
 			panic(err)

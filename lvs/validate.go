@@ -9,6 +9,21 @@ const (
 	callerMayRetry     = false
 )
 
+func (s *Server) validateRemoving() *csi.Error {
+	if s.removingVolumeGroup {
+		return &csi.Error{
+			&csi.Error_GeneralError_{
+				&csi.Error_GeneralError{
+					csi.Error_GeneralError_UNDEFINED,
+					callerMustNotRetry,
+					"This service is running in 'remove volume group' mode.",
+				},
+			},
+		}
+	}
+	return nil
+}
+
 func (s *Server) validateVersion(version *csi.Version) *csi.Error {
 	if version == nil {
 		return &csi.Error{
@@ -143,6 +158,14 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 // ControllerService RPCs
 
 func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.CreateVolumeResponse{
+			&csi.CreateVolumeResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.CreateVolumeResponse{
 			&csi.CreateVolumeResponse_Error{
@@ -184,6 +207,14 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 }
 
 func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.DeleteVolumeResponse{
+			&csi.DeleteVolumeResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.DeleteVolumeResponse{
 			&csi.DeleteVolumeResponse_Error{
@@ -204,6 +235,14 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 }
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.ValidateVolumeCapabilitiesResponse{
+			&csi.ValidateVolumeCapabilitiesResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
@@ -254,6 +293,14 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.ListVolumesResponse{
+			&csi.ListVolumesResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ListVolumesResponse{
 			&csi.ListVolumesResponse_Error{
@@ -266,6 +313,14 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.GetCapacityResponse{
+			&csi.GetCapacityResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetCapacityResponse{
 			&csi.GetCapacityResponse_Error{
@@ -290,7 +345,6 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 					},
 				}
 				return response, false
-
 			}
 			// Check for unsupported filesystem type in
 			// order to return 0 capacity if it isn't
@@ -316,6 +370,14 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 }
 
 func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.ControllerGetCapabilitiesResponse{
+			&csi.ControllerGetCapabilitiesResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.ControllerGetCapabilitiesResponse{
 			&csi.ControllerGetCapabilitiesResponse_Error{
@@ -330,6 +392,14 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 // NodeService RPCs
 
 func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.NodePublishVolumeResponse{
+			&csi.NodePublishVolumeResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
@@ -405,6 +475,14 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 }
 
 func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.NodeUnpublishVolumeResponse{
+			&csi.NodeUnpublishVolumeResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodeUnpublishVolumeResponse{
 			&csi.NodeUnpublishVolumeResponse_Error{
@@ -438,6 +516,14 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 }
 
 func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.GetNodeIDResponse{
+			&csi.GetNodeIDResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetNodeIDResponse{
 			&csi.GetNodeIDResponse_Error{
@@ -462,6 +548,14 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 }
 
 func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, bool) {
+	if err := s.validateRemoving(); err != nil {
+		response := &csi.NodeGetCapabilitiesResponse{
+			&csi.NodeGetCapabilitiesResponse_Error{
+				err,
+			},
+		}
+		return response, false
+	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.NodeGetCapabilitiesResponse{
 			&csi.NodeGetCapabilitiesResponse_Error{

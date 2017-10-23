@@ -22,6 +22,7 @@ type Server struct {
 	volumeGroup          *lvm.VolumeGroup
 	defaultVolumeSize    uint64
 	supportedFilesystems map[string]string
+	removingVolumeGroup  bool
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -49,6 +50,7 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 			"":        defaultFs,
 			defaultFs: defaultFs,
 		},
+		false,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -74,6 +76,16 @@ func SupportedFilesystem(fstype string) ServerOpt {
 	}
 	return func(s *Server) {
 		s.supportedFilesystems[fstype] = fstype
+	}
+}
+
+// RemoveVolumeGroup configures the Server to operate in "remove"
+// mode. The volume group will be removed when ProbeNode is
+// called. All RPCs other than GetSupportedVersions, GetPluginInfo and
+// ProbeNode will fail if the plugin is started in this mode.
+func RemoveVolumeGroup() ServerOpt {
+	return func(s *Server) {
+		s.removingVolumeGroup = true
 	}
 }
 
@@ -523,6 +535,17 @@ func (s *Server) ProbeNode(
 	}
 	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
 	if err == lvm.ErrVolumeGroupNotFound {
+		if s.removingVolumeGroup {
+			// We've been instructed to remove the volume
+			// group but it already does not exist. Return
+			// success.
+			response := &csi.ProbeNodeResponse{
+				&csi.ProbeNodeResponse_Result_{
+					&csi.ProbeNodeResponse_Result{},
+				},
+			}
+			return response, nil
+		}
 		// The volume group does not exist yet so see if we can create it.
 		// We check if the physical volumes are available.
 		var pvs []*lvm.PhysicalVolume
@@ -588,6 +611,19 @@ func (s *Server) ProbeNode(
 		return ErrProbeNode_BadPluginConfig(err), nil
 	}
 	// The volume group is configured as expected.
+	if s.removingVolumeGroup {
+		// The volume group matches our config. We remove it
+		// as requested in the startup flags.
+		if err := volumeGroup.Remove(); err != nil {
+			return ErrProbeNode_GeneralError_Undefined(err), nil
+		}
+		response := &csi.ProbeNodeResponse{
+			&csi.ProbeNodeResponse_Result_{
+				&csi.ProbeNodeResponse_Result{},
+			},
+		}
+		return response, nil
+	}
 	s.volumeGroup = volumeGroup
 	response := &csi.ProbeNodeResponse{
 		&csi.ProbeNodeResponse_Result_{
