@@ -1,6 +1,7 @@
 package lvs
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"flag"
@@ -172,6 +173,15 @@ func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 		nil,
 	}
 	return req
+}
+
+type repeater struct {
+	src byte
+}
+
+func (r repeater) Read(buf []byte) (int, error) {
+	n := copy(buf, bytes.Repeat([]byte{r.src}, len(buf)))
+	return n, nil
 }
 
 func TestCreateVolume_BlockVolume(t *testing.T) {
@@ -382,6 +392,194 @@ func TestDeleteVolumeUnknownVolume(t *testing.T) {
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
+}
+
+func TestDeleteVolumeErasesData(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	pvnames := []string{loop1.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult := createResp.GetResult()
+	volumeInfo := createResult.GetVolumeInfo()
+	volumeHandle := volumeInfo.GetHandle()
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	// Publish the volume to /the/tmp/dir/volume-id
+	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
+	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult := publishResp.GetResult()
+	if publishResult == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	// Unpublish the volume when the test ends unless the test
+	// called unpublish already.
+	alreadyUnpublished := false
+	defer func() {
+		if alreadyUnpublished {
+			return
+		}
+		req := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+		resp, err := client.NodeUnpublishVolume(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resp.GetError(); err != nil {
+			t.Fatalf("Error: %+v", err)
+		}
+	}()
+	// Ensure that the device was mounted.
+	if !targetPathIsMountPoint(publishReq.TargetPath) {
+		t.Fatalf("Expected volume to be mounted at %v.", publishReq.TargetPath)
+	}
+	// Create a file on the mounted volume.
+	file, err := os.Create(filepath.Join(targetPath, "test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fill the file with 1's.
+	capacity := volumeInfo.GetCapacityBytes()
+	ones := repeater{1}
+	wrote, err := io.CopyN(file, ones, int64(capacity))
+	if err.(*os.PathError).Err != syscall.ENOSPC {
+		t.Fatalf("Expected ENOSPC but got %v", err)
+	}
+	file.Close()
+	// Check that we wrote at least half the volume's capacity full of ones.
+	// We can't check for equality due to filesystem metadata, etc.
+	if uint64(wrote) < capacity/2 {
+		t.Fatalf("Failed to write even half of the volume: %v of %v", wrote, capacity)
+	}
+	// Unpublish the volume.
+	req := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+	resp, err := client.NodeUnpublishVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.GetError(); err != nil {
+		t.Fatalf("Error: %+v", err)
+	}
+	alreadyUnpublished = true
+	id := volumeHandle.GetId()
+	deleteReq := testDeleteVolumeRequest(id)
+	deleteResp, err := client.DeleteVolume(context.Background(), deleteReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleteResp.GetResult() == nil || deleteResp.GetError() != nil {
+		t.Fatalf("DeleteVolume failed: %+v", deleteResp.GetError())
+	}
+	// Create a new volume and check that it contains only zeros.
+	createReq.Name += "-2"
+	createResp, err = client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult = createResp.GetResult()
+	volumeHandle = createResult.VolumeInfo.GetHandle()
+	targetPath = filepath.Join(tmpdirPath, volumeHandle.GetId())
+	if file, err := os.Create(targetPath); err != nil {
+		t.Fatal(err)
+	} else {
+		// Immediately close the file, we're just creating it
+		// as a mount target.
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq = testNodePublishVolumeRequest(volumeHandle, targetPath, "block", nil)
+	publishResp, err = client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult = publishResp.GetResult()
+	if publishResult == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	defer func() {
+		req := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+		resp, err := client.NodeUnpublishVolume(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resp.GetError(); err != nil {
+			t.Fatalf("Error: %+v", err)
+		}
+	}()
+	// Check that the device is filled with zeros.
+	n, ok := containsOnly(targetPath, 0)
+	if !ok {
+		t.Fatal("Expected device to consists of zeros only.")
+	}
+	if uint64(n) != volumeInfo.GetCapacityBytes() {
+		t.Fatalf("Bad read, expected device to have size %d but read only %d bytes", volumeInfo.GetCapacityBytes(), n)
+	}
+}
+
+func containsOnly(devicePath string, i byte) (uint64, bool) {
+	file, err := os.Open(devicePath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	br := bufio.NewReader(file)
+	idx := uint64(0)
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
+		if b != 0 {
+			return idx, false
+		}
+		idx++
+	}
+	return idx, true
 }
 
 func TestControllerPublishVolumeNotSupported(t *testing.T) {
@@ -1432,7 +1630,7 @@ func TestProbeNode_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := "lvm: CreatePhysicalVolume: Device /dev/does/not/exist not found (or ignored by filtering). (-1)"
+	expDesc := "stat /dev/does/not/exist: no such file or directory"
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
@@ -1852,6 +2050,56 @@ func prepareProbeNodeTest(vgname string, pvnames []string, serverOpts ...ServerO
 		panic(err)
 	}
 	cleanup.Add(lis.Close)
+	cleanup.Add(func() error {
+		for _, pvname := range pvnames {
+			pv, err := lvm.LookupPhysicalVolume(pvname)
+			if err != nil {
+				if err == lvm.ErrPhysicalVolumeNotFound {
+					continue
+				}
+				panic(err)
+			}
+			if err := pv.Remove(); err != nil {
+				panic(err)
+			}
+		}
+		return nil
+	})
+	cleanup.Add(func() error {
+		vg, err := lvm.LookupVolumeGroup(vgname)
+		if err == lvm.ErrVolumeGroupNotFound {
+			// Already removed this volume group in the test.
+			return nil
+		}
+		if err != nil {
+			panic(err)
+		}
+		return vg.Remove()
+	})
+	cleanup.Add(func() error {
+		vg, err := lvm.LookupVolumeGroup(vgname)
+		if err == lvm.ErrVolumeGroupNotFound {
+			// Already removed this volume group in the test.
+			return nil
+		}
+		if err != nil {
+			panic(err)
+		}
+		lvnames, err := vg.ListLogicalVolumeNames()
+		if err != nil {
+			panic(err)
+		}
+		for _, lvname := range lvnames {
+			lv, err := vg.LookupLogicalVolume(lvname)
+			if err != nil {
+				panic(err)
+			}
+			if err := lv.Remove(); err != nil {
+				panic(err)
+			}
+		}
+		return nil
+	})
 
 	var opts []grpc.ServerOption
 	// Start a grpc server listening on the socket.
