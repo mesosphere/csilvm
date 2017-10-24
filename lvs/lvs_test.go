@@ -184,7 +184,7 @@ func (r repeater) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func TestCreateVolume_BlockVolume(t *testing.T) {
+func TestCreateVolume(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testCreateVolumeRequest()
@@ -205,8 +205,9 @@ func TestCreateVolume_BlockVolume(t *testing.T) {
 	}
 }
 
-func TestCreateVolume_MountVolume(t *testing.T) {
-	client, cleanup := startTest()
+func TestCreateVolume_WithProfile(t *testing.T) {
+	profile := "blue"
+	client, cleanup := startTest(Profile(profile))
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	resp, err := client.CreateVolume(context.Background(), req)
@@ -223,6 +224,41 @@ func TestCreateVolume_MountVolume(t *testing.T) {
 	}
 	if !strings.HasSuffix(info.GetHandle().GetId(), req.GetName()) {
 		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetHandle().GetId(), req.GetName())
+	}
+	vgnames, err := lvm.ListVolumeGroupNames()
+	if err != nil {
+		panic(err)
+	}
+	found := false
+	for _, vgname := range vgnames {
+		vg, err := lvm.LookupVolumeGroup(vgname)
+		if err != nil {
+			panic(err)
+		}
+		lv, err := vg.LookupLogicalVolume(info.GetHandle().GetId())
+		if err == lvm.ErrLogicalVolumeNotFound {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		found = true
+		tags, err := lv.Tags()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tag := range tags {
+			data, err := decodeTag(tag)
+			if err == ErrUnknownTag {
+				continue
+			}
+			if data["profile"] != profile {
+				t.Fatalf("Expected logical volume to be tagged with profile %v but was %v", profile, data["profile"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Could not find created volume.")
 	}
 }
 
@@ -2325,91 +2361,15 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 			panic(x)
 		}
 	}()
-	lis, err := net.Listen("unix", "@/lvs-test-"+uuid.New().String())
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(lis.Close)
 	// Create a volume group for the server to manage.
 	loop, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		panic(err)
 	}
 	cleanup.Add(loop.Close)
-	// Create a physical volume using the loop device.
-	var pvnames []string
-	var pvs []*lvm.PhysicalVolume
-	pv, err := lvm.CreatePhysicalVolume(loop.Path())
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(func() error { return pv.Remove() })
-	pvnames = append(pvnames, loop.Path())
-	pvs = append(pvs, pv)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(func() error {
-		_, err := lvm.LookupVolumeGroup(vgname)
-		if err == lvm.ErrVolumeGroupNotFound {
-			// Already removed this volume group in the test.
-			return nil
-		}
-		if err != nil {
-			panic(err)
-		}
-		return vg.Remove()
-	})
-	// Clean up any remaining logical volumes.
-	cleanup.Add(func() error {
-		_, err := lvm.LookupVolumeGroup(vgname)
-		if err == lvm.ErrVolumeGroupNotFound {
-			// Already removed this volume group in the test.
-			return nil
-		}
-		if err != nil {
-			panic(err)
-		}
-		lvnames, err := vg.ListLogicalVolumeNames()
-		if err != nil {
-			panic(err)
-		}
-		for _, lvname := range lvnames {
-			lv, err := vg.LookupLogicalVolume(lvname)
-			if err != nil {
-				panic(err)
-			}
-			if err := lv.Remove(); err != nil {
-				panic(err)
-			}
-		}
-		return nil
-	})
-	var opts []grpc.ServerOption
-	// Start a grpc server listening on the socket.
-	grpcServer := grpc.NewServer(opts...)
-	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
-	csi.RegisterIdentityServer(grpcServer, s)
-	csi.RegisterControllerServer(grpcServer, s)
-	csi.RegisterNodeServer(grpcServer, s)
-	go grpcServer.Serve(lis)
-	// Start a grpc client connected to the server.
-	unixDialer := func(addr string, timeout time.Duration) (net.Conn, error) {
-		return net.DialTimeout("unix", addr, timeout)
-	}
-	clientOpts := []grpc.DialOption{
-		grpc.WithDialer(unixDialer),
-		grpc.WithInsecure(),
-	}
-	conn, err := grpc.Dial(lis.Addr().String(), clientOpts...)
-	if err != nil {
-		panic(err)
-	}
-	cleanup.Add(conn.Close)
-	client = NewClient(conn)
+	client, cleanup2 := prepareProbeNodeTest(vgname, []string{loop.Path()}, serverOpts...)
 	// Initialize the Server by calling ProbeNode.
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
@@ -2418,5 +2378,6 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	if err := probeResp.GetError(); err != nil {
 		panic(err)
 	}
+	cleanup.Add(func() error { cleanup2(); return nil })
 	return client, cleanup.Unwind
 }

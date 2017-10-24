@@ -308,13 +308,12 @@ func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, t
 	if err := handle.validateVolumeGroupName(name); err != nil {
 		return nil, err
 	}
-
+	// Validate the tags.
 	for _, tag := range tags {
 		if err := handle.validateTag(tag); err != nil {
 			return nil, err
 		}
 	}
-
 	// Create the volume group memory object.
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
@@ -521,9 +520,15 @@ const ErrNoSpace = simpleError("lvm: not enough free space")
 // increment is the size of an extent on the volume group in question.
 //
 // If sizeInBytes is zero the entire available space is allocated.
-func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*LogicalVolume, error) {
+func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags []string) (*LogicalVolume, error) {
 	vg.handle.lk.Lock()
 	defer vg.handle.lk.Unlock()
+	// Validate the tags.
+	for _, tag := range tags {
+		if err := vg.handle.validateTag(tag); err != nil {
+			return nil, err
+		}
+	}
 	if err := vg.open(openReadWrite); err != nil {
 		return nil, err
 	}
@@ -552,12 +557,28 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64) (*Lo
 	// disagree and calculates the number of extents required.
 	//
 	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/liblvm/lvm_lv.c#L244
-	lv := C.lvm_vg_create_lv_linear(vg.vg, cname, C.uint64_t(sizeInBytes))
-	if lv == nil {
+	clv := C.lvm_vg_create_lv_linear(vg.vg, cname, C.uint64_t(sizeInBytes))
+	if clv == nil {
 		return nil, vg.handle.err()
 	}
+	// Tag the volume group
+	for _, tag := range tags {
+		ctag := C.CString(tag)
+		rc := C.lvm_lv_add_tag(clv, ctag)
+		C.free(unsafe.Pointer(ctag))
+		if rc != 0 {
+			return nil, vg.handle.err()
+		}
+	}
+	if len(tags) > 0 {
+		// Tags are persisted by writing to the volume group.
+		res := C.lvm_vg_write(vg.vg)
+		if res != 0 {
+			return nil, vg.handle.err()
+		}
+	}
 	actualSize := extentsForSize * extentSize
-	return &LogicalVolume{name, lv, vg, actualSize}, nil
+	return &LogicalVolume{name, clv, vg, actualSize}, nil
 }
 
 func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
@@ -759,6 +780,39 @@ func (lv *LogicalVolume) Path() (string, error) {
 		return "", lv.vg.handle.err()
 	}
 	return C.GoString(path), nil
+}
+
+// Tags returns the volume group tags.
+func (lv *LogicalVolume) Tags() ([]string, error) {
+	lv.vg.handle.lk.Lock()
+	defer lv.vg.handle.lk.Unlock()
+	if err := lv.vg.open(openReadWrite); err != nil {
+		return nil, err
+	}
+	defer lv.vg.close()
+	cvg := lv.vg.vg
+	cname := C.CString(lv.name)
+	defer C.free(unsafe.Pointer(cname))
+	// The memory for the logical volume handle is tied to the
+	// vg_t and does not need to be freed on its own.
+	// For example:
+	// https://github.com/malachheb/liblvm/blob/master/ext/liblvm.c#L164-L183
+	clv := C.lvm_lv_from_name(cvg, cname)
+	if clv == nil {
+		return nil, lv.vg.handle.err()
+	}
+	dm_list := C.lvm_lv_get_tags(clv)
+	if dm_list == nil {
+		return nil, lv.vg.handle.err()
+	}
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	ctags := C.csilvm_get_strings_from_lvm_str_list(dm_list)
+	// Transform the array of C strings into a []string.
+	tags := goStrings(size, ctags)
+	return tags, nil
 }
 
 func (lv *LogicalVolume) Remove() error {
