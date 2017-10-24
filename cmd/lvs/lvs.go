@@ -24,6 +24,7 @@ func main() {
 	defaultVolumeSizeF := flag.Uint64("default-volume-size", defaultDefaultVolumeSize, "The default volume size in bytes")
 	socketFileF := flag.String("unix-addr", "", "The path to the listening unix socket file")
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
+	profileF := flag.String("profile", "", "The volume group profile")
 	flag.Parse()
 	lis, err := net.Listen("unix", *socketFileF)
 	if err != nil {
@@ -32,8 +33,11 @@ func main() {
 	grpcServer := grpc.NewServer()
 	var opts []lvs.ServerOpt
 	opts = append(opts, lvs.DefaultVolumeSize(*defaultVolumeSizeF))
-	if removeF {
+	if *removeF {
 		opts = append(opts, lvs.RemoveVolumeGroup())
+	}
+	if *profileF != "" {
+		opts = append(opts, lvs.Profile(*profileF))
 	}
 	s := lvs.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	csi.RegisterIdentityServer(grpcServer, s)

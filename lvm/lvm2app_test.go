@@ -165,6 +165,29 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	}
 }
 
+func TestValidateTag(t *testing.T) {
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	if err := handle.validateTag(""); err != ErrTagInvalidLength {
+		t.Fatalf("Expected tag to fail validation")
+	}
+	if err := handle.validateTag(strings.Repeat("a", 1025)); err != ErrTagInvalidLength {
+		t.Fatalf("Expected tag to fail validation")
+	}
+	if err := handle.validateTag(strings.Repeat("a", 1)); err != nil {
+		t.Fatalf("Expected tag to pass validation")
+	}
+	if err := handle.validateTag(strings.Repeat("a", 1024)); err != nil {
+		t.Fatalf("Expected tag to pass validation")
+	}
+	if err := handle.validateTag("some:tag"); err != ErrTagHasInvalidChars {
+		t.Fatalf("Expected tag to fail validation")
+	}
+}
+
 func TestValidateVolumeGroupName(t *testing.T) {
 	handle, err := NewLibHandle()
 	if err != nil {
@@ -198,13 +221,13 @@ func TestListVolumeGroupNames(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg1, cleanup1, err := createVolumeGroup(handle, loop1)
+	vg1, cleanup1, err := createVolumeGroup(handle, []*LoopDevice{loop1}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer cleanup1()
 	// Create the second volume group.
-	vg2, cleanup2, err := createVolumeGroup(handle, loop2)
+	vg2, cleanup2, err := createVolumeGroup(handle, []*LoopDevice{loop2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +265,7 @@ func TestCreateVolumeGroup(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the volume group.
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,6 +286,68 @@ func TestCreateVolumeGroup(t *testing.T) {
 	}
 }
 
+func TestCreateVolumeGroup_Tagged(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Create the volume group.
+	createTags := []string{"dcos-tag"}
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, createTags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	// Confirm that the volume group exists.
+	names, err := handle.ListVolumeGroupNames()
+	if err != nil {
+		t.Fatal(err)
+	}
+	had := false
+	for _, name := range names {
+		if name == vg.name {
+			had = true
+		}
+	}
+	if !had {
+		t.Fatalf("Expected volume group '%s'", vg.name)
+	}
+	tags, err := vg.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(createTags, tags) {
+		t.Fatalf("Expected tags %v but got %v", createTags, tags)
+	}
+}
+
+func TestCreateVolumeGroup_BadTag(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	handle, err := NewLibHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	// Create the volume group.
+	_, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, []string{"{\"some\": \"json\"}"})
+	if err != ErrTagHasInvalidChars {
+		t.Fatalf("Expected invalid tag error, got %v", err)
+	}
+	if err == nil {
+		cleanup()
+	}
+}
+
 func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	handle, err := NewLibHandle()
 	if err != nil {
@@ -270,7 +355,7 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	}
 	defer handle.Close()
 	// Try to create the volume group with a bad name.
-	vg, err := handle.CreateVolumeGroup("bad name :)", nil)
+	vg, err := handle.CreateVolumeGroup("bad name :)", nil, nil)
 	if !IsInvalidName(err) {
 		vg.Remove()
 		t.Fatal("Expected invalidNameError got %#v.", err)
@@ -297,7 +382,7 @@ func TestLookupVolumeGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +407,7 @@ func TestLookupVolumeGroupNonExistent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +433,7 @@ func TestVolumeGroupBytesTotal(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +465,7 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create the first volume group.
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +496,7 @@ func TestCreateLogicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -444,7 +529,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg1, cleanup, err := createVolumeGroup(handle, loop1)
+	vg1, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop1}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +544,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lv1.Remove()
-	vg2, cleanup, err := createVolumeGroup(handle, loop2)
+	vg2, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -486,7 +571,7 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +614,7 @@ func TestCreateLogicalVolumeTooLarge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +645,7 @@ func TestLookupLogicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +680,7 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +715,7 @@ func TestLogicalVolumeName(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -661,7 +746,7 @@ func TestLogicalVolumeSizeInBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +777,7 @@ func TestLogicalVolumePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +813,7 @@ func TestVolumeGroupListLogicalVolumeNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,7 +870,7 @@ func TestVolumeGroupListPhysicalVolumeNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	vg, cleanup, err := createVolumeGroup(handle, loop1, loop2)
+	vg, cleanup, err := createVolumeGroup(handle, []*LoopDevice{loop1, loop2}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -802,7 +887,7 @@ func TestVolumeGroupListPhysicalVolumeNames(t *testing.T) {
 	}
 }
 
-func createVolumeGroup(handle *LibHandle, loopdevs ...*LoopDevice) (*VolumeGroup, func(), error) {
+func createVolumeGroup(handle *LibHandle, loopdevs []*LoopDevice, tags []string) (*VolumeGroup, func(), error) {
 	var err error
 	var cleanup csilvm.CleanupSteps
 	defer func() {
@@ -825,7 +910,7 @@ func createVolumeGroup(handle *LibHandle, loopdevs ...*LoopDevice) (*VolumeGroup
 	}
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := handle.CreateVolumeGroup(vgname, pvs)
+	vg, err := handle.CreateVolumeGroup(vgname, pvs, tags)
 	if err != nil {
 		return nil, nil, err
 	}

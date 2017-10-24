@@ -3,6 +3,7 @@ package lvm
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -273,13 +274,45 @@ func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
 	return vg, nil
 }
 
+const ErrTagInvalidLength = simpleError("lvm: tag length must be between 1 and 1024 characters")
+const ErrTagHasInvalidChars = simpleError("lvm: tag must consist of only [A-Za-z0-9_+.-]")
+
+var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.-]+$")
+
+/*
+LVM tags are strings of up to 1024 characters. LVM tags cannot
+start with a hyphen.
+
+A valid tag can consist of a limited range of characters only. The
+allowed characters are [A-Za-z0-9_+.-]. As of the Red Hat Enterprise
+Linux 6.1 release, the list of allowed characters was extended, and
+tags can contain the /, =, !, :, #, and & characters.
+
+~ https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/logical_volume_manager_administration/lvm_tags
+*/
+func (handle *LibHandle) validateTag(tag string) error {
+	if len(tag) < 1 || len(tag) > 1024 {
+		return ErrTagInvalidLength
+	}
+	if !tagRegexp.MatchString(tag) {
+		return ErrTagHasInvalidChars
+	}
+	return nil
+}
+
 // CreateVolumeGroup creates a new volume group.
-func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume) (*VolumeGroup, error) {
+func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, tags []string) (*VolumeGroup, error) {
 	handle.lk.Lock()
 	defer handle.lk.Unlock()
 	// Validate the volume group name.
 	if err := handle.validateVolumeGroupName(name); err != nil {
 		return nil, err
+	}
+
+	for _, tag := range tags {
+		if err := handle.validateTag(tag); err != nil {
+			return nil, err
+		}
 	}
 
 	// Create the volume group memory object.
@@ -291,6 +324,16 @@ func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume) (
 	}
 	vg := &VolumeGroup{name, cvg, handle}
 	defer vg.close()
+
+	// Tag the volume group
+	for _, tag := range tags {
+		ctag := C.CString(tag)
+		rc := C.lvm_vg_add_tag(cvg, ctag)
+		C.free(unsafe.Pointer(ctag))
+		if rc != 0 {
+			return nil, handle.err()
+		}
+	}
 
 	// Add physical volumes to the volume group.
 	for _, pv := range pvs {
@@ -593,6 +636,28 @@ func (vg *VolumeGroup) ListPhysicalVolumeNames() ([]string, error) {
 	return pvnames, nil
 }
 
+// Tags returns the volume group tags.
+func (vg *VolumeGroup) Tags() ([]string, error) {
+	vg.handle.lk.Lock()
+	defer vg.handle.lk.Unlock()
+	if err := vg.open(openReadOnly); err != nil {
+		return nil, err
+	}
+	defer vg.close()
+	dm_list := C.lvm_vg_get_tags(vg.vg)
+	if dm_list == nil {
+		return nil, vg.handle.err()
+	}
+	if C.dm_list_empty(dm_list) != 0 {
+		return nil, nil
+	}
+	size := C.dm_list_size(dm_list)
+	ctags := C.csilvm_get_strings_from_lvm_str_list(dm_list)
+	// Transform the array of C strings into a []string.
+	tags := goStrings(size, ctags)
+	return tags, nil
+}
+
 // Remove removes the volume group from disk.
 //
 // It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
@@ -739,8 +804,9 @@ func Scan() error {
 // CreateVolumeGroup creates a new volume group.
 func CreateVolumeGroup(
 	name string,
-	pvs []*PhysicalVolume) (*VolumeGroup, error) {
-	return defaultHandle.CreateVolumeGroup(name, pvs)
+	pvs []*PhysicalVolume,
+	tags []string) (*VolumeGroup, error) {
+	return defaultHandle.CreateVolumeGroup(name, pvs, tags)
 }
 
 // LookupVolumeGroup returns the volume group with the given name.
