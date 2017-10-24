@@ -162,7 +162,11 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = capacityRange.GetRequiredBytes()
 	}
-	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size)
+	var tags []string
+	if tag := s.dcosTag(); tag != nil {
+		tags = append(tags, encodeTag(tag))
+	}
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, tags)
 	if err != nil {
 		if lvm.IsInvalidName(err) {
 			return ErrCreateVolume_InvalidVolumeName(err), nil
