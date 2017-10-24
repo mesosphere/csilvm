@@ -1614,6 +1614,48 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	}
 }
 
+func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithProfile(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	vgname := "test-vg-" + uuid.New().String()
+	profile := "blue"
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := probeResp.GetError(); err != nil {
+		t.Fatal(err)
+	}
+	vg, err := lvm.LookupVolumeGroup(vgname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, err := vg.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tag := range tags {
+		data, err := decodeTag(tag)
+		if err == ErrUnknownTag {
+			continue
+		}
+		if data["profile"] != profile {
+			t.Fatalf("Expected volume group to be tagged with profile %v but was %v", profile, data["profile"])
+		}
+	}
+}
+
 func TestProbeNode_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	pvnames := []string{"/dev/does/not/exist"}
 	vgname := "test-vg-" + uuid.New().String()
@@ -1795,7 +1837,7 @@ func TestProbeNode_ExistingVolumeGroup(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -1836,7 +1878,7 @@ func TestProbeNode_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -1884,7 +1926,7 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -1932,7 +1974,7 @@ func TestProbeNode_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -1991,7 +2033,7 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolum
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
@@ -2011,6 +2053,154 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolum
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
 	expDesc := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes []", []string{loop2.Path()})
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_WithProfile(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	profile := "blue"
+	tags := []string{
+		"some-unrelated-tag",
+		encodeTag(map[string]string{"profile": profile}),
+	}
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, tags)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := probeResp.GetResult()
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_UnexpectedProfile(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	profile := "blue"
+	tags := []string{
+		"some-unrelated-tag",
+		encodeTag(map[string]string{"profile": profile}),
+	}
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, tags)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := fmt.Sprintf("lvs: Volume group profile does not match configured profile: '%s'!=''", profile)
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	}
+}
+
+func TestProbeNode_ExistingVolumeGroup_MissingProfile(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, []string{"some-unrelated-tag"})
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	profile := "blue"
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := fmt.Sprintf("lvs: Volume group profile does not match configured profile: ''!='%s'", profile)
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
@@ -2158,7 +2348,7 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	pvs = append(pvs, pv)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs)
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}

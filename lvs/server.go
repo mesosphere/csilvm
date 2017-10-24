@@ -2,6 +2,8 @@ package lvs
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -26,6 +28,7 @@ type Server struct {
 	defaultVolumeSize    uint64
 	supportedFilesystems map[string]string
 	removingVolumeGroup  bool
+	profile              string
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -54,6 +57,7 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 			defaultFs: defaultFs,
 		},
 		false,
+		"",
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -89,6 +93,15 @@ func SupportedFilesystem(fstype string) ServerOpt {
 func RemoveVolumeGroup() ServerOpt {
 	return func(s *Server) {
 		s.removingVolumeGroup = true
+	}
+}
+
+// Profile configures the volume group for the specified profile.
+// This tags the volume group with the given profile.
+// Any volumes that are created will be tagged with the profile.
+func Profile(name string) ServerOpt {
+	return func(s *Server) {
+		s.profile = name
 	}
 }
 
@@ -578,6 +591,53 @@ func statDevice(devicePath string) error {
 	return err
 }
 
+const dcosTagPrefix = "dcos-tag."
+
+func (s *Server) dcosTag() map[string]string {
+	if s.profile == "" {
+		return nil
+	}
+	return map[string]string{
+		"profile": s.profile,
+	}
+}
+
+func encodeTag(data map[string]string) string {
+	if data == nil {
+		return ""
+	}
+	datajson, err := json.Marshal(data)
+	if err != nil {
+		// Marshaling a map should never raise an error.
+		panic(err)
+	}
+	encoded := base64.StdEncoding.EncodeToString(datajson)
+	return dcosTagPrefix + encoded
+}
+
+type simpleError string
+
+func (s simpleError) Error() string { return string(s) }
+
+const ErrUnknownTag = simpleError("lvs: tag does not start with '" + dcosTagPrefix + "' prefix")
+
+func decodeTag(enc string) (map[string]string, error) {
+	if !strings.HasPrefix(enc, dcosTagPrefix) {
+		return nil, ErrUnknownTag
+	}
+	// Strip the prefix from the encoded tag.
+	enc = enc[len(dcosTagPrefix):]
+	decoded, err := base64.StdEncoding.DecodeString(enc)
+	if err != nil {
+		return nil, err
+	}
+	tag := map[string]string{}
+	if err := json.Unmarshal(decoded, &tag); err != nil {
+		return nil, err
+	}
+	return tag, nil
+}
+
 // ProbeNode initializes the Server by creating or opening the VolumeGroup.
 func (s *Server) ProbeNode(
 	ctx context.Context,
@@ -626,7 +686,11 @@ func (s *Server) ProbeNode(
 			}
 			return ErrProbeNode_GeneralError_Undefined(err), nil
 		}
-		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs)
+		var tags []string
+		if tag := s.dcosTag(); tag != nil {
+			tags = append(tags, encodeTag(tag))
+		}
+		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, tags)
 		if err != nil {
 			return ErrProbeNode_GeneralError_Undefined(err), nil
 		}
@@ -670,6 +734,14 @@ func (s *Server) ProbeNode(
 		err := fmt.Errorf("Volume group contains unexpected volumes %v and is missing volumes %v", unexpected, missing)
 		return ErrProbeNode_BadPluginConfig(err), nil
 	}
+	// We check that the volume group tags match those we expect.
+	tags, err := volumeGroup.Tags()
+	if err != nil {
+		return ErrProbeNode_GeneralError_Undefined(err), nil
+	}
+	if err := s.checkVolumeGroupTags(tags); err != nil {
+		return err, nil
+	}
 	// The volume group is configured as expected.
 	if s.removingVolumeGroup {
 		// The volume group matches our config. We remove it
@@ -691,6 +763,27 @@ func (s *Server) ProbeNode(
 		},
 	}
 	return response, nil
+}
+
+func (s *Server) checkVolumeGroupTags(tags []string) *csi.ProbeNodeResponse {
+	vgtag := map[string]string{}
+	for _, tag := range tags {
+		data, err := decodeTag(tag)
+		if err == ErrUnknownTag {
+			continue
+		}
+		if err != nil {
+			return ErrProbeNode_GeneralError_Undefined(err)
+		}
+		vgtag = data
+	}
+	expect := s.dcosTag()
+	if expect["profile"] != vgtag["profile"] {
+		err := fmt.Errorf("lvs: Volume group profile does not match configured profile: '%v'!='%v'", vgtag["profile"], expect["profile"])
+		return ErrProbeNode_BadPluginConfig(err)
+	}
+
+	return nil
 }
 
 func (s *Server) NodeGetCapabilities(
