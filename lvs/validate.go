@@ -313,14 +313,6 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
-	if err := s.validateRemoving(); err != nil {
-		response := &csi.GetCapacityResponse{
-			&csi.GetCapacityResponse_Error{
-				err,
-			},
-		}
-		return response, false
-	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		response := &csi.GetCapacityResponse{
 			&csi.GetCapacityResponse_Error{

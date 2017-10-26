@@ -1004,6 +1004,21 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 	}
 }
 
+func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testGetCapacityRequest("xfs")
+	req.Version = nil
+	resp, err := client.GetCapacity(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result.GetAvailableCapacity() != 0 {
+		t.Fatalf("Expected 0 bytes free but got %v.", result.GetAvailableCapacity())
+	}
+}
+
 func TestControllerGetCapabilities(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
