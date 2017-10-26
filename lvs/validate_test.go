@@ -847,33 +847,6 @@ func TestListVolumesUnsupportedVersion(t *testing.T) {
 	}
 }
 
-func TestGetCapacityRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
-	defer cleanup()
-	req := testGetCapacityRequest("xfs")
-	req.Version = nil
-	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "This service is running in 'remove volume group' mode."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
 func TestGetCapacityMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
