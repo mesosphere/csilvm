@@ -4,7 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/mesosphere/csilvm"
+	"github.com/mesosphere/csilvm/pkg/cleanup"
 	losetup "gopkg.in/freddierice/go-losetup.v1"
 )
 
@@ -23,7 +23,7 @@ type LoopDevice struct {
 //
 // CreateLoopDevice may panic if an error occurs during error recovery.
 func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
-	var cleanup csilvm.CleanupSteps
+	var cleanup cleanup.Steps
 	defer func() {
 		if err != nil {
 			cleanup.Unwind()

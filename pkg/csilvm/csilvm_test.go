@@ -1,4 +1,4 @@
-package lvs
+package csilvm
 
 import (
 	"bufio"
@@ -22,8 +22,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
-	"github.com/mesosphere/csilvm"
-	"github.com/mesosphere/csilvm/lvm"
+	"github.com/mesosphere/csilvm/pkg/cleanup"
+	"github.com/mesosphere/csilvm/pkg/lvm"
 )
 
 // The size of the physical volumes we create in our tests.
@@ -460,7 +460,7 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	volumeInfo := createResult.GetVolumeInfo()
 	volumeHandle := volumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +748,7 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Publish the volume with fstype 'xfs' then unmount it.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -805,7 +805,7 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Publish the volume with fstype 'xfs' then unmount it.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1109,7 +1109,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1183,7 +1183,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1306,7 +1306,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testi
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1429,7 +1429,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1609,7 +1609,7 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1693,7 +1693,7 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1778,7 +1778,7 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1873,7 +1873,7 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	createResult := createResp.GetResult()
 	volumeHandle := createResult.VolumeInfo.GetHandle()
 	// Prepare a temporary mount directory.
-	tmpdirPath, err := ioutil.TempDir("", "lvs_tests")
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2100,7 +2100,7 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	if err := formatDevice(loop1.Path(), "xfs"); err != nil {
 		t.Fatal(err)
 	}
-	targetPath, err := ioutil.TempDir("", "lvs_tests")
+	targetPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2556,7 +2556,7 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedProfile(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := fmt.Sprintf("lvs: Volume group profile does not match configured profile: '%s'!=''", profile)
+	expDesc := fmt.Sprintf("csilvm: Volume group profile does not match configured profile: '%s'!=''", profile)
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
@@ -2605,7 +2605,7 @@ func TestProbeNode_ExistingVolumeGroup_MissingProfile(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := fmt.Sprintf("lvs: Volume group profile does not match configured profile: ''!='%s'", profile)
+	expDesc := fmt.Sprintf("csilvm: Volume group profile does not match configured profile: ''!='%s'", profile)
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
@@ -2633,14 +2633,14 @@ func TestNodeGetCapabilities(t *testing.T) {
 }
 
 func prepareProbeNodeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
-	var cleanup csilvm.CleanupSteps
+	var cleanup cleanup.Steps
 	defer func() {
 		if x := recover(); x != nil {
 			cleanup.Unwind()
 			panic(x)
 		}
 	}()
-	lis, err := net.Listen("unix", "@/lvs-test-"+uuid.New().String())
+	lis, err := net.Listen("unix", "@/csilvm-test-"+uuid.New().String())
 	if err != nil {
 		panic(err)
 	}
@@ -2723,7 +2723,7 @@ func prepareProbeNodeTest(vgname string, pvnames []string, serverOpts ...ServerO
 }
 
 func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
-	var cleanup csilvm.CleanupSteps
+	var cleanup cleanup.Steps
 	defer func() {
 		if x := recover(); x != nil {
 			cleanup.Unwind()

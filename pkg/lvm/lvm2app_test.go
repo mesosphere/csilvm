@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/mesosphere/csilvm"
+	"github.com/mesosphere/csilvm/pkg/cleanup"
 )
 
 const (
@@ -955,7 +955,7 @@ func TestVolumeGroupListPhysicalVolumeNames(t *testing.T) {
 
 func createVolumeGroup(handle *LibHandle, loopdevs []*LoopDevice, tags []string) (*VolumeGroup, func(), error) {
 	var err error
-	var cleanup csilvm.CleanupSteps
+	var cleanup cleanup.Steps
 	defer func() {
 		if err != nil {
 			cleanup.Unwind()

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/mesosphere/csilvm/lvs"
+	"github.com/mesosphere/csilvm/pkg/csilvm"
 )
 
 const (
@@ -31,15 +31,15 @@ func main() {
 		log.Fatalf("Failed to listen: %v", err)
 	}
 	grpcServer := grpc.NewServer()
-	var opts []lvs.ServerOpt
-	opts = append(opts, lvs.DefaultVolumeSize(*defaultVolumeSizeF))
+	var opts []csilvm.ServerOpt
+	opts = append(opts, csilvm.DefaultVolumeSize(*defaultVolumeSizeF))
 	if *removeF {
-		opts = append(opts, lvs.RemoveVolumeGroup())
+		opts = append(opts, csilvm.RemoveVolumeGroup())
 	}
 	if *profileF != "" {
-		opts = append(opts, lvs.Profile(*profileF))
+		opts = append(opts, csilvm.Profile(*profileF))
 	}
-	s := lvs.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
+	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
