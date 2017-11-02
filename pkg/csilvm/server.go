@@ -1,4 +1,4 @@
-package lvs
+package csilvm
 
 import (
 	"bytes"
@@ -15,10 +15,10 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/mesosphere/csilvm/lvm"
+	"github.com/mesosphere/csilvm/pkg/lvm"
 )
 
-const PluginName = "io.mesosphere.dcos.storage/lvs"
+const PluginName = "io.mesosphere.dcos.storage/csilvm"
 const PluginVersion = "1.11.0"
 
 type Server struct {
@@ -79,7 +79,7 @@ func DefaultVolumeSize(size uint64) ServerOpt {
 
 func SupportedFilesystem(fstype string) ServerOpt {
 	if fstype == "" {
-		panic("lvs: SupportedFilesystem: filesystem type not provided")
+		panic("csilvm: SupportedFilesystem: filesystem type not provided")
 	}
 	return func(s *Server) {
 		s.supportedFilesystems[fstype] = fstype
@@ -241,7 +241,7 @@ func deleteDataOnDevice(devicePath string) error {
 		}
 		return err
 	}
-	panic("lvs: expected ENOSPC when erasing data")
+	panic("csilvm: expected ENOSPC when erasing data")
 }
 
 func (s *Server) ControllerPublishVolume(
@@ -619,7 +619,7 @@ func determineFilesystemType(devicePath string) (string, error) {
 func formatDevice(devicePath, fstype string) error {
 	output, err := exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
 	if err != nil {
-		return errors.New("lvs: formatDevice: " + string(output))
+		return errors.New("csilvm: formatDevice: " + string(output))
 	}
 	return nil
 }
@@ -719,7 +719,7 @@ type simpleError string
 
 func (s simpleError) Error() string { return string(s) }
 
-const ErrUnknownTag = simpleError("lvs: tag does not start with '" + dcosTagPrefix + "' prefix")
+const ErrUnknownTag = simpleError("csilvm: tag does not start with '" + dcosTagPrefix + "' prefix")
 
 func decodeTag(enc string) (map[string]string, error) {
 	if !strings.HasPrefix(enc, dcosTagPrefix) {
@@ -879,7 +879,7 @@ func (s *Server) checkVolumeGroupTags(tags []string) *csi.ProbeNodeResponse {
 	}
 	expect := s.dcosTag()
 	if expect["profile"] != vgtag["profile"] {
-		err := fmt.Errorf("lvs: Volume group profile does not match configured profile: '%v'!='%v'", vgtag["profile"], expect["profile"])
+		err := fmt.Errorf("csilvm: Volume group profile does not match configured profile: '%v'!='%v'", vgtag["profile"], expect["profile"])
 		return ErrProbeNode_BadPluginConfig(err)
 	}
 

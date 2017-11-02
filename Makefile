@@ -36,15 +36,9 @@ build:
 
 all: build
 
-.PHONY: test
-test:
-	go test -v .
-
 .PHONY: sudo-test
 sudo-test:
-	go test -c -i .
-	sudo ./csilvm.test -test.v
-	go test -c -i ./lvm
+	go test -c -i ./pkg/lvm
 	sudo ./lvm.test -test.v
-	go test -c -i ./lvs
-	sudo ./lvs.test -test.v
+	go test -c -i ./pkg/csilvm
+	sudo ./csilvm.test -test.v

@@ -1,21 +1,21 @@
-package csilvm
+package cleanup
 
-// CleanupSteps performs deferred cleanup on condition that an error
+// Steps performs deferred cleanup on condition that an error
 // was returned in the caller. This simplifies code where earlier
 // steps need to be undone if a later step fails.  It is not currently
 // resilient to panics as this library is not expected to panic.
-type CleanupSteps []func() error
+type Steps []func() error
 
 // Add appends the given cleanup function to those that will be called
 // if an error occurs.
-func (fns *CleanupSteps) Add(fn func() error) {
+func (fns *Steps) Add(fn func() error) {
 	*fns = append(*fns, fn)
 }
 
 // Unwind calls the cleanup funcions in LIFO order. It panics
 // if any of them return an error as failure during recovery is
 // itself unrecoverable.
-func (fns *CleanupSteps) Unwind() {
+func (fns *Steps) Unwind() {
 	// There was some error. Preform cleanup and return. If any of
 	// the cleanup functions return and error, we do the only
 	// sensible thing and panic.
