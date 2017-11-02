@@ -32,7 +32,7 @@ check: dev_image
 endif
 
 build:
-	$(BUILD_PREFIX) go build -o lvs-bin -v ./cmd/lvs/
+	$(BUILD_PREFIX) go build ./cmd/csilvm
 
 all: build
 
