@@ -758,6 +758,7 @@ func (lv *LogicalVolume) SizeInBytes() uint64 {
 	return lv.sizeInBytes
 }
 
+// Path returns the device path for the logical volume.
 func (lv *LogicalVolume) Path() (string, error) {
 	lv.vg.handle.lk.Lock()
 	defer lv.vg.handle.lk.Unlock()

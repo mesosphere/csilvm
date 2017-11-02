@@ -445,6 +445,14 @@ func (s *Server) ControllerGetCapabilities(
 
 // NodeService RPCs
 
+var (
+	ErrFilesystemMismatch = errors.New("The volume's existing filesystem does not match the one requested.")
+	ErrTargetPathRO       = errors.New("The targetPath is already mounted read-only.")
+	ErrTargetPathRW       = errors.New("The targetPath is already mounted read-write.")
+	ErrBlockVolNoRO       = errors.New("Cannot publish block volume with AccessMode SINGLE_NODE_READER_ONLY.")
+	ErrTargetPathNotEmpty = errors.New("Unexpected device already mounted at targetPath.")
+)
+
 func (s *Server) NodePublishVolume(
 	ctx context.Context,
 	request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -463,14 +471,32 @@ func (s *Server) NodePublishVolume(
 	targetPath := request.GetTargetPath()
 	switch accessType := request.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
+		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
+		if readonly {
+			return ErrNodePublishVolume_MountError(ErrBlockVolNoRO), nil
+		}
+		// Check whether something is already mounted at targetPath.
+		mp, err := getMountAt(targetPath)
+		if err != nil {
+			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+		}
+		if mp != nil {
+			// Something is mounted at targetPath. We
+			// assume it is the requested volume as there
+			// is no way of determining what the origin of
+			// a bindmount is. To support idempotency we
+			// return success.
+			response := &csi.NodePublishVolumeResponse{
+				&csi.NodePublishVolumeResponse_Result_{
+					&csi.NodePublishVolumeResponse_Result{},
+				},
+			}
+			return response, nil
+		}
 		// Perform a bind mount of the raw block device. The
 		// `filesystemtype` and `data` parameters to the
 		// mount(2) system call are ignored in this case.
 		flags := uintptr(syscall.MS_BIND)
-		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
-		if readonly {
-			flags |= syscall.MS_RDONLY
-		}
 		if err := syscall.Mount(sourcePath, targetPath, "", flags, ""); err != nil {
 			_, ok := err.(syscall.Errno)
 			if !ok {
@@ -491,6 +517,44 @@ func (s *Server) NodePublishVolume(
 			// If the fstype was not specified, pick the default.
 			fstype = s.supportedFilesystems[""]
 		}
+		// Check whether something is already mounted at targetPath.
+		mp, err := getMountAt(targetPath)
+		if err != nil {
+			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+		}
+		if mp != nil {
+			if mp.device != sourcePath {
+				return ErrNodePublishVolume_MountError(ErrTargetPathNotEmpty), nil
+			}
+			// Something is mounted at targetPath. We
+			// check that the filesystem matches the
+			// requested one and that the readonly status
+			// matches the requested readonly status. If
+			// so, to support idempotency we return
+			// success, otherwise we return an error as
+			// the targetPath is not mounted in the
+			// requested way.
+			if mp.fstype != fstype {
+				return ErrNodePublishVolume_MountError(ErrFilesystemMismatch), nil
+			}
+			if mp.isReadonly() != readonly {
+				if mp.isReadonly() {
+					return ErrNodePublishVolume_MountError(ErrTargetPathRO), nil
+				} else {
+					return ErrNodePublishVolume_MountError(ErrTargetPathRW), nil
+				}
+			}
+			// The device, fstype and readonly option of
+			// the filesystem at targetPath matches that
+			// which is requested, to support idempotency
+			// we return success.
+			response := &csi.NodePublishVolumeResponse{
+				&csi.NodePublishVolumeResponse_Result_{
+					&csi.NodePublishVolumeResponse_Result{},
+				},
+			}
+			return response, nil
+		}
 		existingFstype, err := determineFilesystemType(sourcePath)
 		if err != nil {
 			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
@@ -505,8 +569,7 @@ func (s *Server) NodePublishVolume(
 			existingFstype = fstype
 		}
 		if fstype != existingFstype {
-			err := errors.New("The volume's existing filesystem does not match the one requested.")
-			return ErrNodePublishVolume_MountError(err), nil
+			return ErrNodePublishVolume_MountError(ErrFilesystemMismatch), nil
 		}
 		mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
 		mountOptionsStr := strings.Join(mountOptions, ",")
@@ -530,15 +593,27 @@ func (s *Server) NodePublishVolume(
 }
 
 func determineFilesystemType(devicePath string) (string, error) {
-	output, err := exec.Command("lsblk", "-o", "FSTYPE", devicePath).CombinedOutput()
+	output, err := exec.Command("lsblk", "-P", "-o", "FSTYPE", devicePath).CombinedOutput()
 	if err != nil {
 		return "", err
 	}
+	parseErr := errors.New("Cannot parse output of lsblk.")
 	lines := strings.Split(string(output), "\n")
-	if len(lines) != 3 || strings.TrimSpace(lines[0]) != "FSTYPE" {
-		return "", errors.New("Cannot parse output of lsblk.")
+	if len(lines) != 2 {
+		return "", parseErr
 	}
-	return strings.TrimSpace(lines[1]), nil
+	if lines[1] != "" {
+		return "", parseErr
+	}
+	line := lines[0]
+	const prefix = "FSTYPE=\""
+	const suffix = "\""
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		return "", parseErr
+	}
+	line = strings.TrimPrefix(line, prefix)
+	line = strings.TrimSuffix(line, suffix)
+	return line, nil
 }
 
 func formatDevice(devicePath, fstype string) error {
@@ -561,6 +636,16 @@ func (s *Server) NodeUnpublishVolume(
 		return ErrNodeUnpublishVolume_VolumeDoesNotExist(err), nil
 	}
 	targetPath := request.GetTargetPath()
+	mp, err := getMountAt(targetPath)
+	if err != nil {
+		return ErrNodeUnpublishVolume_GeneralError_Undefined(err), nil
+	}
+	if mp == nil {
+		// There is nothing mounted at targetPath, to support
+		// idempotency we return success.
+		response := &csi.NodeUnpublishVolumeResponse{}
+		return response, nil
+	}
 	const umountFlags = 0
 	if err := syscall.Unmount(targetPath, umountFlags); err != nil {
 		_, ok := err.(syscall.Errno)
