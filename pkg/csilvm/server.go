@@ -446,12 +446,12 @@ func (s *Server) ControllerGetCapabilities(
 
 // NodeService RPCs
 
-var (
-	ErrFilesystemMismatch = errors.New("The volume's existing filesystem does not match the one requested.")
-	ErrTargetPathRO       = errors.New("The targetPath is already mounted read-only.")
-	ErrTargetPathRW       = errors.New("The targetPath is already mounted read-write.")
-	ErrBlockVolNoRO       = errors.New("Cannot publish block volume with AccessMode SINGLE_NODE_READER_ONLY.")
-	ErrTargetPathNotEmpty = errors.New("Unexpected device already mounted at targetPath.")
+const (
+	ErrFilesystemMismatch = simpleError("The volume's existing filesystem does not match the one requested.")
+	ErrTargetPathRO       = simpleError("The targetPath is already mounted read-only.")
+	ErrTargetPathRW       = simpleError("The targetPath is already mounted read-write.")
+	ErrBlockVolNoRO       = simpleError("Cannot publish block volume with AccessMode SINGLE_NODE_READER_ONLY.")
+	ErrTargetPathNotEmpty = simpleError("Unexpected device already mounted at targetPath.")
 )
 
 func (s *Server) NodePublishVolume(
