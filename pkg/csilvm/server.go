@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -481,11 +482,26 @@ func (s *Server) NodePublishVolume(
 			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
 		}
 		if mp != nil {
-			// Something is mounted at targetPath. We
-			// assume it is the requested volume as there
-			// is no way of determining what the origin of
-			// a bindmount is. To support idempotency we
-			// return success.
+			// With lvm2, the sourcePath is typically a symlink to a
+			// devicemapper device, for example:
+			//   /dev/some-volume-group/some-logical-volume -> /dev/dm-4
+			//
+			// However, the mountpoint root shows the actual device, not
+			// the symlink. As such, to determine whether or not the
+			// device mounted at targetPath is the expected one, we need
+			// to resolve the symlink and compare the targets.
+			sourceDevicePath, err := filepath.EvalSymlinks(sourcePath)
+			if err != nil {
+				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+			}
+			// For bindmounts, we use the mountpoint root
+			// in the current filesystem.
+			mpdev := "/dev" + mp.root
+			if mpdev != sourceDevicePath {
+				return ErrNodePublishVolume_MountError(ErrTargetPathNotEmpty), nil
+			}
+			// For bind mounts, the filesystemtype and
+			// mount options are ignored.
 			response := &csi.NodePublishVolumeResponse{
 				&csi.NodePublishVolumeResponse_Result_{
 					&csi.NodePublishVolumeResponse_Result{},
@@ -523,7 +539,8 @@ func (s *Server) NodePublishVolume(
 			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
 		}
 		if mp != nil {
-			if mp.device != sourcePath {
+			// For regular mounts, we use the mount source.
+			if mp.mountsource != sourcePath {
 				return ErrNodePublishVolume_MountError(ErrTargetPathNotEmpty), nil
 			}
 			// Something is mounted at targetPath. We

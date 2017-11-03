@@ -1151,19 +1151,11 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 			t.Fatalf("Error: %+v", err)
 		}
 	}()
-	// Ensure that the device was mounted.
-	buf, err := ioutil.ReadFile("/proc/mounts")
+	mp, err := getMountAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	had := false
-	for _, line := range strings.Split(string(buf), "\n") {
-		if strings.Fields(line)[1] == publishReq.TargetPath {
-			had = true
-			break
-		}
-	}
-	if !had {
+	if mp == nil {
 		t.Fatalf("Expected volume to be mounted at %v.", publishReq.TargetPath)
 	}
 }
@@ -1652,8 +1644,9 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 		}
 	}()
 	// Check that calling NodePublishVolume with the same
-	// parameters succeeds and doesn't alter /proc/mounts.
-	mountsBefore, err := ioutil.ReadFile("/proc/mounts")
+	// parameters succeeds and doesn't mount anything new at
+	// targetPath.
+	mountsBefore, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1669,12 +1662,94 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if publishResult == nil {
 		t.Fatal("Expected Result to not be nil.")
 	}
-	mountsAfter, err := ioutil.ReadFile("/proc/mounts")
+	mountsAfter, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mountsBefore, mountsAfter) {
-		t.Fatal("Expected idempotent publish to leave /proc/mounts unmodified.")
+		t.Fatal("Expected idempotent publish to not mount anything new at targetPath.")
+	}
+}
+
+func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	// Create the volume that we'll be publishing.
+	createReq1 := testCreateVolumeRequest()
+	createReq1.CapacityRange.RequiredBytes /= 2
+	createResp1, err := client.CreateVolume(context.Background(), createReq1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp1.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult1 := createResp1.GetResult()
+	volumeHandle1 := createResult1.VolumeInfo.GetHandle()
+	// Create a second volume.
+	createReq2 := testCreateVolumeRequest()
+	createReq2.Name += "-2"
+	createReq2.CapacityRange.RequiredBytes /= 2
+	createResp2, err := client.CreateVolume(context.Background(), createReq2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp2.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult2 := createResp2.GetResult()
+	volumeHandle2 := createResult2.VolumeInfo.GetHandle()
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeHandle1.GetId())
+	// As we're publishing as a BlockVolume we need to bind mount
+	// the device over a file, not a directory.
+	if file, err := os.Create(targetPath); err != nil {
+		t.Fatal(err)
+	} else {
+		// Immediately close the file, we're just creating it
+		// as a mount target.
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer os.Remove(targetPath)
+	// Publish the volume to /the/tmp/dir/volume-id
+	publishReq1 := testNodePublishVolumeRequest(volumeHandle1, targetPath, "block", nil)
+	publishResp1, err := client.NodePublishVolume(context.Background(), publishReq1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp1.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult1 := publishResp1.GetResult()
+	if publishResult1 == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	// Unpublish the volume when the test ends.
+	defer func() {
+		req := testNodeUnpublishVolumeRequest(volumeHandle1, publishReq1.TargetPath)
+		resp, err := client.NodeUnpublishVolume(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resp.GetError(); err != nil {
+			t.Fatalf("Error: %+v", err)
+		}
+	}()
+	// Check that mounting the second volume at the same target path will fail.
+	publishReq2 := testNodePublishVolumeRequest(volumeHandle2, targetPath, "block", nil)
+	publishResp2, err := client.NodePublishVolume(context.Background(), publishReq2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp2.GetError(); err == nil {
+		t.Fatalf("Expected operation to fail")
 	}
 }
 
@@ -1736,9 +1811,10 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if !targetPathIsMountPoint(publishReq.TargetPath) {
 		t.Fatalf("Expected volume to be mounted at %v.", publishReq.TargetPath)
 	}
-	// Publish the volume with the same parameters again to check
-	// that it is idempotent.
-	mountsBefore, err := ioutil.ReadFile("/proc/mounts")
+	// Check that calling NodePublishVolume with the same
+	// parameters succeeds and doesn't mount anything new at
+	// targetPath.
+	mountsBefore, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1754,12 +1830,96 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if publishResult == nil {
 		t.Fatal("Expected Result to not be nil.")
 	}
-	mountsAfter, err := ioutil.ReadFile("/proc/mounts")
+	mountsAfter, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mountsBefore, mountsAfter) {
-		t.Fatal("Expected idempotent publish to leave /proc/mounts unmodified.")
+		t.Fatal("Expected idempotent publish to not mount anything new at targetPath.")
+	}
+}
+
+func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	// Create the volume that we'll be publishing.
+	createReq1 := testCreateVolumeRequest()
+	createReq1.CapacityRange.RequiredBytes /= 2
+	createResp1, err := client.CreateVolume(context.Background(), createReq1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp1.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult1 := createResp1.GetResult()
+	volumeHandle1 := createResult1.VolumeInfo.GetHandle()
+	// Create a second volume that we'll try to publish to the same targetPath.
+	createReq2 := testCreateVolumeRequest()
+	createReq2.Name += "-2"
+	createReq2.CapacityRange.RequiredBytes /= 2
+	createResp2, err := client.CreateVolume(context.Background(), createReq2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createResp2.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	createResult2 := createResp2.GetResult()
+	volumeHandle2 := createResult2.VolumeInfo.GetHandle()
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeHandle1.GetId())
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	// Publish the volume to /the/tmp/dir/volume-id
+	publishReq1 := testNodePublishVolumeRequest(volumeHandle1, targetPath, "xfs", nil)
+	publishResp1, err := client.NodePublishVolume(context.Background(), publishReq1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp1.GetError(); err != nil {
+		t.Fatalf("error: %+v", err)
+	}
+	publishResult1 := publishResp1.GetResult()
+	if publishResult1 == nil {
+		t.Fatal("Expected Result to not be nil.")
+	}
+	defer func() {
+		req := testNodeUnpublishVolumeRequest(volumeHandle1, publishReq1.TargetPath)
+		resp, err := client.NodeUnpublishVolume(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resp.GetError(); err != nil {
+			t.Fatalf("Error: %+v", err)
+		}
+	}()
+	// Ensure that the device was mounted.
+	if !targetPathIsMountPoint(publishReq1.TargetPath) {
+		t.Fatalf("Expected volume to be mounted at %v.", publishReq1.TargetPath)
+	}
+	publishReq2 := testNodePublishVolumeRequest(volumeHandle2, targetPath, "xfs", nil)
+	publishResp2, err := client.NodePublishVolume(context.Background(), publishReq2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishResp2.GetError(); err == nil {
+		req := testNodeUnpublishVolumeRequest(volumeHandle2, publishReq2.TargetPath)
+		resp, err := client.NodeUnpublishVolume(context.Background(), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := resp.GetError(); err != nil {
+			t.Fatalf("Error: %+v", err)
+		}
+		t.Fatal("Expected operation to fail")
 	}
 }
 
@@ -1834,9 +1994,10 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 		t.Fatalf("Error: %+v", err)
 	}
 	alreadyUnpublished = true
-	// Check that calling NodePublishVolume with the same
-	// parameters succeeds and doesn't alter /proc/mounts.
-	mountsBefore, err := ioutil.ReadFile("/proc/mounts")
+	// Check that calling NodeUnpublishVolume with the same
+	// parameters succeeds and doesn't modify the mounts at
+	// targetPath.
+	mountsBefore, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1849,12 +2010,12 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if err := unpublishResp.GetError(); err != nil {
 		t.Fatalf("Error: %+v", err)
 	}
-	mountsAfter, err := ioutil.ReadFile("/proc/mounts")
+	mountsAfter, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mountsBefore, mountsAfter) {
-		t.Fatal("Expected idempotent publish to leave /proc/mounts unmodified.")
+		t.Fatal("Expected idempotent unpublish to not modify mountpoints at targetPath.")
 	}
 }
 
@@ -1927,7 +2088,7 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	}
 	alreadyUnpublished = true
 	// Unpublish the volume again to check that it is idempotent.
-	mountsBefore, err := ioutil.ReadFile("/proc/mounts")
+	mountsBefore, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1939,29 +2100,24 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if err := unpublishResp.GetError(); err != nil {
 		t.Fatalf("Error: %+v", err)
 	}
-	mountsAfter, err := ioutil.ReadFile("/proc/mounts")
+	mountsAfter, err := getMountsAt(publishReq.TargetPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(mountsBefore, mountsAfter) {
-		t.Fatal("Expected idempotent publish to leave /proc/mounts unmodified.")
+		t.Fatal("Expected idempotent unpublish to not modify mountpoints at targetPath.")
 	}
 }
 
 func targetPathIsMountPoint(path string) bool {
-	buf, err := ioutil.ReadFile("/proc/mounts")
+	mp, err := getMountAt(path)
 	if err != nil {
 		panic(err)
 	}
-	for _, line := range strings.Split(string(buf), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		if strings.Fields(line)[1] == path {
-			return true
-		}
+	if mp == nil {
+		return false
 	}
-	return false
+	return true
 }
 
 func testGetNodeIDRequest() *csi.GetNodeIDRequest {
