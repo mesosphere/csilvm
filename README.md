@@ -37,3 +37,10 @@ be installed:
 
 * `libdevmapper`
 * `liblvm2app` (from LVM2)
+
+## SINGLE_NODE_READER_ONLY
+
+It is not possible to bind mount a device as 'ro' and thereby prevent write access to it.
+
+As such, this plugin does not support the `SINGLE_NODE_READER_ONLY` access mode for a 
+volume of access type `BLOCK_DEVICE`.
