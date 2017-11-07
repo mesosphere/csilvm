@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -18,7 +19,7 @@ const (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	// Configure flags
 	vgnameF := flag.String("volume-group", "", "The name of the volume group to manage")
 	pvnamesF := flag.String("devices", "", "A comma-seperated list of devices in the volume group")
 	defaultFsF := flag.String("default-fs", defaultDefaultFs, "The default filesystem to format new volumes with")
@@ -27,10 +28,16 @@ func main() {
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
 	profileF := flag.String("profile", "", "The volume group profile")
 	flag.Parse()
+	// Setup logging
+	logprefix := fmt.Sprintf("[%s]", *vgnameF)
+	logflags := log.LstdFlags | log.Lshortfile
+	csilvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
+	// Setup socket listener
 	lis, err := net.Listen("unix", *socketFileF)
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		log.Fatalf("[%s] Failed to listen: %v", *vgnameF, err)
 	}
+	// Setup server
 	grpcServer := grpc.NewServer()
 	var opts []csilvm.ServerOpt
 	opts = append(opts, csilvm.DefaultVolumeSize(*defaultVolumeSizeF))
@@ -45,4 +52,16 @@ func main() {
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
 	grpcServer.Serve(lis)
+}
+
+type vgLogger struct {
+	vgname string
+}
+
+func (l vgLogger) Print(v ...interface{}) {
+	log.Print(fmt.Sprintf("[%s]", l.vgname), v...)
+}
+
+func (l vgLogger) Printf(format string, v ...interface{}) {
+	log.Print(fmt.Sprintf("[%s]", l.vgname)+" "+format, v...)
 }

@@ -1,8 +1,6 @@
 package csilvm
 
 import (
-	"log"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
