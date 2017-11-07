@@ -18,6 +18,7 @@ const (
 )
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	vgnameF := flag.String("volume-group", "", "The name of the volume group to manage")
 	pvnamesF := flag.String("devices", "", "A comma-seperated list of devices in the volume group")
 	defaultFsF := flag.String("default-fs", defaultDefaultFs, "The default filesystem to format new volumes with")
