@@ -1,6 +1,8 @@
 package csilvm
 
 import (
+	"log"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
@@ -150,6 +152,7 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 				err,
 			},
 		}
+		log.Printf("GetPluginInfo: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -164,6 +167,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("CreateVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -172,19 +176,22 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("CreateVolume: failed: %+v", err)
 		return response, false
 	}
 	name := request.GetName()
 	if name == "" {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The name field must be specified."}
 		response := &csi.CreateVolumeResponse{
 			&csi.CreateVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The name field must be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("CreateVolume: failed: %+v", err)
 		return response, false
 	}
 	unsupportedFsErr := &csi.Error{
@@ -201,6 +208,7 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("CreateVolume: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -213,6 +221,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("DeleteVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -221,6 +230,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("DeleteVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
@@ -229,6 +239,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (
 				err,
 			},
 		}
+		log.Printf("DeleteVolume: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -241,6 +252,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				err,
 			},
 		}
+		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -249,19 +261,22 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				err,
 			},
 		}
+		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
 		return response, false
 	}
 	volumeInfo := request.GetVolumeInfo()
 	if volumeInfo == nil {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info field must be specified."}
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info field must be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
 		return response, false
 	} else {
 		if err := s.validateVolumeHandle(volumeInfo.GetHandle()); err != nil {
@@ -270,6 +285,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 					err,
 				},
 			}
+			log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
 			return response, false
 		}
 	}
@@ -287,6 +303,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 				err,
 			},
 		}
+		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -299,6 +316,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 				err,
 			},
 		}
+		log.Printf("ListVolumes: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -307,6 +325,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*c
 				err,
 			},
 		}
+		log.Printf("ListVolumes: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -319,6 +338,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 				err,
 			},
 		}
+		log.Printf("GetCapacity: failed: %+v", err)
 		return response, false
 	}
 	volumeCapabilities := request.GetVolumeCapabilities()
@@ -336,6 +356,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 						err,
 					},
 				}
+				log.Printf("GetCapacity: failed: %+v", err)
 				return response, false
 			}
 			// Check for unsupported filesystem type in
@@ -368,6 +389,7 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 				err,
 			},
 		}
+		log.Printf("ControllerGetCapabilities: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -376,6 +398,7 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 				err,
 			},
 		}
+		log.Printf("ControllerGetCapabilities: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -390,6 +413,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 				err,
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -398,6 +422,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 				err,
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
@@ -406,44 +431,51 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 				err,
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	}
 	if request.GetPublishVolumeInfo() != nil {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_UNDEFINED, callerMustNotRetry, "The publish_volume_info field must not be specified."}
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_UNDEFINED, callerMustNotRetry, "The publish_volume_info field must not be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."}
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	}
 	volumeCapability := request.GetVolumeCapability()
 	if volumeCapability == nil {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability field must be specified."}
 		response := &csi.NodePublishVolumeResponse{
 			&csi.NodePublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability field must be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	} else {
 		unsupportedFsErr := &csi.Error{
@@ -460,6 +492,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 					err,
 				},
 			}
+			log.Printf("NodePublishVolume: failed: %+v", err)
 			return response, false
 		}
 	}
@@ -473,6 +506,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 				err,
 			},
 		}
+		log.Printf("NodeUnpublishVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -481,6 +515,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 				err,
 			},
 		}
+		log.Printf("NodeUnpublishVolume: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
@@ -489,19 +524,22 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 				err,
 			},
 		}
+		log.Printf("NodeUnpublishVolume: failed: %+v", err)
 		return response, false
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
+		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."}
 		response := &csi.NodeUnpublishVolumeResponse{
 			&csi.NodeUnpublishVolumeResponse_Error{
 				&csi.Error{
 					&csi.Error_GeneralError_{
-						&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."},
+						err,
 					},
 				},
 			},
 		}
+		log.Printf("NodeUnpublishVolume: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -514,6 +552,7 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 				err,
 			},
 		}
+		log.Printf("GetNodeID: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -522,6 +561,7 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 				err,
 			},
 		}
+		log.Printf("GetNodeID: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -534,6 +574,7 @@ func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.P
 				err,
 			},
 		}
+		log.Printf("ProbeNode: failed: %+v", err)
 		return response, false
 	}
 	return nil, true
@@ -546,6 +587,7 @@ func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabili
 				err,
 			},
 		}
+		log.Printf("NodeGetCapabilities: failed: %+v", err)
 		return response, false
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
@@ -554,6 +596,7 @@ func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabili
 				err,
 			},
 		}
+		log.Printf("NodeGetCapabilities: failed: %+v", err)
 		return response, false
 	}
 	return nil, true

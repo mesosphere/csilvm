@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -34,6 +35,8 @@ var (
 )
 
 func init() {
+	// Set test logging
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	// Refresh the LVM metadata held by the lvmetad process to
 	// clear any metadata left over from a previous run.
 	if err := lvm.PVScan(""); err != nil {
