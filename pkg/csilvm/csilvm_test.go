@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
+	stdlog "log"
 	"net"
 	"os"
 	"os/exec"
@@ -36,7 +36,7 @@ var (
 
 func init() {
 	// Set test logging
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	stdlog.SetFlags(stdlog.LstdFlags | stdlog.Lshortfile)
 	// Refresh the LVM metadata held by the lvmetad process to
 	// clear any metadata left over from a previous run.
 	if err := lvm.PVScan(""); err != nil {
@@ -2856,6 +2856,10 @@ func prepareProbeNodeTest(vgname string, pvnames []string, serverOpts ...ServerO
 	})
 
 	var opts []grpc.ServerOption
+	// setup logging
+	logprefix := fmt.Sprintf("[%s]", vgname)
+	logflags := stdlog.LstdFlags | stdlog.Lshortfile
+	SetLogger(stdlog.New(os.Stderr, logprefix, logflags))
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
 	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
