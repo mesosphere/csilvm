@@ -53,15 +53,3 @@ func main() {
 	csi.RegisterNodeServer(grpcServer, s)
 	grpcServer.Serve(lis)
 }
-
-type vgLogger struct {
-	vgname string
-}
-
-func (l vgLogger) Print(v ...interface{}) {
-	log.Print(fmt.Sprintf("[%s]", l.vgname), v...)
-}
-
-func (l vgLogger) Printf(format string, v ...interface{}) {
-	log.Print(fmt.Sprintf("[%s]", l.vgname)+" "+format, v...)
-}
