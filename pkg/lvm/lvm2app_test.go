@@ -171,19 +171,19 @@ func TestValidateTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	if err := handle.validateTag(""); err != ErrTagInvalidLength {
+	if err := handle.ValidateTag(""); err != ErrTagInvalidLength {
 		t.Fatalf("Expected tag to fail validation")
 	}
-	if err := handle.validateTag(strings.Repeat("a", 1025)); err != ErrTagInvalidLength {
+	if err := handle.ValidateTag(strings.Repeat("a", 1025)); err != ErrTagInvalidLength {
 		t.Fatalf("Expected tag to fail validation")
 	}
-	if err := handle.validateTag(strings.Repeat("a", 1)); err != nil {
+	if err := handle.ValidateTag(strings.Repeat("a", 1)); err != nil {
 		t.Fatalf("Expected tag to pass validation")
 	}
-	if err := handle.validateTag(strings.Repeat("a", 1024)); err != nil {
+	if err := handle.ValidateTag(strings.Repeat("a", 1024)); err != nil {
 		t.Fatalf("Expected tag to pass validation")
 	}
-	if err := handle.validateTag("some:tag"); err != ErrTagHasInvalidChars {
+	if err := handle.ValidateTag("some:tag"); err != ErrTagHasInvalidChars {
 		t.Fatalf("Expected tag to fail validation")
 	}
 }

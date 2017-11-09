@@ -2,8 +2,6 @@ package csilvm
 
 import (
 	"bytes"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -41,7 +39,7 @@ type Server struct {
 	defaultVolumeSize    uint64
 	supportedFilesystems map[string]string
 	removingVolumeGroup  bool
-	profile              string
+	tags                 []string
 }
 
 func (s *Server) supportedVersions() []*csi.Version {
@@ -70,7 +68,7 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 			defaultFs: defaultFs,
 		},
 		false,
-		"",
+		nil,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -110,12 +108,11 @@ func RemoveVolumeGroup() ServerOpt {
 	}
 }
 
-// Profile configures the volume group for the specified profile.
-// This tags the volume group with the given profile.
-// Any volumes that are created will be tagged with the profile.
-func Profile(name string) ServerOpt {
+// Tag configures the volume group with the specified tag. Any volumes
+// that are created will be tagged with the volume group tags.
+func Tag(tag string) ServerOpt {
 	return func(s *Server) {
-		s.profile = name
+		s.tags = append(s.tags, tag)
 	}
 }
 
@@ -185,12 +182,8 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = capacityRange.GetRequiredBytes()
 	}
-	var tags []string
-	if tag := s.dcosTag(); tag != nil {
-		tags = append(tags, encodeTag(tag))
-	}
-	log.Printf("Creating logical volume id=%v, size=%v, tags=%v", volumeId, size, tags)
-	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, tags)
+	log.Printf("Creating logical volume id=%v, size=%v, tags=%v", volumeId, size, s.tags)
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags)
 	if err != nil {
 		if lvm.IsInvalidName(err) {
 			log.Printf("Invalid volume name: %v", err)
@@ -511,6 +504,10 @@ func (s *Server) ControllerGetCapabilities(
 
 // NodeService RPCs
 
+type simpleError string
+
+func (s simpleError) Error() string { return string(s) }
+
 const (
 	ErrFilesystemMismatch = simpleError("The volume's existing filesystem does not match the one requested.")
 	ErrTargetPathRO       = simpleError("The targetPath is already mounted read-only.")
@@ -826,53 +823,6 @@ func statDevice(devicePath string) error {
 	return err
 }
 
-const dcosTagPrefix = "dcos-tag."
-
-func (s *Server) dcosTag() map[string]string {
-	if s.profile == "" {
-		return nil
-	}
-	return map[string]string{
-		"profile": s.profile,
-	}
-}
-
-func encodeTag(data map[string]string) string {
-	if data == nil {
-		return ""
-	}
-	datajson, err := json.Marshal(data)
-	if err != nil {
-		// Marshaling a map should never raise an error.
-		panic(err)
-	}
-	encoded := base64.StdEncoding.EncodeToString(datajson)
-	return dcosTagPrefix + encoded
-}
-
-type simpleError string
-
-func (s simpleError) Error() string { return string(s) }
-
-const ErrUnknownTag = simpleError("csilvm: tag does not start with '" + dcosTagPrefix + "' prefix")
-
-func decodeTag(enc string) (map[string]string, error) {
-	if !strings.HasPrefix(enc, dcosTagPrefix) {
-		return nil, ErrUnknownTag
-	}
-	// Strip the prefix from the encoded tag.
-	enc = enc[len(dcosTagPrefix):]
-	decoded, err := base64.StdEncoding.DecodeString(enc)
-	if err != nil {
-		return nil, err
-	}
-	tag := map[string]string{}
-	if err := json.Unmarshal(decoded, &tag); err != nil {
-		return nil, err
-	}
-	return tag, nil
-}
-
 // ProbeNode initializes the Server by creating or opening the VolumeGroup.
 func (s *Server) ProbeNode(
 	ctx context.Context,
@@ -880,6 +830,12 @@ func (s *Server) ProbeNode(
 	log.Printf("Serving ProbeNode: %v", request)
 	if response, ok := s.validateProbeNodeRequest(request); !ok {
 		return response, nil
+	}
+	log.Printf("Validating tags: %v", s.tags)
+	for _, tag := range s.tags {
+		if err := lvm.ValidateTag(tag); err != nil {
+			return ErrProbeNode_BadPluginConfig(err), nil
+		}
 	}
 	log.Printf("Looking up volume group %v", s.vgname)
 	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
@@ -937,12 +893,8 @@ func (s *Server) ProbeNode(
 			}
 			return ErrProbeNode_GeneralError_Undefined(err), nil
 		}
-		var tags []string
-		if tag := s.dcosTag(); tag != nil {
-			tags = append(tags, encodeTag(tag))
-		}
-		log.Printf("Creating volume group %v with physical volumes %v and tags %v", s.vgname, s.pvnames, tags)
-		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, tags)
+		log.Printf("Creating volume group %v with physical volumes %v and tags %v", s.vgname, s.pvnames, s.tags)
+		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, s.tags)
 		if err != nil {
 			log.Printf("Cannot create volume group %v: err=%v", s.vgname, err)
 			return ErrProbeNode_GeneralError_Undefined(err), nil
@@ -1035,23 +987,23 @@ func (s *Server) ProbeNode(
 }
 
 func (s *Server) checkVolumeGroupTags(tags []string) *csi.ProbeNodeResponse {
-	vgtag := map[string]string{}
-	for _, tag := range tags {
-		data, err := decodeTag(tag)
-		if err == ErrUnknownTag {
-			continue
-		}
-		if err != nil {
-			return ErrProbeNode_GeneralError_Undefined(err)
-		}
-		vgtag = data
-	}
-	expect := s.dcosTag()
-	if expect["profile"] != vgtag["profile"] {
-		err := fmt.Errorf("csilvm: Volume group profile does not match configured profile: '%v'!='%v'", vgtag["profile"], expect["profile"])
+	if len(tags) != len(s.tags) {
+		err := fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
 		return ErrProbeNode_BadPluginConfig(err)
 	}
-
+	for _, t1 := range tags {
+		had := false
+		for _, t2 := range s.tags {
+			if t1 == t2 {
+				had = true
+				break
+			}
+		}
+		if !had {
+			err := fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
+			return ErrProbeNode_BadPluginConfig(err)
+		}
+	}
 	return nil
 }
 

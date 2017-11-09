@@ -19,6 +19,17 @@ const (
 	defaultDefaultVolumeSize = 10 << 30
 )
 
+type stringsFlag []string
+
+func (f *stringsFlag) String() string {
+	return fmt.Sprint(*f)
+}
+
+func (f *stringsFlag) Set(tag string) error {
+	*f = append(*f, v)
+	return nil
+}
+
 func main() {
 	// Configure flags
 	vgnameF := flag.String("volume-group", "", "The name of the volume group to manage")
@@ -27,7 +38,8 @@ func main() {
 	defaultVolumeSizeF := flag.Uint64("default-volume-size", defaultDefaultVolumeSize, "The default volume size in bytes")
 	socketFileF := flag.String("unix-addr", "", "The path to the listening unix socket file")
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
-	profileF := flag.String("profile", "", "The volume group profile")
+	var tagsF stringsFlag
+	flag.Var(&tagsF, "tag", "Value to tag the volume group with (can be given multiple times)")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -45,8 +57,8 @@ func main() {
 	if *removeF {
 		opts = append(opts, csilvm.RemoveVolumeGroup())
 	}
-	if *profileF != "" {
-		opts = append(opts, csilvm.Profile(*profileF))
+	for _, tag := range tagsF {
+		opts = append(opts, csilvm.Tag(tag))
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	csi.RegisterIdentityServer(grpcServer, s)
