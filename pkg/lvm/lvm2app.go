@@ -275,9 +275,9 @@ func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
 }
 
 const ErrTagInvalidLength = simpleError("lvm: tag length must be between 1 and 1024 characters")
-const ErrTagHasInvalidChars = simpleError("lvm: tag must consist of only [A-Za-z0-9_+.-]")
+const ErrTagHasInvalidChars = simpleError("lvm: tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
 
-var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.-]+$")
+var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
 
 /*
 LVM tags are strings of up to 1024 characters. LVM tags cannot
@@ -290,7 +290,7 @@ tags can contain the /, =, !, :, #, and & characters.
 
 ~ https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/logical_volume_manager_administration/lvm_tags
 */
-func (handle *LibHandle) validateTag(tag string) error {
+func (handle *LibHandle) ValidateTag(tag string) error {
 	if len(tag) < 1 || len(tag) > 1024 {
 		return ErrTagInvalidLength
 	}
@@ -310,7 +310,7 @@ func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, t
 	}
 	// Validate the tags.
 	for _, tag := range tags {
-		if err := handle.validateTag(tag); err != nil {
+		if err := handle.ValidateTag(tag); err != nil {
 			return nil, err
 		}
 	}
@@ -525,7 +525,7 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags
 	defer vg.handle.lk.Unlock()
 	// Validate the tags.
 	for _, tag := range tags {
-		if err := vg.handle.validateTag(tag); err != nil {
+		if err := vg.handle.ValidateTag(tag); err != nil {
 			return nil, err
 		}
 	}
@@ -862,6 +862,11 @@ func CreateVolumeGroup(
 	pvs []*PhysicalVolume,
 	tags []string) (*VolumeGroup, error) {
 	return defaultHandle.CreateVolumeGroup(name, pvs, tags)
+}
+
+// ValidateTag validates a tag.
+func ValidateTag(tag string) error {
+	return defaultHandle.ValidateTag(tag)
 }
 
 // LookupVolumeGroup returns the volume group with the given name.

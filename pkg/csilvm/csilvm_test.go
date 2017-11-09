@@ -208,9 +208,9 @@ func TestCreateVolume(t *testing.T) {
 	}
 }
 
-func TestCreateVolume_WithProfile(t *testing.T) {
-	profile := "blue"
-	client, cleanup := startTest(Profile(profile))
+func TestCreateVolume_WithTag(t *testing.T) {
+	expected := []string{"some-tag"}
+	client, cleanup := startTest(Tag(expected[0]))
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	resp, err := client.CreateVolume(context.Background(), req)
@@ -250,14 +250,8 @@ func TestCreateVolume_WithProfile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, tag := range tags {
-			data, err := decodeTag(tag)
-			if err == ErrUnknownTag {
-				continue
-			}
-			if data["profile"] != profile {
-				t.Fatalf("Expected logical volume to be tagged with profile %v but was %v", profile, data["profile"])
-			}
+		if !reflect.DeepEqual(tags, expected) {
+			t.Fatalf("Expected tags not found %v != %v", expected, tags)
 		}
 	}
 	if !found {
@@ -2178,7 +2172,7 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithProfile(t *testing.T) {
+func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2191,8 +2185,9 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithProfile(t *testing.T) {
 	defer loop2.Close()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	profile := "blue"
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	tag := "blue"
+	expected := []string{tag}
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
 	defer cleanup()
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
@@ -2209,14 +2204,57 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tag := range tags {
-		data, err := decodeTag(tag)
-		if err == ErrUnknownTag {
-			continue
-		}
-		if data["profile"] != profile {
-			t.Fatalf("Expected volume group to be tagged with profile %v but was %v", profile, data["profile"])
-		}
+	if !reflect.DeepEqual(tags, expected) {
+		t.Fatalf("Expected tags not found %v != %v", expected, tags)
+	}
+}
+
+func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	tag := "-some-malformed-tag"
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
+	defer cleanup()
+	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	grpcErr := probeResp.GetError()
+	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
+	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
+	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	if errorCode != expCode {
+		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	}
+	expDesc := "lvm: tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'"
+	if errorDesc != expDesc {
+		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -2622,7 +2660,7 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolum
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_WithProfile(t *testing.T) {
+func TestProbeNode_ExistingVolumeGroup_WithTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2645,18 +2683,14 @@ func TestProbeNode_ExistingVolumeGroup_WithProfile(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	profile := "blue"
-	tags := []string{
-		"some-unrelated-tag",
-		encodeTag(map[string]string{"profile": profile}),
-	}
+	tags := []string{"blue", "foo"}
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, tags)
 	if err != nil {
 		panic(err)
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
 	defer cleanup()
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
@@ -2668,7 +2702,7 @@ func TestProbeNode_ExistingVolumeGroup_WithProfile(t *testing.T) {
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_UnexpectedProfile(t *testing.T) {
+func TestProbeNode_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2691,12 +2725,8 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedProfile(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	profile := "blue"
-	tags := []string{
-		"some-unrelated-tag",
-		encodeTag(map[string]string{"profile": profile}),
-	}
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs, tags)
+	tag := "blue"
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, []string{tag})
 	if err != nil {
 		panic(err)
 	}
@@ -2715,13 +2745,13 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedProfile(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := fmt.Sprintf("csilvm: Volume group profile does not match configured profile: '%s'!=''", profile)
+	expDesc := fmt.Sprintf("csilvm: Configured tags don't match existing tags: [] != [%s]", tag)
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_MissingProfile(t *testing.T) {
+func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2744,14 +2774,14 @@ func TestProbeNode_ExistingVolumeGroup_MissingProfile(t *testing.T) {
 	defer pv2.Remove()
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs, []string{"some-unrelated-tag"})
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, []string{"some-other-tag"})
 	if err != nil {
 		panic(err)
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	profile := "blue"
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Profile(profile))
+	tag := "blue"
+	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
 	defer cleanup()
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
@@ -2764,7 +2794,7 @@ func TestProbeNode_ExistingVolumeGroup_MissingProfile(t *testing.T) {
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
-	expDesc := fmt.Sprintf("csilvm: Volume group profile does not match configured profile: ''!='%s'", profile)
+	expDesc := fmt.Sprintf("csilvm: Configured tags don't match existing tags: [blue] != [some-other-tag]")
 	if errorDesc != expDesc {
 		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
