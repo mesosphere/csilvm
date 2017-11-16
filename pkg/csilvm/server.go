@@ -132,13 +132,11 @@ func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	log.Printf("Serving GetPluginInfo: %v", request)
-	if response, ok := s.validateGetPluginInfoRequest(request); !ok {
-		return response, nil
+	if err := s.validateGetPluginInfoRequest(request); err != nil {
+		log.Printf("GetPluginInfo: failed: %v", err)
+		return nil, err
 	}
-	result := &csi.GetPluginInfoResponse_Result{PluginName, PluginVersion, nil}
-	response := &csi.GetPluginInfoResponse{
-		&csi.GetPluginInfoResponse_Result_{result},
-	}
+	response := &csi.GetPluginInfoResponse{PluginName, PluginVersion, nil}
 	log.Printf("Served GetSupportedVersions: %+v", result)
 	return response, nil
 }
@@ -149,14 +147,11 @@ func (s *Server) ControllerProbe(
 	ctx context.Context,
 	request *csi.ControllerProbeRequest) (*csi.ControllerProbeResponse, error) {
 	log.Printf("Serving ControllerProbe: %v", request)
-	if response, ok := s.validateControllerProbeRequest(request); !ok {
-		return response, nil
+	if err := s.validateControllerProbeRequest(request); err != nil {
+		log.Printf("ControllerProbe: failed: %v", err)
+		return nil, err
 	}
-	response := &csi.ControllerProbeResponse{
-		&csi.ControllerProbeResponse_Result_{
-			&csi.ControllerProbeResponse_Result{},
-		},
-	}
+	response := &csi.ControllerProbeResponse{}
 	log.Printf("ControllerProbe succeeded")
 	return response, nil
 }

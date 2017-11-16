@@ -16,24 +16,8 @@ func TestGetPluginInfoMissingVersion(t *testing.T) {
 	req := testGetPluginInfoRequest()
 	req.Version = nil
 	resp, err := client.GetPluginInfo(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -43,24 +27,8 @@ func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
 	req := testGetPluginInfoRequest()
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.GetPluginInfo(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -1838,4 +1806,16 @@ func TestNodeGetCapabilitiesRequestUnsupportedVersion(t *testing.T) {
 	if error.GetErrorDescription() != expdesc {
 		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
+}
+
+func grpcErrorEqual(gotErr, expErr error) bool {
+	got, ok := status.FromError(gotErr)
+	if !ok {
+		return false
+	}
+	exp, ok := status.FromError(expErr)
+	if !ok {
+		return false
+	}
+	return got.Code() == exp.Code() && got.Message() == exp.Message()
 }

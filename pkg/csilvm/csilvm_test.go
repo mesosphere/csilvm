@@ -95,18 +95,14 @@ func TestGetPluginInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Error: %+v", resp.GetError())
+	if resp.GetName() != PluginName {
+		t.Fatal("Expected plugin name %s but got %s", PluginName, resp.GetName())
 	}
-	if result.GetName() != PluginName {
-		t.Fatal("Expected plugin name %s but got %s", PluginName, result.GetName())
+	if resp.GetVendorVersion() != PluginVersion {
+		t.Fatal("Expected plugin version %s but got %s", PluginVersion, resp.GetVendorVersion())
 	}
-	if result.GetVendorVersion() != PluginVersion {
-		t.Fatal("Expected plugin version %s but got %s", PluginVersion, result.GetVendorVersion())
-	}
-	if result.GetManifest() != nil {
-		t.Fatal("Expected a nil manifest but got %s", result.GetManifest())
+	if resp.GetManifest() != nil {
+		t.Fatal("Expected a nil manifest but got %s", resp.GetManifest())
 	}
 }
 
@@ -118,18 +114,14 @@ func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Error: %+v", resp.GetError())
+	if resp.GetName() != PluginName {
+		t.Fatal("Expected plugin name %s but got %s", PluginName, resp.GetName())
 	}
-	if result.GetName() != PluginName {
-		t.Fatal("Expected plugin name %s but got %s", PluginName, result.GetName())
+	if resp.GetVendorVersion() != PluginVersion {
+		t.Fatal("Expected plugin version %s but got %s", PluginVersion, resp.GetVendorVersion())
 	}
-	if result.GetVendorVersion() != PluginVersion {
-		t.Fatal("Expected plugin version %s but got %s", PluginVersion, result.GetVendorVersion())
-	}
-	if result.GetManifest() != nil {
-		t.Fatal("Expected a nil manifest but got %s", result.GetManifest())
+	if resp.GetManifest() != nil {
+		t.Fatal("Expected a nil manifest but got %s", resp.GetManifest())
 	}
 }
 

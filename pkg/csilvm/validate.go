@@ -2,6 +2,8 @@ package csilvm
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -24,17 +26,12 @@ func (s *Server) validateRemoving() *csi.Error {
 	return nil
 }
 
-func (s *Server) validateVersion(version *csi.Version) *csi.Error {
+var ErrMissingVersion = status.Error(codes.InvalidArgument, "The version field must be specified.")
+var ErrUnsupportedVersion = status.Error(codes.InvalidArgument, "The requested version is not supported.")
+
+func (s *Server) validateVersion(version *csi.Version) error {
 	if version == nil {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{
-					csi.Error_GeneralError_MISSING_REQUIRED_FIELD,
-					callerMayRetry,
-					"The version field must be specified.",
-				},
-			},
-		}
+		return ErrMissingVersion
 	}
 	supportedVersion := false
 	for _, v := range s.supportedVersions() {
@@ -44,15 +41,7 @@ func (s *Server) validateVersion(version *csi.Version) *csi.Error {
 		}
 	}
 	if !supportedVersion {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{
-					csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION,
-					callerMustNotRetry,
-					"The requested version is not supported.",
-				},
-			},
-		}
+		return ErrUnsupportedVersion
 	}
 	return nil
 }
@@ -143,17 +132,11 @@ func (s *Server) validateVolumeHandle(volumeHandle *csi.VolumeHandle) *csi.Error
 
 // IdentityService RPCs
 
-func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, bool) {
+func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) error {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.GetPluginInfoResponse{
-			&csi.GetPluginInfoResponse_Error{
-				err,
-			},
-		}
-		log.Printf("GetPluginInfo: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 // ControllerService RPCs
