@@ -565,14 +565,14 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 	return nil, true
 }
 
-func (s *Server) validateProbeNodeRequest(request *csi.ProbeNodeRequest) (*csi.ProbeNodeResponse, bool) {
+func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequest) (*csi.ControllerProbeResponse, bool) {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.ProbeNodeResponse{
-			&csi.ProbeNodeResponse_Error{
+		response := &csi.ControllerProbeResponse{
+			&csi.ControllerProbeResponse_Error{
 				err,
 			},
 		}
-		log.Printf("ProbeNode: failed: %+v", err)
+		log.Printf("ControllerProbe: failed: %+v", err)
 		return response, false
 	}
 	return nil, true

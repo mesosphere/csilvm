@@ -143,6 +143,27 @@ func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
 
 // ControllerService RPCs
 
+func testControllerProbeRequest() *csi.ControllerProbeRequest {
+	req := &csi.ControllerProbeRequest{
+		&csi.Version{0, 1, 0},
+	}
+	return req
+}
+
+func TestControllerProbe(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testControllerProbeRequest()
+	resp, err := client.ControllerProbe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result == nil {
+		t.Fatalf("Expected result to be present.")
+	}
+}
+
 func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 	const requiredBytes = 80 << 20
 	const limitBytes = 1000 << 20
@@ -435,9 +456,9 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	defer loop1.Close()
 	pvnames := []string{loop1.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2141,14 +2162,14 @@ func TestGetNodeID(t *testing.T) {
 	}
 }
 
-func testProbeNodeRequest() *csi.ProbeNodeRequest {
-	req := &csi.ProbeNodeRequest{
+func testNodeProbeRequest() *csi.NodeProbeRequest {
+	req := &csi.NodeProbeRequest{
 		&csi.Version{0, 1, 0},
 	}
 	return req
 }
 
-func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2161,9 +2182,9 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	defer loop2.Close()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2172,7 +2193,7 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2187,9 +2208,9 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	vgname := "test-vg-" + uuid.New().String()
 	tag := "blue"
 	expected := []string{tag}
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames, Tag(tag))
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2209,7 +2230,7 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2239,16 +2260,16 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	tag := "-some-malformed-tag"
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames, Tag(tag))
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	errorCode := grpcErr.GetNodeProbeError().GetErrorCode()
+	errorDesc := grpcErr.GetNodeProbeError().GetErrorDescription()
+	expCode := csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
@@ -2258,19 +2279,19 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	pvnames := []string{"/dev/does/not/exist"}
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	errorCode := grpcErr.GetNodeProbeError().GetErrorCode()
+	errorDesc := grpcErr.GetNodeProbeError().GetErrorDescription()
+	expCode := csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
@@ -2280,7 +2301,7 @@ func TestProbeNode_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2310,16 +2331,16 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
+	errorCode := grpcErr.GetNodeProbeError().GetErrorCode()
+	errorDesc := grpcErr.GetNodeProbeError().GetErrorDescription()
+	expCode := csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG
 	if errorCode != expCode {
 		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
 	}
@@ -2329,7 +2350,7 @@ func TestProbeNode_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	}
 }
 
-func TestProbeNode_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
+func TestNodeProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2345,9 +2366,9 @@ func TestProbeNode_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
 	}
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
+	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	probeResp, err := client.NodeProbe(context.Background(), testProbeNodeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,6 +4,39 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
+// ControllerProbe errors
+
+func ErrControllerProbe_BadPluginConfig(err error) *csi.ControllerProbeResponse {
+	return &csi.ControllerProbeResponse{
+		&csi.ControllerProbeResponse_Error{
+			&csi.Error{
+				&csi.Error_ControllerProbeError_{
+					&csi.Error_ControllerProbeError{
+						csi.Error_ControllerProbeError_BAD_PLUGIN_CONFIG,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
+
+func ErrControllerProbe_GeneralError_Undefined(err error) *csi.ControllerProbeResponse {
+	return &csi.ControllerProbeResponse{
+		&csi.ControllerProbeResponse_Error{
+			&csi.Error{
+				&csi.Error_GeneralError_{
+					&csi.Error_GeneralError{
+						csi.Error_GeneralError_UNDEFINED,
+						callerMayRetry,
+						err.Error(),
+					},
+				},
+			},
+		},
+	}
+}
+
 // CreateVolume errors
 
 func ErrCreateVolume_VolumeAlreadyExists(err error) *csi.CreateVolumeResponse {
@@ -274,15 +307,15 @@ func ErrValidateVolumeCapabilities_GeneralError_Undefined(err error) *csi.Valida
 	}
 }
 
-// ProbeNode errors
+// NodeProbe errors
 
-func ErrProbeNode_BadPluginConfig(err error) *csi.ProbeNodeResponse {
-	return &csi.ProbeNodeResponse{
-		&csi.ProbeNodeResponse_Error{
+func ErrNodeProbe_BadPluginConfig(err error) *csi.NodeProbeResponse {
+	return &csi.NodeProbeResponse{
+		&csi.NodeProbeResponse_Error{
 			&csi.Error{
-				&csi.Error_ProbeNodeError_{
-					&csi.Error_ProbeNodeError{
-						csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG,
+				&csi.Error_NodeProbeError_{
+					&csi.Error_NodeProbeError{
+						csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG,
 						err.Error(),
 					},
 				},
@@ -291,9 +324,9 @@ func ErrProbeNode_BadPluginConfig(err error) *csi.ProbeNodeResponse {
 	}
 }
 
-func ErrProbeNode_GeneralError_Undefined(err error) *csi.ProbeNodeResponse {
-	return &csi.ProbeNodeResponse{
-		&csi.ProbeNodeResponse_Error{
+func ErrNodeProbe_GeneralError_Undefined(err error) *csi.NodeProbeResponse {
+	return &csi.NodeProbeResponse{
+		&csi.NodeProbeResponse_Error{
 			&csi.Error{
 				&csi.Error_GeneralError_{
 					&csi.Error_GeneralError{

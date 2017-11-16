@@ -66,6 +66,60 @@ func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
 
 // ControllerService RPCs
 
+func TestControllerProbeMissingVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testControllerProbeRequest()
+	req.Version = nil
+	resp, err := client.ControllerProbe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != false {
+		t.Fatal("Expected CallerMustNotRetry to be false")
+	}
+	expdesc := "The version field must be specified."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
+func TestControllerProbeUnsupportedVersion(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testControllerProbeRequest()
+	req.Version = &csi.Version{0, 2, 0}
+	resp, err := client.ControllerProbe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := resp.GetResult()
+	if result != nil {
+		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
+	}
+	error := resp.GetError().GetGeneralError()
+	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
+	if error.GetErrorCode() != expcode {
+		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
+	}
+	if error.GetCallerMustNotRetry() != true {
+		t.Fatal("Expected CallerMustNotRetry to be true")
+	}
+	expdesc := "The requested version is not supported."
+	if error.GetErrorDescription() != expdesc {
+		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
+	}
+}
+
 func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
@@ -1651,12 +1705,12 @@ func TestGetNodeIDUnsupportedVersion(t *testing.T) {
 	}
 }
 
-func TestProbeNodeMissingVersion(t *testing.T) {
+func TestNodeProbeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testProbeNodeRequest()
+	req := testNodeProbeRequest()
 	req.Version = nil
-	resp, err := client.ProbeNode(context.Background(), req)
+	resp, err := client.NodeProbe(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1678,12 +1732,12 @@ func TestProbeNodeMissingVersion(t *testing.T) {
 	}
 }
 
-func TestProbeNodeUnsupportedVersion(t *testing.T) {
+func TestNodeProbeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testProbeNodeRequest()
+	req := testNodeProbeRequest()
 	req.Version = &csi.Version{0, 2, 0}
-	resp, err := client.ProbeNode(context.Background(), req)
+	resp, err := client.NodeProbe(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
