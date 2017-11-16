@@ -2,10 +2,9 @@
 
 
 [[projects]]
-  branch = "master"
   name = "github.com/container-storage-interface/spec"
   packages = ["lib/go","lib/go/csi"]
-  revision = "8ba18a5c20e8fa09c560a829541c3e246a1c3570"
+  revision = "28cea9f679367fee3d01bd25ae54933864cb8017"
 
 [[projects]]
   branch = "master"
@@ -58,6 +57,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "95acbf2c81a861e26e407d7188e4d0b1cdd718c5bc7454a3d3b01d3c9624f26f"
+  inputs-digest = "5e7b380d0f43f4d0d76f3ba749acd51a15e4496fe0418a219f8ca9ee8dbce005"
   solver-name = "gps-cdcl"
   solver-version = 1
