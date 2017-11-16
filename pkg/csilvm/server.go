@@ -123,11 +123,7 @@ func (s *Server) GetSupportedVersions(
 	request *csi.GetSupportedVersionsRequest) (*csi.GetSupportedVersionsResponse, error) {
 	log.Printf("Serving GetSupportedVersions: %v", request)
 	response := &csi.GetSupportedVersionsResponse{
-		&csi.GetSupportedVersionsResponse_Result_{
-			&csi.GetSupportedVersionsResponse_Result{
-				s.supportedVersions(),
-			},
-		},
+		s.supportedVersions(),
 	}
 	return response, nil
 }
