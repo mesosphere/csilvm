@@ -888,18 +888,14 @@ func TestControllerGetCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Error: %+v", resp.GetError())
-	}
 	expected := []csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 	}
 	got := []csi.ControllerServiceCapability_RPC_Type{}
-	for _, capability := range result.GetCapabilities() {
-		got = append(got, capability.GetRpc().Type)
+	for _, capability := range resp.GetCapabilities() {
+		got = append(got, capability.GetRpc().GetType())
 	}
 	if !reflect.DeepEqual(expected, got) {
 		t.Fatalf("Expected capabilities %+v but got %+v", expected, got)

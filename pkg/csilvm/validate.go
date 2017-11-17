@@ -167,7 +167,7 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) err
 	return nil
 }
 
-func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
+func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) error {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}
@@ -183,26 +183,14 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 	return nil
 }
 
-func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, bool) {
+func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.ControllerGetCapabilitiesResponse{
-			&csi.ControllerGetCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ControllerGetCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.ControllerGetCapabilitiesResponse{
-			&csi.ControllerGetCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ControllerGetCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 // NodeService RPCs

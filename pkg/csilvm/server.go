@@ -471,8 +471,8 @@ func (s *Server) GetCapacity(
 func (s *Server) ControllerGetCapabilities(
 	ctx context.Context,
 	request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	if response, ok := s.validateControllerGetCapabilitiesRequest(request); !ok {
-		return response, nil
+	if err := s.validateControllerGetCapabilitiesRequest(request); err != nil {
+		return nil, err
 	}
 	log.Printf("Serving ControllerGetCapabilities: %v", request)
 	capabilities := []*csi.ControllerServiceCapability{
@@ -508,13 +508,7 @@ func (s *Server) ControllerGetCapabilities(
 		},
 	}
 	log.Printf("ControllerGetCapabilities: [CREATE_DELETE_VOLUME, LIST_VOLUMES, GET_CAPACITY]")
-	response := &csi.ControllerGetCapabilitiesResponse{
-		&csi.ControllerGetCapabilitiesResponse_Result_{
-			&csi.ControllerGetCapabilitiesResponse_Result{
-				capabilities,
-			},
-		},
-	}
+	response := &csi.ControllerGetCapabilitiesResponse{capabilities}
 	log.Printf("ControllerGetCapabilities succeeded")
 	return response, nil
 }
