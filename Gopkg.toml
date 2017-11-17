@@ -27,7 +27,8 @@ required = [
 
 [[constraint]]
   name = "github.com/container-storage-interface/spec"
-  branch = "master"
+  revision = "28cea9f679367fee3d01bd25ae54933864cb8017"
+#  branch = "master"
 
 [[constraint]]
   name = "github.com/gogo/protobuf"
