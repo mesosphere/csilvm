@@ -548,17 +548,11 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.G
 	return nil, true
 }
 
-func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequest) (*csi.ControllerProbeResponse, bool) {
+func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequest) error {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.ControllerProbeResponse{
-			&csi.ControllerProbeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ControllerProbe: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, bool) {
