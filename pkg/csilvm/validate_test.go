@@ -298,321 +298,98 @@ func TestDeleteVolumeMissingVolumeId(t *testing.T) {
 func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.Version = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "This service is running in 'remove volume group' mode."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.Version = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
-func TestValidateVolumeCapabilitiesMissingVolumeInfo(t *testing.T) {
+func TestValidateVolumeCapabilitiesMissingVolumeId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
-	req.VolumeInfo = nil
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
+	req.VolumeId = ""
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVolumeId) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_info field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestValidateVolumeCapabilitiesMissingVolumeInfoHandle(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
-	req.VolumeInfo.Handle = nil
-	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume handle must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestValidateVolumeCapabilitiesMissingVolumeInfoHandleId(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
-	req.VolumeInfo.Handle.Id = ""
-	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_handle.id field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilities(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVolumeCapabilities) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capabilities field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestValidateVolumeCapabilitiesEmptyVolumeCapabilities(t *testing.T) {
-	t.Skip("gRPC apparently unmarshals an empty list as nil.")
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
-	req.VolumeCapabilities = req.VolumeCapabilities[:0]
-	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "One or more volume_capabilities must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessType = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessType) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_type field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "ext4", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "ext4", nil)
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedFilesystem) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetValidateVolumeCapabilitiesError()
-	expcode := csi.Error_ValidateVolumeCapabilitiesError_UNSUPPORTED_FS_TYPE
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	expdesc := "Requested filesystem type is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessMode = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
 func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest(fakeVolumeHandle(), "", nil)
+	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessModeMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode.mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -930,16 +707,12 @@ func TestControllerGetCapabilitiesInfoUnsupportedVersion(t *testing.T) {
 
 // NodeService RPCs
 
-func fakeVolumeHandle() *csi.VolumeHandle {
-	return &csi.VolumeHandle{"test-volume", nil}
-}
-
 var fakeMountDir = "/run/dcos/csilvm/mnt"
 
 func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.Version = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -966,7 +739,7 @@ func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
 func TestNodePublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.Version = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -993,7 +766,7 @@ func TestNodePublishVolumeMissingVersion(t *testing.T) {
 func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1020,7 +793,7 @@ func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeHandle = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1047,7 +820,7 @@ func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeHandle.Id = ""
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1074,7 +847,7 @@ func TestNodePublishVolumeMissingVolumeHandleId(t *testing.T) {
 func TestNodePublishVolumeNotMissingPublishVolumeInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.PublishVolumeInfo = &csi.PublishVolumeInfo{nil}
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1101,7 +874,7 @@ func TestNodePublishVolumeNotMissingPublishVolumeInfo(t *testing.T) {
 func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.TargetPath = ""
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1128,7 +901,7 @@ func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1155,7 +928,7 @@ func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessType = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1182,7 +955,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1209,7 +982,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
@@ -1236,7 +1009,7 @@ func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodePublishVolumeRequest(fakeVolumeHandle(), fakeMountDir, "ext4", nil)
+	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "ext4", nil)
 	resp, err := client.NodePublishVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -1256,12 +1029,12 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testi
 	}
 }
 
-var fakeTargetPath = filepath.Join(fakeMountDir, fakeVolumeHandle().GetId())
+var fakeTargetPath = filepath.Join(fakeMountDir, "fake_volume_id".GetId())
 
 func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.Version = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1288,7 +1061,7 @@ func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
 func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.Version = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1315,7 +1088,7 @@ func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1342,7 +1115,7 @@ func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
 func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.VolumeHandle = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1369,7 +1142,7 @@ func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
 func TestNodeUnpublishVolumeMissingVolumeHandleId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.VolumeHandle.Id = ""
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
@@ -1396,7 +1169,7 @@ func TestNodeUnpublishVolumeMissingVolumeHandleId(t *testing.T) {
 func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
-	req := testNodeUnpublishVolumeRequest(fakeVolumeHandle(), fakeTargetPath)
+	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.TargetPath = ""
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {

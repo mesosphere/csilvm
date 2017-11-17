@@ -324,31 +324,42 @@ func (s *Server) ControllerUnpublishVolume(
 	return nil, ErrCallNotImplemented
 }
 
+var ErrMismatchedFilesystemType = status.Error(
+	status.InvalidArgument,
+	"The requested fs_type does not match the existing filesystem on the volume.")
+
 func (s *Server) ValidateVolumeCapabilities(
 	ctx context.Context,
 	request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	log.Printf("Serving ValidateVolumeCapabilitiesRequest: %v", request)
-	if response, ok := s.validateValidateVolumeCapabilitiesRequest(request); !ok {
-		return response, nil
+	if err := s.validateValidateVolumeCapabilitiesRequest(request); err != nil {
+		log.Printf("ValidateVolumeCapabilities: failed: %v", err)
+		return nil, err
 	}
-	id := request.GetVolumeInfo().GetHandle().GetId()
+	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		log.Printf("Cannot find volume with id=%v err=%v", id, err)
-		return ErrValidateVolumeCapabilities_VolumeDoesNotExist(err), nil
+		return nil, ErrVolumeNotFound
 	}
 	log.Printf("Determining volume path")
 	sourcePath, err := lv.Path()
 	if err != nil {
 		log.Printf("Cannot determine volume path: err=%v", err)
-		return ErrValidateVolumeCapabilities_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Error in Path(): err=%v",
+			err)
 	}
 	log.Printf("Determining filesystem type at %v", sourcePath)
 	existingFstype, err := determineFilesystemType(sourcePath)
 	if err != nil {
 		log.Printf("Cannot determine filesystem type: err=%v", err)
-		return ErrValidateVolumeCapabilities_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot determine filesystem type: err=%v",
+			err)
 	}
 	log.Printf("Existing filesystem type is '%v'", existingFstype)
 	for _, capability := range request.GetVolumeCapabilities() {
@@ -357,27 +368,15 @@ func (s *Server) ValidateVolumeCapabilities(
 				// The volume has already been formatted.
 				if mnt.GetFsType() != "" && existingFstype != mnt.GetFsType() {
 					// The requested fstype does not match the existing one.
-					response := &csi.ValidateVolumeCapabilitiesResponse{
-						&csi.ValidateVolumeCapabilitiesResponse_Result_{
-							&csi.ValidateVolumeCapabilitiesResponse_Result{
-								false,
-								"The requested fs_type does not match the existing filesystem on the volume.",
-							},
-						},
-					}
 					log.Printf("The volume already has a filesystem. Requested type is %v", mnt.GetFsType())
-					return response, nil
+					return nil, ErrMismatchedFilesystemType
 				}
 			}
 		}
 	}
 	response := &csi.ValidateVolumeCapabilitiesResponse{
-		&csi.ValidateVolumeCapabilitiesResponse_Result_{
-			&csi.ValidateVolumeCapabilitiesResponse_Result{
-				true,
-				"",
-			},
-		},
+		true,
+		"",
 	}
 	log.Printf("ValidateVolumeCapabilities succeeded")
 	return response, nil

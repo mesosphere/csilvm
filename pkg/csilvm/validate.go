@@ -45,18 +45,12 @@ func (s *Server) validateVersion(version *csi.Version) error {
 var ErrMissingVolumeCapabilities = status.Error(codes.InvalidArgument, "The volume_capabilities field must be specified.")
 
 func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapability) error {
-	if volumeCapabilities == nil {
+	if len(volumeCapabilities) == 0 {
 		return ErrMissingVolumeCapabilities
-	} else {
-		// This still requires clarification. See
-		// https://github.com/container-storage-interface/spec/issues/90
-		if len(volumeCapabilities) == 0 {
-			return ErrMissingVolumeCapabilities
-		}
-		for _, volumeCapability := range volumeCapabilities {
-			if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
-				return err
-			}
+	}
+	for _, volumeCapability := range volumeCapabilities {
+		if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -93,26 +87,6 @@ func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability
 		mode := accessMode.GetMode()
 		if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
 			return ErrMissingAccessModeMode
-		}
-	}
-	return nil
-}
-
-func (s *Server) validateVolumeHandle(volumeHandle *csi.VolumeHandle) *csi.Error {
-	if volumeHandle == nil {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume handle must be specified."},
-			},
-		}
-	} else {
-		id := volumeHandle.GetId()
-		if id == "" {
-			return &csi.Error{
-				&csi.Error_GeneralError_{
-					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_handle.id field must be specified."},
-				},
-			}
 		}
 	}
 	return nil
@@ -167,58 +141,19 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) e
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.ValidateVolumeCapabilitiesResponse{
-			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.ValidateVolumeCapabilitiesResponse{
-			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
-	volumeInfo := request.GetVolumeInfo()
-	if volumeInfo == nil {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_info field must be specified."}
-		response := &csi.ValidateVolumeCapabilitiesResponse{
-			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
-		return response, false
-	} else {
-		if err := s.validateVolumeHandle(volumeInfo.GetHandle()); err != nil {
-			response := &csi.ValidateVolumeCapabilitiesResponse{
-				&csi.ValidateVolumeCapabilitiesResponse_Error{
-					err,
-				},
-			}
-			log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
-			return response, false
-		}
+	volumeId := request.GetVolumeId()
+	if volumeId == nil {
+		return ErrMissingVolumeId
 	}
 	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities()); err != nil {
-		response := &csi.ValidateVolumeCapabilitiesResponse{
-			&csi.ValidateVolumeCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ValidateVolumeCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, bool) {

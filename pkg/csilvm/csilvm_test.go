@@ -581,12 +581,7 @@ func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
 	}
 }
 
-func testValidateVolumeCapabilitiesRequest(volumeHandle *csi.VolumeHandle, filesystem string, mountOpts []string) *csi.ValidateVolumeCapabilitiesRequest {
-	const capacityBytes = 100 << 20
-	volumeInfo := &csi.VolumeInfo{
-		capacityBytes,
-		volumeHandle,
-	}
+func testValidateVolumeCapabilitiesRequest(volumeId string, filesystem string, mountOpts []string) *csi.ValidateVolumeCapabilitiesRequest {
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			&csi.VolumeCapability_Block{
@@ -610,8 +605,9 @@ func testValidateVolumeCapabilitiesRequest(volumeHandle *csi.VolumeHandle, files
 	}
 	req := &csi.ValidateVolumeCapabilitiesRequest{
 		&csi.Version{0, 1, 0},
-		volumeInfo,
+		volumeId,
 		volumeCapabilities,
+		nil,
 	}
 	return req
 }
@@ -625,12 +621,8 @@ func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	createResult := createResp.GetResult()
-	volumeHandle := createResult.VolumeInfo.GetHandle()
-	req := testValidateVolumeCapabilitiesRequest(volumeHandle, "xfs", nil)
+	volumeId := createResp.GetVolumeInfo().GetId()
+	req := testValidateVolumeCapabilitiesRequest(volumeId, "xfs", nil)
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -638,11 +630,7 @@ func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	result := resp.GetResult()
-	if !result.GetSupported() {
+	if !resp.GetSupported() {
 		t.Fatal("Expected requested volume capabilities to be supported.")
 	}
 }
@@ -656,51 +644,47 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	createResult := createResp.GetResult()
-	volumeHandle := createResult.VolumeInfo.GetHandle()
+	volumeHandle := createResp.GetVolumeInfo().GetId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdirPath)
-	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	targetPath := filepath.Join(tmpdirPath, volumeId)
 	if err := os.Mkdir(targetPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(targetPath)
-	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
-	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err := client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err := publishResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	publishResult := publishResp.GetResult()
-	if publishResult == nil {
-		t.Fatal("Expected Result to not be nil.")
 	}
 	// Unpublish the volume now that it has been formatted.
-	unpublishReq := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
-	resp, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
+	unpublishReq := testNodeUnpublishVolumeRequest(volumeId, publishReq.TargetPath)
+	_, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.GetError(); err != nil {
-		t.Fatalf("Error: %+v", err)
-	}
-	validateReq := testValidateVolumeCapabilitiesRequest(volumeHandle, "xfs", nil)
+	validateReq := testValidateVolumeCapabilitiesRequest(volumeId, "xfs", nil)
 	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validateResult := validateResp.GetResult()
-	if !validateResult.GetSupported() {
+	if !validateResp.GetSupported() {
 		t.Fatal("Expected requested volume capabilities to be supported.")
+	}
+}
+
+func TestValidateVolumeCapabilities_MissingVolume(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	// Create the volume that we'll be publishing.
+	validateReq := testValidateVolumeCapabilitiesRequest("foo", "xfs", nil)
+	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
+	if !grpcErrorEqual(err, ErrVolumeNotFound) {
+		t.Fatal(err)
 	}
 }
 
@@ -713,51 +697,33 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	createResult := createResp.GetResult()
-	volumeHandle := createResult.VolumeInfo.GetHandle()
+	volumeId := createResp.GetVolumeInfo().GetId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdirPath)
-	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	targetPath := filepath.Join(tmpdirPath, volumeId)
 	if err := os.Mkdir(targetPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(targetPath)
-	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
-	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err := client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err := publishResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	publishResult := publishResp.GetResult()
-	if publishResult == nil {
-		t.Fatal("Expected Result to not be nil.")
 	}
 	// Unpublish the volume now that it has been formatted.
-	unpublishReq := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
-	resp, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
+	unpublishReq := testNodeUnpublishVolumeRequest(volumeId, publishReq.TargetPath)
+	_, err := client.NodeUnpublishVolume(context.Background(), unpublishReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.GetError(); err != nil {
-		t.Fatalf("Error: %+v", err)
-	}
-	validateReq := testValidateVolumeCapabilitiesRequest(volumeHandle, "ext4", nil)
-	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
-	if err != nil {
+	validateReq := testValidateVolumeCapabilitiesRequest(volumeId, "ext4", nil)
+	_, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
+	if !grpcErrorEqual(err, ErrMismatchedFilesystemType) {
 		t.Fatal(err)
-	}
-	validateResult := validateResp.GetResult()
-	if validateResult.GetSupported() {
-		t.Fatal("Expected requested volume capabilities to not be supported.")
 	}
 }
 
