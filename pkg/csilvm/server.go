@@ -1098,14 +1098,11 @@ func (s *Server) NodeGetCapabilities(
 	ctx context.Context,
 	request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	log.Printf("Serving NodeGetCapabilities: %v", request)
-	if response, ok := s.validateNodeGetCapabilitiesRequest(request); !ok {
-		return response, nil
-	}
-	response := &csi.NodeGetCapabilitiesResponse{
-		&csi.NodeGetCapabilitiesResponse_Result_{
-			&csi.NodeGetCapabilitiesResponse_Result{},
-		},
+	if err := s.validateNodeGetCapabilitiesRequest(request); err != nil {
+		log.Printf("NodeGetCapabilities: failed: %v", err)
+		return nil, err
 	}
 	log.Printf("NodeGetCapabilities succeeded")
+	response := &csi.NodeGetCapabilitiesResponse{}
 	return response, nil
 }

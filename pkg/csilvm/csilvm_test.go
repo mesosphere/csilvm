@@ -2375,13 +2375,9 @@ func TestNodeGetCapabilities(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testNodeGetCapabilitiesRequest()
-	resp, err := client.NodeGetCapabilities(context.Background(), req)
+	_, err := client.NodeGetCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
 	}
 }
 

@@ -265,24 +265,12 @@ func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequ
 	return nil
 }
 
-func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, bool) {
+func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.NodeGetCapabilitiesResponse{
-			&csi.NodeGetCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodeGetCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.NodeGetCapabilitiesResponse{
-			&csi.NodeGetCapabilitiesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodeGetCapabilities: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
