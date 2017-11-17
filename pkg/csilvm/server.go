@@ -236,41 +236,49 @@ func (s *Server) CreateVolume(
 	return response, nil
 }
 
+var ErrVolumeNotFound = status.Error(codes.NotFound, "The volume does not exist.")
+
 func (s *Server) DeleteVolume(
 	ctx context.Context,
 	request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	log.Printf("Serving DeleteVolume: %v", request)
-	if response, ok := s.validateDeleteVolumeRequest(request); !ok {
-		return response, nil
+	if err := s.validateDeleteVolumeRequest(request); err != nil {
+		log.Printf("DeleteVolume: failed: %v", err)
+		return nil, err
 	}
-	id := request.GetVolumeHandle().GetId()
+	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		log.Printf("Cannot find volume with id=%v", id)
-		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
+		return nil, ErrVolumeNotFound
 	}
 	log.Printf("Determining volume path")
 	path, err := lv.Path()
 	if err != nil {
 		log.Printf("Cannot determine volume path: err=%v", err)
-		return ErrDeleteVolume_VolumeDoesNotExist(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Error in Path(): err=%v",
+			err)
 	}
 	log.Printf("Deleting data on device %v", path)
 	if err := deleteDataOnDevice(path); err != nil {
 		log.Printf("Failed to delete data from device: err=%v", err)
-		return ErrDeleteVolume_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot delete data from device: err=%v",
+			err)
 	}
 	log.Printf("Removing volume")
 	if err := lv.Remove(); err != nil {
 		log.Printf("Failed to remove volume: err=%v", err)
-		return ErrDeleteVolume_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Failed to remove volume: err=%v",
+			err)
 	}
-	response := &csi.DeleteVolumeResponse{
-		&csi.DeleteVolumeResponse_Result_{
-			&csi.DeleteVolumeResponse_Result{},
-		},
-	}
+	response := &csi.DeleteVolumeResponse{}
 	log.Printf("DeleteVolume succeeded")
 	return response, nil
 }

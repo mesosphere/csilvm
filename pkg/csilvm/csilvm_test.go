@@ -285,7 +285,7 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	}
 }
 
-func TestCreateVolumeAlreadyExists(t *testing.T) {
+func TestCreateVolume_Idempotent(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testCreateVolumeRequest()
@@ -344,13 +344,9 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 }
 
 func testDeleteVolumeRequest(volumeId string) *csi.DeleteVolumeRequest {
-	volumeHandle := &csi.VolumeHandle{
-		volumeId,
-		nil,
-	}
 	req := &csi.DeleteVolumeRequest{
 		&csi.Version{0, 1, 0},
-		volumeHandle,
+		volumeId,
 		nil,
 	}
 	return req
@@ -364,19 +360,31 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if createResp.GetError() != nil {
-		t.Fatal("CreateVolume failed.")
-	}
-	result := createResp.GetResult()
-	info := result.VolumeInfo
-	id := info.GetHandle().GetId()
-	req := testDeleteVolumeRequest(id)
-	resp, err := client.DeleteVolume(context.Background(), req)
+	volumeId := createResp.GetVolumeInfo().GetId()
+	req := testDeleteVolumeRequest(volumeId)
+	_, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetResult() == nil || resp.GetError() != nil {
-		t.Fatalf("DeleteVolume failed: %+v", resp.GetError())
+}
+
+func TestDeleteVolume_Idempotent(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolumeInfo().GetId()
+	req := testDeleteVolumeRequest(volumeId)
+	_, err := client.DeleteVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err := client.DeleteVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrVolumeNotFound) {
+		t.Fatal(err)
 	}
 }
 
@@ -385,19 +393,8 @@ func TestDeleteVolumeUnknownVolume(t *testing.T) {
 	defer cleanup()
 	req := testDeleteVolumeRequest("missing-volume")
 	resp, err := client.DeleteVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrVolumeNotFound) {
 		t.Fatal(err)
-	}
-	grpcErr := resp.GetError()
-	errorCode := grpcErr.GetDeleteVolumeError().GetErrorCode()
-	errorDesc := grpcErr.GetDeleteVolumeError().GetErrorDescription()
-	expCode := csi.Error_DeleteVolumeError_VOLUME_DOES_NOT_EXIST
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := lvm.ErrLogicalVolumeNotFound.Error()
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -411,11 +408,8 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	vgname := "test-vg-" + uuid.New().String()
 	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := probeResp.GetError(); err != nil {
 		t.Fatal(err)
 	}
 	// Create the volume that we'll be publishing.
@@ -424,35 +418,24 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	createResult := createResp.GetResult()
-	volumeInfo := createResult.GetVolumeInfo()
-	volumeHandle := volumeInfo.GetHandle()
+	volumeId := createResp.GetVolumeInfo().GetId()
+	capacityBytes := createResp.GetVolumeInfo().GetCapacityBytes()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpdirPath)
-	targetPath := filepath.Join(tmpdirPath, volumeHandle.GetId())
+	targetPath := filepath.Join(tmpdirPath, volumeId)
 	if err := os.Mkdir(targetPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
-	publishReq := testNodePublishVolumeRequest(volumeHandle, targetPath, "xfs", nil)
-	publishResp, err := client.NodePublishVolume(context.Background(), publishReq)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err := client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err := publishResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
-	}
-	publishResult := publishResp.GetResult()
-	if publishResult == nil {
-		t.Fatal("Expected Result to not be nil.")
 	}
 	// Unpublish the volume when the test ends unless the test
 	// called unpublish already.
@@ -461,13 +444,10 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 		if alreadyUnpublished {
 			return
 		}
-		req := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+		req := testNodeUnpublishVolumeRequest(volumeId, publishReq.TargetPath)
 		resp, err := client.NodeUnpublishVolume(context.Background(), req)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if err := resp.GetError(); err != nil {
-			t.Fatalf("Error: %+v", err)
 		}
 	}()
 	// Ensure that the device was mounted.
@@ -480,20 +460,19 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Fill the file with 1's.
-	capacity := volumeInfo.GetCapacityBytes()
 	ones := repeater{1}
-	wrote, err := io.CopyN(file, ones, int64(capacity))
+	wrote, err := io.CopyN(file, ones, int64(capacityBytes))
 	if err.(*os.PathError).Err != syscall.ENOSPC {
 		t.Fatalf("Expected ENOSPC but got %v", err)
 	}
 	file.Close()
 	// Check that we wrote at least half the volume's capacity full of ones.
 	// We can't check for equality due to filesystem metadata, etc.
-	if uint64(wrote) < capacity/2 {
-		t.Fatalf("Failed to write even half of the volume: %v of %v", wrote, capacity)
+	if uint64(wrote) < capacityBytes/2 {
+		t.Fatalf("Failed to write even half of the volume: %v of %v", wrote, capacityBytes)
 	}
 	// Unpublish the volume.
-	req := testNodeUnpublishVolumeRequest(volumeHandle, publishReq.TargetPath)
+	req := testNodeUnpublishVolumeRequest(volumeId, publishReq.TargetPath)
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -502,14 +481,10 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 		t.Fatalf("Error: %+v", err)
 	}
 	alreadyUnpublished = true
-	id := volumeHandle.GetId()
-	deleteReq := testDeleteVolumeRequest(id)
+	deleteReq := testDeleteVolumeRequest(volumeId)
 	deleteResp, err := client.DeleteVolume(context.Background(), deleteReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if deleteResp.GetResult() == nil || deleteResp.GetError() != nil {
-		t.Fatalf("DeleteVolume failed: %+v", deleteResp.GetError())
 	}
 	// Create a new volume and check that it contains only zeros.
 	createReq.Name += "-2"
@@ -520,9 +495,9 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err := createResp.GetError(); err != nil {
 		t.Fatalf("error: %+v", err)
 	}
-	createResult = createResp.GetResult()
-	volumeHandle = createResult.VolumeInfo.GetHandle()
-	targetPath = filepath.Join(tmpdirPath, volumeHandle.GetId())
+	volumeId = createResp.GetVolumeInfo().GetId()
+	capacityBytes = createResp.GetVolumeInfo().GetCapacityBytes()
+	targetPath = filepath.Join(tmpdirPath, volumeId)
 	if file, err := os.Create(targetPath); err != nil {
 		t.Fatal(err)
 	} else {
@@ -533,13 +508,10 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 		}
 	}
 	defer os.RemoveAll(targetPath)
-	publishReq = testNodePublishVolumeRequest(volumeHandle, targetPath, "block", nil)
+	publishReq = testNodePublishVolumeRequest(volumeId, targetPath, "block", nil)
 	publishResp, err = client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err := publishResp.GetError(); err != nil {
-		t.Fatalf("error: %+v", err)
 	}
 	publishResult = publishResp.GetResult()
 	if publishResult == nil {
@@ -560,8 +532,8 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected device to consists of zeros only.")
 	}
-	if uint64(n) != volumeInfo.GetCapacityBytes() {
-		t.Fatalf("Bad read, expected device to have size %d but read only %d bytes", volumeInfo.GetCapacityBytes(), n)
+	if uint64(n) != capacityBytes {
+		t.Fatalf("Bad read, expected device to have size %d but read only %d bytes", capacityBytes, n)
 	}
 }
 

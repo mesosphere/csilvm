@@ -149,35 +149,20 @@ func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) e
 	return nil
 }
 
-func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, bool) {
+var ErrMissingVolumeId = status.Error(codes.InvalidArgument, "The volume_id field must be specified.")
+
+func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.DeleteVolumeResponse{
-			&csi.DeleteVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("DeleteVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.DeleteVolumeResponse{
-			&csi.DeleteVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("DeleteVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
-	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
-		response := &csi.DeleteVolumeResponse{
-			&csi.DeleteVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("DeleteVolume: failed: %+v", err)
-		return response, false
+	volumeId := request.GetVolumeId()
+	if volumeId == nil {
+		return ErrMissingVolumeId
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
