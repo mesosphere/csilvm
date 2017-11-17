@@ -67,7 +67,7 @@ var ErrMissingAccessModeMode = status.Error(
 	codes.InvalidArgument,
 	"The volume_capability.access_mode.mode field must be specified.")
 
-func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability, unsupportedFsOK bool) *csi.Error {
+func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability, unsupportedFsOK bool) error {
 	accessType := volumeCapability.GetAccessType()
 	if accessType == nil {
 		return ErrMissingAccessType
@@ -134,7 +134,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) e
 		return err
 	}
 	volumeId := request.GetVolumeId()
-	if volumeId == nil {
+	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
 	return nil
@@ -148,7 +148,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 		return err
 	}
 	volumeId := request.GetVolumeId()
-	if volumeId == nil {
+	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
 	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities()); err != nil {
@@ -207,11 +207,11 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 		return err
 	}
 	volumeId := request.GetVolumeId()
-	if volumeId == nil {
+	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
 	publishVolumeInfo := request.GetPublishVolumeInfo()
-	if publishVolumeInfo != "" {
+	if publishVolumeInfo != nil {
 		return ErrSpecifiedPublishVolumeInfo
 	}
 	targetPath := request.GetTargetPath()
@@ -238,7 +238,7 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 		return err
 	}
 	volumeId := request.GetVolumeId()
-	if volumeId == nil {
+	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
 	targetPath := request.GetTargetPath()
@@ -252,6 +252,13 @@ func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) error {
 	if err := s.validateRemoving(); err != nil {
 		return err
 	}
+	if err := s.validateVersion(request.GetVersion()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) validateNodeProbeRequest(request *csi.NodeProbeRequest) error {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}

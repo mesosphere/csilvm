@@ -16,6 +16,8 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const PluginName = "io.mesosphere.dcos.storage/csilvm"
@@ -125,6 +127,7 @@ func (s *Server) GetSupportedVersions(
 	response := &csi.GetSupportedVersionsResponse{
 		s.supportedVersions(),
 	}
+	log.Printf("Served GetSupportedVersions: %v", response)
 	return response, nil
 }
 
@@ -137,7 +140,7 @@ func (s *Server) GetPluginInfo(
 		return nil, err
 	}
 	response := &csi.GetPluginInfoResponse{PluginName, PluginVersion, nil}
-	log.Printf("Served GetSupportedVersions: %+v", result)
+	log.Printf("Served GetPluginInfo: %v", response)
 	return response, nil
 }
 
@@ -152,7 +155,7 @@ func (s *Server) ControllerProbe(
 		return nil, err
 	}
 	response := &csi.ControllerProbeResponse{}
-	log.Printf("ControllerProbe succeeded")
+	log.Printf("Served ControllerProbe: %v", response)
 	return response, nil
 }
 
@@ -180,7 +183,8 @@ func (s *Server) CreateVolume(
 				nil,
 			},
 		}
-		return response, ErrVolumeAlreadyExists
+		log.Printf("Served CreateVolume: %v", response)
+		return response, nil
 	}
 	log.Printf("Volume with id=%v does not already exist", volumeId)
 	// Determine the capacity, default to maximum size.
@@ -232,7 +236,7 @@ func (s *Server) CreateVolume(
 			nil,
 		},
 	}
-	log.Printf("CreateVolume succeeded: volumeId=%v, size=%v", volumeId, lv.SizeInBytes())
+	log.Printf("Served CreateVolume: %v", response)
 	return response, nil
 }
 
@@ -279,7 +283,7 @@ func (s *Server) DeleteVolume(
 			err)
 	}
 	response := &csi.DeleteVolumeResponse{}
-	log.Printf("DeleteVolume succeeded")
+	log.Printf("Served DeleteVolume: %v", response)
 	return response, nil
 }
 
@@ -325,7 +329,7 @@ func (s *Server) ControllerUnpublishVolume(
 }
 
 var ErrMismatchedFilesystemType = status.Error(
-	status.InvalidArgument,
+	codes.InvalidArgument,
 	"The requested fs_type does not match the existing filesystem on the volume.")
 
 func (s *Server) ValidateVolumeCapabilities(
@@ -378,7 +382,7 @@ func (s *Server) ValidateVolumeCapabilities(
 		true,
 		"",
 	}
-	log.Printf("ValidateVolumeCapabilities succeeded")
+	log.Printf("Served ValidateVolumeCapabilities: %v", response)
 	return response, nil
 }
 
@@ -402,7 +406,7 @@ func (s *Server) ListVolumes(
 			"Cannot list volume names: err=%v",
 			err)
 	}
-	var entries []*csi.ListVolumesResponse_Result_Entry
+	var entries []*csi.ListVolumesResponse_Entry
 	for _, volname := range volnames {
 		log.Printf("Looking up volume '%v'", volname)
 		lv, err := s.volumeGroup.LookupLogicalVolume(volname)
@@ -423,7 +427,7 @@ func (s *Server) ListVolumes(
 		entries,
 		"",
 	}
-	log.Printf("ListVolumes succeeded")
+	log.Printf("Served ListVolumes: %v", response)
 	return response, nil
 }
 
@@ -439,6 +443,7 @@ func (s *Server) GetCapacity(
 		log.Printf("Running with '-remove-volume-group', reporting 0 capacity")
 		// We report 0 capacity if configured to remove the volume group.
 		response := &csi.GetCapacityResponse{0}
+		log.Printf("Served GetCapacity: %v", response)
 		return response, nil
 	}
 	for _, volumeCapability := range request.GetVolumeCapabilities() {
@@ -450,6 +455,7 @@ func (s *Server) GetCapacity(
 			if _, ok := s.supportedFilesystems[fstype]; !ok {
 				// Zero capacity for unsupported filesystem type.
 				response := &csi.GetCapacityResponse{0}
+				log.Printf("Served GetCapacity: %v", response)
 				return response, nil
 			}
 		}
@@ -464,7 +470,7 @@ func (s *Server) GetCapacity(
 	}
 	log.Printf("BytesFree: %v", bytesFree)
 	response := &csi.GetCapacityResponse{bytesFree}
-	log.Printf("GetCapacity succeeded")
+	log.Printf("Served GetCapacity: %v", response)
 	return response, nil
 }
 
@@ -510,7 +516,7 @@ func (s *Server) ControllerGetCapabilities(
 	}
 	log.Printf("ControllerGetCapabilities: [CREATE_DELETE_VOLUME, LIST_VOLUMES, GET_CAPACITY]")
 	response := &csi.ControllerGetCapabilitiesResponse{capabilities}
-	log.Printf("ControllerGetCapabilities succeeded")
+	log.Printf("Serrved ControllerGetCapabilities: %v", response)
 	return response, nil
 }
 
@@ -564,22 +570,24 @@ func (s *Server) NodePublishVolume(
 	targetPath := request.GetTargetPath()
 	log.Printf("Target path is %v", targetPath)
 	readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
-	readonly |= request.GetReadonly()
+	readonly = readonly || request.GetReadonly()
 	log.Printf("Mounting readonly: %v", readonly)
 	switch accessType := request.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
 		if err := s.nodePublishVolume_Block(sourcePath, targetPath, readonly); err != nil {
-			return err
+			return nil, err
 		}
 	case *csi.VolumeCapability_Mount:
 		fstype := request.GetVolumeCapability().GetMount().GetFsType()
-		if err := s.nodePublishVolume_Mount(sourcePath, targetPath, readonly, fstype); err != nil {
-			return err
+		mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
+		if err := s.nodePublishVolume_Mount(sourcePath, targetPath, readonly, fstype, mountOptions); err != nil {
+			return nil, err
 		}
 	default:
 		panic(fmt.Sprintf("lvm: unknown access_type: %+v", accessType))
 	}
 	response := &csi.NodePublishVolumeResponse{}
+	log.Printf("Served NodePublishVolume: %v", response)
 	return response, nil
 }
 
@@ -656,7 +664,7 @@ func (s *Server) nodePublishVolume_Block(sourcePath, targetPath string, readonly
 	return nil
 }
 
-func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly bool, fstype string) error {
+func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly bool, fstype string, mountOptions []string) error {
 	log.Printf("Attempting to publish volume %v as MOUNT_DEVICE to %v", sourcePath, targetPath)
 	var flags uintptr
 	if readonly {
@@ -741,7 +749,6 @@ func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly
 		log.Printf("Requested fstype %v does not match existing fstype %v", fstype, existingFstype)
 		return ErrMismatchedFilesystemType
 	}
-	mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
 	mountOptionsStr := strings.Join(mountOptions, ",")
 	// Try to mount the volume by assuming it is correctly formatted.
 	log.Printf("Mounting %v at %v fstype=%v, flags=%v mountOptions=%v", sourcePath, targetPath, fstype, flags, mountOptionsStr)
@@ -801,7 +808,7 @@ func (s *Server) NodeUnpublishVolume(
 	log.Printf("Serving NodeUnpublishVolume: %v", request)
 	if err := s.validateNodeUnpublishVolumeRequest(request); err != nil {
 		log.Printf("NodeUnpublishVolume: failed: %v", err)
-		return err
+		return nil, err
 	}
 	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
@@ -815,7 +822,7 @@ func (s *Server) NodeUnpublishVolume(
 	mp, err := getMountAt(targetPath)
 	if err != nil {
 		log.Printf("Cannot get mount info at %v", targetPath)
-		return status.Errorf(
+		return nil, status.Errorf(
 			codes.Internal,
 			"Cannot get mount info at %v: err=%v",
 			targetPath, err)
@@ -835,18 +842,18 @@ func (s *Server) NodeUnpublishVolume(
 		log.Printf("Failed to perform unmount: err=%v", err)
 		_, ok := err.(syscall.Errno)
 		if !ok {
-			return status.Errorf(
+			return nil, status.Errorf(
 				codes.Internal,
 				"Failed to perform unmount: err=%v",
 				err)
 		}
-		return status.Errorf(
+		return nil, status.Errorf(
 			codes.FailedPrecondition,
 			"Failed to perform unmount: err=%v",
 			err)
 	}
 	response := &csi.NodeUnpublishVolumeResponse{}
-	log.Printf("NodeUnpublishVolume succeeded")
+	log.Printf("Served NodeUnpublishVolume: %v", response)
 	return response, nil
 }
 
@@ -859,7 +866,7 @@ func (s *Server) GetNodeID(
 		return nil, err
 	}
 	response := &csi.GetNodeIDResponse{}
-	log.Printf("GetNodeID succeeded")
+	log.Printf("Served GetNodeID: %v", response)
 	return response, nil
 }
 
@@ -889,7 +896,7 @@ func (s *Server) NodeProbe(
 	log.Printf("Serving NodeProbe: %v", request)
 	if err := s.validateNodeProbeRequest(request); err != nil {
 		log.Printf("NodeProbe: failed: %v", err)
-		return err
+		return nil, err
 	}
 	log.Printf("Validating tags: %v", s.tags)
 	for _, tag := range s.tags {
@@ -909,8 +916,8 @@ func (s *Server) NodeProbe(
 			// group but it already does not exist. Return
 			// success.
 			log.Printf("Running in '-remove-volume-group' mode and volume group cannot be found.")
-			log.Printf("NodeProbe succeeded")
 			response := &csi.NodeProbeResponse{}
+			log.Printf("Served NodeProbe: %v", response)
 			return response, nil
 		}
 		log.Printf("Cannot find volume group %v", s.vgname)
@@ -1015,7 +1022,7 @@ func (s *Server) NodeProbe(
 	log.Printf("Volume group tags: %v", tags)
 	if err := s.checkVolumeGroupTags(tags); err != nil {
 		log.Printf("Volume group tags did not match expected: err=%v", err)
-		return nil, status.Error(
+		return nil, status.Errorf(
 			codes.FailedPrecondition,
 			"Volume group tags did not match expected: err=%v",
 			err)
@@ -1035,13 +1042,13 @@ func (s *Server) NodeProbe(
 				err)
 		}
 		log.Printf("Removed volume group %v", s.vgname)
-		log.Printf("NodeProbe succeeded")
 		response := &csi.NodeProbeResponse{}
+		log.Printf("Served NodeProbe: %v", response)
 		return response, nil
 	}
 	s.volumeGroup = volumeGroup
-	log.Printf("NodeProbe succeeded")
 	response := &csi.NodeProbeResponse{}
+	log.Printf("Served NodeProbe: %v", response)
 	return response, nil
 }
 
@@ -1073,10 +1080,9 @@ func calculatePVDiff(existing, pvnames []string) (missing, unexpected []string) 
 	return missing, unexpected
 }
 
-func (s *Server) checkVolumeGroupTags(tags []string) *csi.NodeProbeResponse {
+func (s *Server) checkVolumeGroupTags(tags []string) error {
 	if len(tags) != len(s.tags) {
-		err := fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
-		return ErrNodeProbe_BadPluginConfig(err)
+		return fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
 	}
 	for _, t1 := range tags {
 		had := false
@@ -1087,8 +1093,7 @@ func (s *Server) checkVolumeGroupTags(tags []string) *csi.NodeProbeResponse {
 			}
 		}
 		if !had {
-			err := fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
-			return ErrNodeProbe_BadPluginConfig(err)
+			return fmt.Errorf("csilvm: Configured tags don't match existing tags: %v != %v", s.tags, tags)
 		}
 	}
 	return nil
@@ -1102,7 +1107,7 @@ func (s *Server) NodeGetCapabilities(
 		log.Printf("NodeGetCapabilities: failed: %v", err)
 		return nil, err
 	}
-	log.Printf("NodeGetCapabilities succeeded")
 	response := &csi.NodeGetCapabilitiesResponse{}
+	log.Printf("Served NodeGetCapabilities: %v", response)
 	return response, nil
 }

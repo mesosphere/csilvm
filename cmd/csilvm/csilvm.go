@@ -26,7 +26,7 @@ func (f *stringsFlag) String() string {
 }
 
 func (f *stringsFlag) Set(tag string) error {
-	*f = append(*f, v)
+	*f = append(*f, tag)
 	return nil
 }
 
