@@ -1896,19 +1896,11 @@ func TestNodeProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
 	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
-	if err != nil {
+	experr := status.Error(
+		codes.FailedPrecondition,
+		"Could not stat device /dev/does/not/exist: err=stat /dev/does/not/exist: no such file or directory")
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetNodeProbeError().GetErrorCode()
-	errorDesc := grpcErr.GetNodeProbeError().GetErrorDescription()
-	expCode := csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := "stat /dev/does/not/exist: no such file or directory"
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -1945,19 +1937,13 @@ func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
 	probeResp, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
-	if err != nil {
+	experr := status.Errorf(
+		codes.FailedPrecondition,
+		"Cannot create LVM2 physical volume %s: err=lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem? (-1)",
+		loop1.Path(),
+		loop1.Path())
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetNodeProbeError().GetErrorCode()
-	errorDesc := grpcErr.GetNodeProbeError().GetErrorDescription()
-	expCode := csi.Error_NodeProbeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := fmt.Sprintf("lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem? (-1)", loop1.Path())
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -1979,11 +1965,8 @@ func TestNodeProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
 	vgname := "test-vg-" + uuid.New().String()
 	client, cleanup := prepareNodeProbeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.NodeProbe(context.Background(), testProbeNodeRequest())
+	_, err := client.NodeProbe(context.Background(), testProbeNodeRequest())
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := probeResp.GetError(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2039,11 +2022,8 @@ func TestProbeNode_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testin
 	vgname := "test-vg-" + uuid.New().String()
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames, RemoveVolumeGroup())
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := probeResp.GetError(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2079,13 +2059,9 @@ func TestProbeNode_ExistingVolumeGroup(t *testing.T) {
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := probeResp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
 	}
 }
 
@@ -2120,20 +2096,12 @@ func TestProbeNode_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
-	if err != nil {
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	experr := status.Error(
+		codes.FailedPrecondition,
+		"Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]")
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := "Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]"
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -2169,19 +2137,12 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
 	defer cleanup()
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
-	if err != nil {
+	experr := status.Errorf(
+		codes.FailedPrecondition,
+		"Volume group contains unexpected volumes %v and is missing volumes []",
+		[]string{loop2.Path()})
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes []", []string{loop2.Path()})
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -2227,13 +2188,9 @@ func TestProbeNode_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 		}
 		vgnamesExpect = append(vgnamesExpect, name)
 	}
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := probeResp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
 	}
 	vgnamesAfter, err := lvm.ListVolumeGroupNames()
 	if err != nil {
@@ -2276,19 +2233,12 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolum
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames, RemoveVolumeGroup())
 	defer cleanup()
 	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
-	if err != nil {
+	experr := status.Errorf(
+		codes.FailedPrecondition,
+		"Volume group contains unexpected volumes %v and is missing volumes []",
+		[]string{loop2.Path()})
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes []", []string{loop2.Path()})
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -2324,13 +2274,9 @@ func TestProbeNode_ExistingVolumeGroup_WithTag(t *testing.T) {
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := probeResp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
 	}
 }
 
@@ -2366,20 +2312,13 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames)
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
-	if err != nil {
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	experr := status.Error(
+		codes.FailedPrecondition,
+		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [] != [%s]",
+		tag)
+	if !grpcErrorEqual(err, experr) != nil {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := fmt.Sprintf("csilvm: Configured tags don't match existing tags: [] != [%s]", tag)
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 
@@ -2415,20 +2354,13 @@ func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	tag := "blue"
 	client, cleanup := prepareProbeNodeTest(vgname, pvnames, Tag(tag))
 	defer cleanup()
-	probeResp, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
-	if err != nil {
+	_, err := client.ProbeNode(context.Background(), testProbeNodeRequest())
+	experr := status.Error(
+		codes.FailedPrecondition,
+		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [blue] != [some-other-tag]",
+		tag)
+	if !grpcErrorEqual(err, experr) != nil {
 		t.Fatal(err)
-	}
-	grpcErr := probeResp.GetError()
-	errorCode := grpcErr.GetProbeNodeError().GetErrorCode()
-	errorDesc := grpcErr.GetProbeNodeError().GetErrorDescription()
-	expCode := csi.Error_ProbeNodeError_BAD_PLUGIN_CONFIG
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
-	}
-	expDesc := fmt.Sprintf("csilvm: Configured tags don't match existing tags: [blue] != [some-other-tag]")
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
 	}
 }
 

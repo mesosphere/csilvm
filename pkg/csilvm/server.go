@@ -887,13 +887,18 @@ func (s *Server) NodeProbe(
 	ctx context.Context,
 	request *csi.NodeProbeRequest) (*csi.NodeProbeResponse, error) {
 	log.Printf("Serving NodeProbe: %v", request)
-	if response, ok := s.validateNodeProbeRequest(request); !ok {
-		return response, nil
+	if err := s.validateNodeProbeRequest(request); err != nil {
+		log.Printf("NodeProbe: failed: %v", err)
+		return err
 	}
 	log.Printf("Validating tags: %v", s.tags)
 	for _, tag := range s.tags {
 		if err := lvm.ValidateTag(tag); err != nil {
-			return ErrNodeProbe_BadPluginConfig(err), nil
+			log.Printf("Invalid tag '%v': err=%v", err)
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"Invalid tag '%v': err=%v",
+				err)
 		}
 	}
 	log.Printf("Looking up volume group %v", s.vgname)
@@ -903,13 +908,9 @@ func (s *Server) NodeProbe(
 			// We've been instructed to remove the volume
 			// group but it already does not exist. Return
 			// success.
-			response := &csi.NodeProbeResponse{
-				&csi.NodeProbeResponse_Result_{
-					&csi.NodeProbeResponse_Result{},
-				},
-			}
 			log.Printf("Running in '-remove-volume-group' mode and volume group cannot be found.")
 			log.Printf("NodeProbe succeeded")
+			response := &csi.NodeProbeResponse{}
 			return response, nil
 		}
 		log.Printf("Cannot find volume group %v", s.vgname)
@@ -931,37 +932,55 @@ func (s *Server) NodeProbe(
 				// First, wipe the partition table on the device in accordance
 				// with the `pvcreate` man page.
 				if err := statDevice(pvname); err != nil {
-					log.Printf("Stat device %v: err=%v", pvname, err)
-					return ErrNodeProbe_BadPluginConfig(err), nil
+					log.Printf("Could not stat device %v: err=%v", pvname, err)
+					return nil, status.Errorf(
+						codes.FailedPrecondition,
+						"Could not stat device %v: err=%v",
+						pvname, err)
 				}
 				log.Printf("Stat device %v", pvname)
 				log.Printf("Zeroing partition table on %v", pvname)
 				if err := zeroPartitionTable(pvname); err != nil {
 					log.Printf("Cannot zero partition table on %v: err=%v", pvname, err)
-					return ErrNodeProbe_GeneralError_Undefined(err), nil
+					return nil, status.Errorf(
+						codes.Internal,
+						"Cannot zero partition table on %v: err=%v",
+						pvname, err)
 				}
 				log.Printf("Creating LVM2 physical volume %v", pvname)
 				pv, err := lvm.CreatePhysicalVolume(pvname)
 				if err != nil {
 					log.Printf("Cannot create LVM2 physical volume %v: err=%v", pvname, err)
-					return ErrNodeProbe_BadPluginConfig(err), nil
+					return nil, status.Errorf(
+						codes.FailedPrecondition,
+						"Cannot create LVM2 physical volume %v: err=%v",
+						pvname, err)
 				}
 				log.Printf("Created LVM2 physical volume %v", pvname)
 				pvs = append(pvs, pv)
 				continue
 			}
-			return ErrNodeProbe_GeneralError_Undefined(err), nil
+			return nil, status.Errorf(
+				codes.Internal,
+				"Cannot lookup physical volume %v: err=%v",
+				pvname, err)
 		}
 		log.Printf("Creating volume group %v with physical volumes %v and tags %v", s.vgname, s.pvnames, s.tags)
 		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, s.tags)
 		if err != nil {
 			log.Printf("Cannot create volume group %v: err=%v", s.vgname, err)
-			return ErrNodeProbe_GeneralError_Undefined(err), nil
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"Cannot create volume group %v: err=%v",
+				s.vgname, err)
 		}
 		log.Printf("Created volume group %v", s.vgname)
 	} else if err != nil {
-		log.Printf("Failed to lookup volume group %v: err=%v", s.vgname, err)
-		return ErrNodeProbe_GeneralError_Undefined(err), nil
+		log.Printf("Cannot lookup volume group %v: err=%v", s.vgname, err)
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot lookup volume group %v: err=%v",
+			s.vgname, err)
 	}
 	log.Printf("Found volume group %v", s.vgname)
 	// The volume group already exists. We check that the list of
@@ -969,14 +988,67 @@ func (s *Server) NodeProbe(
 	log.Printf("Listing physical volumes in volume group %s", s.vgname)
 	existing, err := volumeGroup.ListPhysicalVolumeNames()
 	if err != nil {
-		log.Printf("Failed to list physical volumes: err=%v", err)
-		return ErrNodeProbe_GeneralError_Undefined(err), nil
+		log.Printf("Cannot list physical volumes: err=%v", err)
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot list physical volumes: err=%v",
+			err)
 	}
-	missing := []string{}
-	unexpected := []string{}
+	missing, unexpected := calculatePVDiff(existing, s.pvnames)
+	if len(missing) != 0 || len(unexpected) != 0 {
+		msg := fmt.Sprintf("Volume group contains unexpected volumes %v and is missing volumes %v", unexpected, missing)
+		log.Printf(msg)
+		return nil, status.Error(
+			codes.FailedPrecondition,
+			msg)
+	}
+	// We check that the volume group tags match those we expect.
+	log.Printf("Looking up volume group tags")
+	tags, err := volumeGroup.Tags()
+	if err != nil {
+		log.Printf("Cannot lookup tags: err=%v", err)
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot lookup tags %v: err=%v",
+			err)
+	}
+	log.Printf("Volume group tags: %v", tags)
+	if err := s.checkVolumeGroupTags(tags); err != nil {
+		log.Printf("Volume group tags did not match expected: err=%v", err)
+		return nil, status.Error(
+			codes.FailedPrecondition,
+			"Volume group tags did not match expected: err=%v",
+			err)
+	}
+	// The volume group is configured as expected.
+	log.Printf("Volume group matches configuration")
+	if s.removingVolumeGroup {
+		log.Printf("Running with '-remove-volume-group'.")
+		// The volume group matches our config. We remove it
+		// as requested in the startup flags.
+		log.Printf("Removing volume group %v", s.vgname)
+		if err := volumeGroup.Remove(); err != nil {
+			log.Printf("Failed to remove volume group: err=%v", err)
+			return nil, status.Errorf(
+				codes.Internal,
+				"Failed to remove volume group: err=%v",
+				err)
+		}
+		log.Printf("Removed volume group %v", s.vgname)
+		log.Printf("NodeProbe succeeded")
+		response := &csi.NodeProbeResponse{}
+		return response, nil
+	}
+	s.volumeGroup = volumeGroup
+	log.Printf("NodeProbe succeeded")
+	response := &csi.NodeProbeResponse{}
+	return response, nil
+}
+
+func calculatePVDiff(existing, pvnames []string) (missing, unexpected []string) {
 	for _, epvname := range existing {
 		had := false
-		for _, pvname := range s.pvnames {
+		for _, pvname := range pvnames {
 			if epvname == pvname {
 				had = true
 				break
@@ -986,7 +1058,7 @@ func (s *Server) NodeProbe(
 			unexpected = append(unexpected, epvname)
 		}
 	}
-	for _, pvname := range s.pvnames {
+	for _, pvname := range pvnames {
 		had := false
 		for _, epvname := range existing {
 			if epvname == pvname {
@@ -998,51 +1070,7 @@ func (s *Server) NodeProbe(
 			missing = append(missing, pvname)
 		}
 	}
-	if len(missing) != 0 || len(unexpected) != 0 {
-		err := fmt.Errorf("Volume group contains unexpected volumes %v and is missing volumes %v", unexpected, missing)
-		log.Printf("Unexpected physical volumes in volume group: err=%v", err)
-		return ErrNodeProbe_BadPluginConfig(err), nil
-	}
-	// We check that the volume group tags match those we expect.
-	log.Printf("Looking up volume group tags")
-	tags, err := volumeGroup.Tags()
-	if err != nil {
-		log.Printf("Failed to lookup tags: err=%v", err)
-		return ErrNodeProbe_GeneralError_Undefined(err), nil
-	}
-	log.Printf("Volume group tags: %v", tags)
-	if err := s.checkVolumeGroupTags(tags); err != nil {
-		log.Printf("Volume group tags did not match expected: err=%v", err)
-		return err, nil
-	}
-	// The volume group is configured as expected.
-	log.Printf("Volume group matches configuration")
-	if s.removingVolumeGroup {
-		log.Printf("Running with '-remove-volume-group'.")
-		// The volume group matches our config. We remove it
-		// as requested in the startup flags.
-		log.Printf("Removing volume group %v", s.vgname)
-		if err := volumeGroup.Remove(); err != nil {
-			log.Printf("Failed to remove volume group: err=%v", err)
-			return ErrNodeProbe_GeneralError_Undefined(err), nil
-		}
-		log.Printf("Removed volume group %v", s.vgname)
-		response := &csi.NodeProbeResponse{
-			&csi.NodeProbeResponse_Result_{
-				&csi.NodeProbeResponse_Result{},
-			},
-		}
-		log.Printf("NodeProbe succeeded")
-		return response, nil
-	}
-	s.volumeGroup = volumeGroup
-	response := &csi.NodeProbeResponse{
-		&csi.NodeProbeResponse_Result_{
-			&csi.NodeProbeResponse_Result{},
-		},
-	}
-	log.Printf("NodeProbe succeeded")
-	return response, nil
+	return missing, unexpected
 }
 
 func (s *Server) checkVolumeGroupTags(tags []string) *csi.NodeProbeResponse {
