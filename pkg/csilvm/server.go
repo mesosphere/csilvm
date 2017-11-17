@@ -854,14 +854,11 @@ func (s *Server) GetNodeID(
 	ctx context.Context,
 	request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, error) {
 	log.Printf("Serving GetNodeID: %v", request)
-	if response, ok := s.validateGetNodeIDRequest(request); !ok {
-		return response, nil
+	if err := s.validateGetNodeIDRequest(request); err != nil {
+		log.Printf("GetNodeId: failed: %v", err)
+		return nil, err
 	}
-	response := &csi.GetNodeIDResponse{
-		&csi.GetNodeIDResponse_Result_{
-			&csi.GetNodeIDResponse_Result{},
-		},
-	}
+	response := &csi.GetNodeIDResponse{}
 	log.Printf("GetNodeID succeeded")
 	return response, nil
 }

@@ -248,26 +248,14 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 	return nil
 }
 
-func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, bool) {
+func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.GetNodeIDResponse{
-			&csi.GetNodeIDResponse_Error{
-				err,
-			},
-		}
-		log.Printf("GetNodeID: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.GetNodeIDResponse{
-			&csi.GetNodeIDResponse_Error{
-				err,
-			},
-		}
-		log.Printf("GetNodeID: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequest) error {

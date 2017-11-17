@@ -1768,11 +1768,7 @@ func TestGetNodeID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
-	}
-	if result.GetNodeId() != nil {
+	if resp.GetNodeId() != nil {
 		t.Fatalf("Expected node_id to be nil.")
 	}
 }
