@@ -431,34 +431,39 @@ func (s *Server) GetCapacity(
 	ctx context.Context,
 	request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	log.Printf("Serving GetCapacity: %v", request)
-	if response, ok := s.validateGetCapacityRequest(request); !ok {
-		return response, nil
+	if err := s.validateGetCapacityRequest(request); err != nil {
+		log.Printf("GetCapacity: failed: %v", err)
+		return err
 	}
 	if s.removingVolumeGroup {
 		log.Printf("Running with '-remove-volume-group', reporting 0 capacity")
 		// We report 0 capacity if configured to remove the volume group.
-		response := &csi.GetCapacityResponse{
-			&csi.GetCapacityResponse_Result_{
-				&csi.GetCapacityResponse_Result{
-					0,
-				},
-			},
-		}
+		response := &csi.GetCapacityResponse{0}
 		return response, nil
+	}
+	for _, volumeCapability := range request.GetVolumeCapabilities() {
+		// Check for unsupported filesystem type in order to return 0
+		// capacity if it isn't supported.
+		if mnt := volumeCapability.GetMount(); mnt != nil {
+			// This is a MOUNT_VOLUME request.
+			fstype := mnt.GetFsType()
+			if _, ok := s.supportedFilesystems[fstype]; !ok {
+				// Zero capacity for unsupported filesystem type.
+				response := &csi.GetCapacityResponse{0}
+				return response, nil
+			}
+		}
 	}
 	bytesFree, err := s.volumeGroup.BytesFree()
 	if err != nil {
 		log.Printf("Error in BytesFree: err=%v", err)
-		return ErrGetCapacity_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Error in BytesFree: err=%v",
+			err)
 	}
 	log.Printf("BytesFree: %v", bytesFree)
-	response := &csi.GetCapacityResponse{
-		&csi.GetCapacityResponse_Result_{
-			&csi.GetCapacityResponse_Result{
-				bytesFree,
-			},
-		},
-	}
+	response := &csi.GetCapacityResponse{bytesFree}
 	log.Printf("GetCapacity succeeded")
 	return response, nil
 }

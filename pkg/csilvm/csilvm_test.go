@@ -833,13 +833,12 @@ func TestGetCapacity_NoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
 	// Two extents are reserved for metadata.
 	const extentSize = uint64(2 << 20)
 	const metadataExtents = 2
 	exp := pvsize - extentSize*metadataExtents
-	if result.GetAvailableCapacity() != exp {
-		t.Fatalf("Expected %d bytes free but got %v.", exp, result.GetAvailableCapacity())
+	if got := resp.GetAvailableCapacity(); got != exp {
+		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
 	}
 }
 
@@ -853,21 +852,17 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := createResp.GetError(); err != nil {
-		t.Fatalf("Error: %+v", err)
-	}
 	req := testGetCapacityRequest("xfs")
 	resp, err := client.GetCapacity(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
 	// Two extents are reserved for metadata.
 	const extentSize = uint64(2 << 20)
 	const metadataExtents = 2
 	exp := pvsize - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
-	if result.GetAvailableCapacity() != exp {
-		t.Fatalf("Expected %d bytes free but got %v.", exp, result.GetAvailableCapacity())
+	if got := result.GetAvailableCapacity(); got != exp {
+		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
 	}
 }
 
@@ -880,9 +875,8 @@ func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := resp.GetResult()
-	if result.GetAvailableCapacity() != 0 {
-		t.Fatalf("Expected 0 bytes free but got %v.", result.GetAvailableCapacity())
+	if got := resp.GetAvailableCapacity(); got != 0 {
+		t.Fatalf("Expected 0 bytes free but got %v.", got)
 	}
 }
 

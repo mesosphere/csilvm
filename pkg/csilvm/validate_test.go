@@ -429,24 +429,8 @@ func TestGetCapacityMissingVersion(t *testing.T) {
 	req := testGetCapacityRequest("xfs")
 	req.Version = nil
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -456,24 +440,8 @@ func TestGetCapacityUnsupportedVersion(t *testing.T) {
 	req := testGetCapacityRequest("xfs")
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -483,24 +451,8 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessType = nil
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessType) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_type field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -509,15 +461,8 @@ func TestGetCapacity_BadFilesystem(t *testing.T) {
 	defer cleanup()
 	req := testGetCapacityRequest("ext4")
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedFilesystem) {
 		t.Fatal(err)
-	}
-	if err := resp.GetError(); err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result.GetAvailableCapacity() != 0 {
-		t.Fatalf("Expected 0 bytes for unsupported filesystem but got %v.", result.GetAvailableCapacity())
 	}
 }
 
@@ -527,24 +472,8 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode = nil
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -554,24 +483,8 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessModeMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode.mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 

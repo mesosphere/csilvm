@@ -49,7 +49,8 @@ func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapa
 		return ErrMissingVolumeCapabilities
 	}
 	for _, volumeCapability := range volumeCapabilities {
-		if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
+		const unsupportedFsIsError = false
+		if err := s.validateVolumeCapability(volumeCapability, unsupportedFsIsError); err != nil {
 			return err
 		}
 	}
@@ -168,53 +169,18 @@ func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) err
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.GetCapacityResponse{
-			&csi.GetCapacityResponse_Error{
-				err,
-			},
-		}
-		log.Printf("GetCapacity: failed: %+v", err)
-		return response, false
+		return err
 	}
-	volumeCapabilities := request.GetVolumeCapabilities()
-	if len(volumeCapabilities) == 0 {
-		// This field is optional.
-	} else {
-		// If it is provided, the individual elements must be validated.
-		for _, volumeCapability := range volumeCapabilities {
-			// We don't treat "unsupported fs type" as an
-			// error for GetCapacity. We just return '0'
-			// capacity.
-			if err := s.validateVolumeCapability(volumeCapability, true); err != nil {
-				response := &csi.GetCapacityResponse{
-					&csi.GetCapacityResponse_Error{
-						err,
-					},
-				}
-				log.Printf("GetCapacity: failed: %+v", err)
-				return response, false
-			}
-			// Check for unsupported filesystem type in
-			// order to return 0 capacity if it isn't
-			// supported.
-			if mnt := volumeCapability.GetMount(); mnt != nil {
-				// This is a MOUNT_VOLUME request.
-				fstype := mnt.GetFsType()
-				if _, ok := s.supportedFilesystems[fstype]; !ok {
-					// Zero capacity for unsupported filesystem type.
-					response := &csi.GetCapacityResponse{
-						&csi.GetCapacityResponse_Result_{
-							&csi.GetCapacityResponse_Result{
-								0,
-							},
-						},
-					}
-					return response, false
-				}
-			}
+	// If they are provided, the individual volume capabilities must be validated.
+	for _, volumeCapability := range request.GetVolumeCapabilities() {
+		// We don't treat "unsupported fs type" as an error for
+		// GetCapacity. We'll just return 0 capacity.
+		const ignoreUnsupportedFs = true
+		if err := s.validateVolumeCapability(volumeCapability, ignoreUnsupportedFs); err != nil {
+			return err
 		}
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, bool) {
@@ -313,7 +279,8 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	} else {
-		if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
+		const unsupportedFsIsError = false
+		if err := s.validateVolumeCapability(volumeCapability, unsupportedFsIsError); err != nil {
 			response := &csi.NodePublishVolumeResponse{
 				&csi.NodePublishVolumeResponse_Error{
 					err,
