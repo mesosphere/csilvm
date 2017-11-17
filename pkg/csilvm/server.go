@@ -156,20 +156,31 @@ func (s *Server) ControllerProbe(
 	return response, nil
 }
 
+var ErrVolumeAlreadyExists = status.Error(codes.AlreadyExists, "The volume already exists")
+var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free space")
+
 func (s *Server) CreateVolume(
 	ctx context.Context,
 	request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	log.Printf("Serving CreateVolume: %v", request)
-	if response, ok := s.validateCreateVolumeRequest(request); !ok {
-		return response, nil
+	if err := s.validateCreateVolumeRequest(request); err != nil {
+		log.Printf("CreateVolume: failed: %v", err)
+		return nil, err
 	}
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
 	volumeId := s.volumeNameToId(request.GetName())
 	log.Printf("Determining whether volume with id=%v already exists", volumeId)
-	if _, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
+	if lv, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
 		log.Printf("Volume %s already exists.", request.GetName())
-		return ErrCreateVolume_VolumeAlreadyExists(err), nil
+		response := &csi.CreateVolumeResponse{
+			&csi.VolumeInfo{
+				lv.SizeInBytes(),
+				volumeId,
+				nil,
+			},
+		}
+		return response, ErrVolumeAlreadyExists
 	}
 	log.Printf("Volume with id=%v does not already exist", volumeId)
 	// Determine the capacity, default to maximum size.
@@ -178,13 +189,16 @@ func (s *Server) CreateVolume(
 		bytesFree, err := s.volumeGroup.BytesFree()
 		if err != nil {
 			log.Printf("Error in BytesFree: err=%v", err)
-			return ErrCreateVolume_GeneralError_Undefined(err), nil
+			return nil, status.Errorf(
+				codes.Internal,
+				"Error in BytesFree: err=%v",
+				err)
 		}
 		log.Printf("BytesFree: %v", bytesFree)
 		// Check whether there is enough free space available.
 		if bytesFree < capacityRange.GetRequiredBytes() {
 			log.Printf("BytesFree < required_bytes (%d < %d)", bytesFree, capacityRange.GetRequiredBytes())
-			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+			return nil, ErrInsufficientCapacity
 		}
 		// Set the volume size to the minimum requested  size.
 		size = capacityRange.GetRequiredBytes()
@@ -194,26 +208,28 @@ func (s *Server) CreateVolume(
 	if err != nil {
 		if lvm.IsInvalidName(err) {
 			log.Printf("Invalid volume name: %v", err)
-			return ErrCreateVolume_InvalidVolumeName(err), nil
+			return nil, status.Errorf(
+				codes.InvalidArgument,
+				"The volume name is invalid: err=%v",
+				err)
 		}
 		if err == lvm.ErrNoSpace {
+			// Somehow, despite checking for sufficient space
+			// above, we still have insuffient free space.
 			log.Printf("Not enough free space.")
-			return ErrCreateVolume_UnsupportedCapacityRange(), nil
+			return nil, ErrInsufficientCapacity
 		}
-		log.Printf("CreateVolume: err=%v", err)
-		return ErrCreateVolume_GeneralError_Undefined(err), nil
+		log.Printf("Error in CreateLogicalVolume: err=%v", err)
+		return nil, status.Errorf(
+			codes.Internal,
+			"Error in CreateLogicalVolume: err=%v",
+			err)
 	}
 	response := &csi.CreateVolumeResponse{
-		&csi.CreateVolumeResponse_Result_{
-			&csi.CreateVolumeResponse_Result{
-				&csi.VolumeInfo{
-					lv.SizeInBytes(),
-					&csi.VolumeHandle{
-						volumeId,
-						nil,
-					},
-				},
-			},
+		&csi.VolumeInfo{
+			lv.SizeInBytes(),
+			volumeId,
+			nil,
 		},
 	}
 	log.Printf("CreateVolume succeeded: volumeId=%v, size=%v", volumeId, lv.SizeInBytes())

@@ -11,17 +11,13 @@ const (
 	callerMayRetry     = false
 )
 
-func (s *Server) validateRemoving() *csi.Error {
+var ErrRemovingMode = status.Error(
+	codes.FailedPrecondition,
+	"This service is running in 'remove volume group' mode.")
+
+func (s *Server) validateRemoving() error {
 	if s.removingVolumeGroup {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{
-					csi.Error_GeneralError_UNDEFINED,
-					callerMustNotRetry,
-					"This service is running in 'remove volume group' mode.",
-				},
-			},
-		}
+		return ErrRemovingMode
 	}
 	return nil
 }
@@ -46,25 +42,19 @@ func (s *Server) validateVersion(version *csi.Version) error {
 	return nil
 }
 
-func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapability, unsupportedFsErr *csi.Error) *csi.Error {
+var ErrMissingVolumeCapabilities = status.Error(codes.InvalidArgument, "The volume_capabilities field must be specified.")
+
+func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapability) error {
 	if volumeCapabilities == nil {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capabilities field must be specified."},
-			},
-		}
+		return ErrMissingVolumeCapabilities
 	} else {
 		// This still requires clarification. See
 		// https://github.com/container-storage-interface/spec/issues/90
 		if len(volumeCapabilities) == 0 {
-			return &csi.Error{
-				&csi.Error_GeneralError_{
-					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "One or more volume_capabilities must be specified."},
-				},
-			}
+			return ErrMissingVolumeCapabilities
 		}
 		for _, volumeCapability := range volumeCapabilities {
-			if err := s.validateVolumeCapability(volumeCapability, unsupportedFsErr); err != nil {
+			if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
 				return err
 			}
 		}
@@ -72,39 +62,37 @@ func (s *Server) validateVolumeCapabilities(volumeCapabilities []*csi.VolumeCapa
 	return nil
 }
 
-func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability, unsupportedFsErr *csi.Error) *csi.Error {
+var ErrMissingAccessType = status.Error(
+	codes.InvalidArgument,
+	"The volume_capability.access_type field must be specified.")
+var ErrMissingAccessMode = status.Error(
+	codes.InvalidArgument,
+	"The volume_capability.access_mode field must be specified.")
+var ErrMissingAccessModeMode = status.Error(
+	codes.InvalidArgument,
+	"The volume_capability.access_mode.mode field must be specified.")
+
+func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability, unsupportedFsOK bool) *csi.Error {
 	accessType := volumeCapability.GetAccessType()
 	if accessType == nil {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_type field must be specified."},
-			},
-		}
+		return ErrMissingAccessType
 	}
 	if mnt := volumeCapability.GetMount(); mnt != nil {
 		// This is a MOUNT_VOLUME request.
 		fstype := mnt.GetFsType()
-		// If unsupportedFsErr is nil we don't treat an
-		// unsupported fs as an error.
-		if _, ok := s.supportedFilesystems[fstype]; !ok && unsupportedFsErr != nil {
-			return unsupportedFsErr
+		// If unsupportedFsOK is true, we don't treat an unsupported
+		// filesystem as an error.
+		if _, ok := s.supportedFilesystems[fstype]; !ok && !unsupportedFsOK {
+			return ErrUnsupportedFilesystem
 		}
 	}
 	accessMode := volumeCapability.GetAccessMode()
 	if accessMode == nil {
-		return &csi.Error{
-			&csi.Error_GeneralError_{
-				&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode field must be specified."},
-			},
-		}
+		return ErrMissingAccessMode
 	} else {
 		mode := accessMode.GetMode()
 		if mode == csi.VolumeCapability_AccessMode_UNKNOWN {
-			return &csi.Error{
-				&csi.Error_GeneralError_{
-					&csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability.access_mode.mode field must be specified."},
-				},
-			}
+			return ErrMissingAccessModeMode
 		}
 	}
 	return nil
@@ -141,58 +129,24 @@ func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest)
 
 // ControllerService RPCs
 
-func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, bool) {
+var ErrMissingName = status.Error(codes.InvalidArgument, "The name field must be specified.")
+var ErrUnsupportedFilesystem = status.Error(codes.FailedPrecondition, "The requested filesystem type is unknown.")
+
+func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.CreateVolumeResponse{
-			&csi.CreateVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("CreateVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.CreateVolumeResponse{
-			&csi.CreateVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("CreateVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
 	name := request.GetName()
 	if name == "" {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The name field must be specified."}
-		response := &csi.CreateVolumeResponse{
-			&csi.CreateVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("CreateVolume: failed: %+v", err)
-		return response, false
+		return ErrMissingName
 	}
-	unsupportedFsErr := &csi.Error{
-		&csi.Error_CreateVolumeError_{
-			&csi.Error_CreateVolumeError{
-				csi.Error_CreateVolumeError_INVALID_PARAMETER_VALUE,
-				"Unsupported filesystem type",
-			},
-		},
+	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities()); err != nil {
+		return err
 	}
-	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities(), unsupportedFsErr); err != nil {
-		response := &csi.CreateVolumeResponse{
-			&csi.CreateVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("CreateVolume: failed: %+v", err)
-		return response, false
-	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, bool) {
@@ -270,15 +224,7 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 			return response, false
 		}
 	}
-	unsupportedFsErr := &csi.Error{
-		&csi.Error_ValidateVolumeCapabilitiesError_{
-			&csi.Error_ValidateVolumeCapabilitiesError{
-				csi.Error_ValidateVolumeCapabilitiesError_UNSUPPORTED_FS_TYPE,
-				"Requested filesystem type is not supported.",
-			},
-		},
-	}
-	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities(), unsupportedFsErr); err != nil {
+	if err := s.validateVolumeCapabilities(request.GetVolumeCapabilities()); err != nil {
 		response := &csi.ValidateVolumeCapabilitiesResponse{
 			&csi.ValidateVolumeCapabilitiesResponse_Error{
 				err,
@@ -331,7 +277,7 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*c
 			// We don't treat "unsupported fs type" as an
 			// error for GetCapacity. We just return '0'
 			// capacity.
-			if err := s.validateVolumeCapability(volumeCapability, nil); err != nil {
+			if err := s.validateVolumeCapability(volumeCapability, true); err != nil {
 				response := &csi.GetCapacityResponse{
 					&csi.GetCapacityResponse_Error{
 						err,
@@ -459,15 +405,7 @@ func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolume
 		log.Printf("NodePublishVolume: failed: %+v", err)
 		return response, false
 	} else {
-		unsupportedFsErr := &csi.Error{
-			&csi.Error_NodePublishVolumeError_{
-				&csi.Error_NodePublishVolumeError{
-					csi.Error_NodePublishVolumeError_UNSUPPORTED_FS_TYPE,
-					"Requested filesystem type is not supported.",
-				},
-			},
-		}
-		if err := s.validateVolumeCapability(volumeCapability, unsupportedFsErr); err != nil {
+		if err := s.validateVolumeCapability(volumeCapability, false); err != nil {
 			response := &csi.NodePublishVolumeResponse{
 				&csi.NodePublishVolumeResponse_Error{
 					err,

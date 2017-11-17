@@ -138,13 +138,9 @@ func TestControllerProbe(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testControllerProbeRequest()
-	resp, err := client.ControllerProbe(context.Background(), req)
+	_, err := client.ControllerProbe(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result == nil {
-		t.Fatalf("Expected result to be present.")
 	}
 }
 
@@ -296,33 +292,25 @@ func TestCreateVolumeAlreadyExists(t *testing.T) {
 	// Use only half the usual size so there is enough space for a
 	// second volume to be created.
 	req.CapacityRange.RequiredBytes /= 2
-	resp, err := client.CreateVolume(context.Background(), req)
+	resp1, err := client.CreateVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result == nil || resp.GetError() != nil {
-		t.Fatalf("unexpected error")
 	}
 	// Check that trying to create the volume again fails with
-	// VOLUME_ALREADY_EXISTS.
-	resp, err = client.CreateVolume(context.Background(), req)
-	if err != nil {
+	// ErrVolumeAlreadyExists.
+	resp2, err = client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrVolumeAlreadyExists) {
 		t.Fatal(err)
 	}
-	if resp.GetResult() != nil {
-		t.Fatal(err)
+	volInfo := resp2.GetVolumeInfo()
+	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
+		t.Fatalf("Unexpecteed capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
 	}
-	grpcErr := resp.GetError()
-	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
-	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
-	expCode := csi.Error_CreateVolumeError_VOLUME_ALREADY_EXISTS
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v", expCode, errorCode)
+	if got := volInfo.GetId(); got != resp1.GetVolumeInfo().GetId() {
+		t.Fatalf("Unexpecteed id %v != %v", got, resp1.GetVolumeInfo().GetId())
 	}
-	expDesc := "A logical volume with that name already exists."
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description '%v' but got '%v'", expDesc, errorDesc)
+	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolumeInfo().GetAttributes()) {
+		t.Fatalf("Unexpecteed attributes %v != %v", got, resp1.GetVolumeInfo().GetAttributes())
 	}
 }
 
@@ -333,20 +321,9 @@ func TestCreateVolumeUnsupportedCapacityRange(t *testing.T) {
 	// Use only half the usual size so there is enough space for a
 	// second volume to be created.
 	req.CapacityRange.RequiredBytes = pvsize * 2
-	resp, err := client.CreateVolume(context.Background(), req)
-	if err != nil {
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrInsufficientCapacity) {
 		t.Fatal(err)
-	}
-	grpcErr := resp.GetError()
-	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
-	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
-	expCode := csi.Error_CreateVolumeError_UNSUPPORTED_CAPACITY_RANGE
-	if errorCode != expCode {
-		t.Fatalf("Expected error code %v but got %v.", expCode, errorCode)
-	}
-	expDesc := "Not enough free space."
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description %v but got %v.", expDesc, errorDesc)
 	}
 }
 
@@ -356,21 +333,13 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
 	// second volume to be created.
+
 	req.Name = "invalid name : /"
 	resp, err := client.CreateVolume(context.Background(), req)
-	if err != nil {
+	expdesc := "lvm: validateLogicalVolumeName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. (-1)"
+	experr := status.Error(codes.InvalidArgument, expdesc)
+	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
-	}
-	grpcErr := resp.GetError()
-	errorCode := grpcErr.GetCreateVolumeError().GetErrorCode()
-	errorDesc := grpcErr.GetCreateVolumeError().GetErrorDescription()
-	exp := csi.Error_CreateVolumeError_INVALID_VOLUME_NAME
-	if errorCode != exp {
-		t.Fatalf("Expected error code %v but got %v.", exp, errorCode)
-	}
-	expDesc := "lvm: validateLogicalVolumeName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. (-1)"
-	if errorDesc != expDesc {
-		t.Fatalf("Expected error description %v but got %v.", expDesc, errorDesc)
 	}
 }
 
