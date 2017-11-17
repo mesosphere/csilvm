@@ -390,13 +390,17 @@ func (s *Server) ListVolumes(
 	ctx context.Context,
 	request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	log.Printf("Serving ListVolumes: %v", request)
-	if response, ok := s.validateListVolumesRequest(request); !ok {
-		return response, nil
+	if err := s.validateListVolumesRequest(request); err != nil {
+		log.Printf("ListVolumes: failed: %v", err)
+		return nil, err
 	}
 	volnames, err := s.volumeGroup.ListLogicalVolumeNames()
 	if err != nil {
 		log.Printf("Cannot list volume names: err=%v", err)
-		return ErrListVolumes_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot list volume names: err=%v",
+			err)
 	}
 	var entries []*csi.ListVolumesResponse_Result_Entry
 	for _, volname := range volnames {
@@ -404,26 +408,20 @@ func (s *Server) ListVolumes(
 		lv, err := s.volumeGroup.LookupLogicalVolume(volname)
 		if err != nil {
 			log.Printf("Cannot lookup volume '%v': err=%v", volname, err)
-			return ErrListVolumes_GeneralError_Undefined(err), nil
+			return nil, ErrVolumeNotFound
 		}
 		info := &csi.VolumeInfo{
 			lv.SizeInBytes(),
-			&csi.VolumeHandle{
-				volname,
-				nil,
-			},
+			volname,
+			nil,
 		}
 		log.Printf("Found volume %v (%v bytes)", volname, lv.SizeInBytes())
-		entry := &csi.ListVolumesResponse_Result_Entry{info}
+		entry := &csi.ListVolumesResponse_Entry{info}
 		entries = append(entries, entry)
 	}
 	response := &csi.ListVolumesResponse{
-		&csi.ListVolumesResponse_Result_{
-			&csi.ListVolumesResponse_Result{
-				entries,
-				"",
-			},
-		},
+		entries,
+		"",
 	}
 	log.Printf("ListVolumes succeeded")
 	return response, nil

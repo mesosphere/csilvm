@@ -255,7 +255,6 @@ func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testDeleteVolumeRequest("test-volume")
-	req.Version = nil
 	resp, err := client.DeleteVolume(context.Background(), req)
 	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
@@ -299,7 +298,6 @@ func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
-	req.Version = nil
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
@@ -397,26 +395,9 @@ func TestListVolumesRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testListVolumesRequest()
-	req.Version = nil
 	resp, err := client.ListVolumes(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "This service is running in 'remove volume group' mode."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -426,24 +407,8 @@ func TestListVolumesMissingVersion(t *testing.T) {
 	req := testListVolumesRequest()
 	req.Version = nil
 	resp, err := client.ListVolumes(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -453,24 +418,8 @@ func TestListVolumesUnsupportedVersion(t *testing.T) {
 	req := testListVolumesRequest()
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.ListVolumes(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 

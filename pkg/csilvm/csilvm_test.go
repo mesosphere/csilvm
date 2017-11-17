@@ -744,11 +744,7 @@ func TestListVolumes_NoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.GetError(); err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if len(result.GetEntries()) != 0 {
+	if len(resp.GetEntries()) != 0 {
 		t.Fatal("Expected no entries.")
 	}
 }
@@ -765,10 +761,7 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.GetError(); err != nil {
-		t.Fatalf("Error: %+v", err)
-	}
-	infos = append(infos, resp.GetResult().GetVolumeInfo())
+	infos = append(infos, resp.GetVolumeInfo())
 	// Add the second volume.
 	req = testCreateVolumeRequest()
 	req.Name = "test-volume-2"
@@ -777,20 +770,14 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := resp.GetError(); err != nil {
-		t.Fatalf("Error: %+v", err)
-	}
-	infos = append(infos, resp.GetResult().GetVolumeInfo())
+	infos = append(infos, resp.GetVolumeInfo())
 	// Check that ListVolumes returns the two volumes.
 	listReq := testListVolumesRequest()
 	listResp, err := client.ListVolumes(context.Background(), listReq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := listResp.GetError(); err != nil {
-		t.Fatal(err)
-	}
-	entries := listResp.GetResult().GetEntries()
+	entries := listResp.GetEntries()
 	if len(entries) != len(infos) {
 		t.Fatalf("ListVolumes returned %v entries, expected %d.", len(entries), len(infos))
 	}

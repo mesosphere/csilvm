@@ -139,7 +139,7 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) e
 	return nil
 }
 
-func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, bool) {
+func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) error {
 	if err := s.validateRemoving(); err != nil {
 		return err
 	}
@@ -156,26 +156,14 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 	return nil
 }
 
-func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, bool) {
+func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.ListVolumesResponse{
-			&csi.ListVolumesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ListVolumes: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.ListVolumesResponse{
-			&csi.ListVolumesResponse_Error{
-				err,
-			},
-		}
-		log.Printf("ListVolumes: failed: %+v", err)
-		return response, false
+		return err
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, bool) {
