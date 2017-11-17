@@ -306,38 +306,22 @@ func deleteDataOnDevice(devicePath string) error {
 	panic("csilvm: expected ENOSPC when erasing data")
 }
 
+var ErrCallNotImplemented = status.Error(codes.Unimplemented, "That RPC is not implemented.")
+
 func (s *Server) ControllerPublishVolume(
 	ctx context.Context,
 	request *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	log.Printf("Serving ControllerPublishVolume: %v", request)
-	response := &csi.ControllerPublishVolumeResponse{
-		&csi.ControllerPublishVolumeResponse_Error{
-			&csi.Error{
-				&csi.Error_ControllerPublishVolumeError_{
-					&csi.Error_ControllerPublishVolumeError{csi.Error_ControllerPublishVolumeError_CALL_NOT_IMPLEMENTED, "The ControllerPublishVolume RPC is not supported.", nil},
-				},
-			},
-		},
-	}
 	log.Printf("ControllerPublishVolume not supported")
-	return response, nil
+	return nil, ErrCallNotImplemented
 }
 
 func (s *Server) ControllerUnpublishVolume(
 	ctx context.Context,
 	request *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	log.Printf("Serving ControllerUnpublishVolume: %v", request)
-	response := &csi.ControllerUnpublishVolumeResponse{
-		&csi.ControllerUnpublishVolumeResponse_Error{
-			&csi.Error{
-				&csi.Error_ControllerUnpublishVolumeError_{
-					&csi.Error_ControllerUnpublishVolumeError{csi.Error_ControllerUnpublishVolumeError_CALL_NOT_IMPLEMENTED, "The ControllerUnpublishVolume RPC is not supported."},
-				},
-			},
-		},
-	}
 	log.Printf("ControllerUnpublishVolume not supported")
-	return response, nil
+	return nil, ErrCallNotImplemented
 }
 
 func (s *Server) ValidateVolumeCapabilities(

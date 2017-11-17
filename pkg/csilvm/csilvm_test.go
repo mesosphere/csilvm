@@ -566,24 +566,8 @@ func TestControllerPublishVolumeNotSupported(t *testing.T) {
 	defer cleanup()
 	req := &csi.ControllerPublishVolumeRequest{}
 	resp, err := client.ControllerPublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrCallNotImplemented) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetControllerPublishVolumeError()
-	expcode := csi.Error_ControllerPublishVolumeError_CALL_NOT_IMPLEMENTED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	expdesc := "The ControllerPublishVolume RPC is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-	if error.GetNodeIds() != nil {
-		t.Fatalf("Expected NodeIds to be nil but was '%s'", error.GetNodeIds())
 	}
 }
 
@@ -592,21 +576,8 @@ func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
 	defer cleanup()
 	req := &csi.ControllerUnpublishVolumeRequest{}
 	resp, err := client.ControllerUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrCallNotImplemented) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetControllerUnpublishVolumeError()
-	expcode := csi.Error_ControllerUnpublishVolumeError_CALL_NOT_IMPLEMENTED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	expdesc := "The ControllerUnpublishVolume RPC is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
