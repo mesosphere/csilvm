@@ -195,136 +195,57 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 
 // NodeService RPCs
 
-func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, bool) {
+var ErrMissingTargetPath = status.Error(codes.InvalidArgument, "The target_path field must be specified.")
+var ErrMissingVolumeCapability = status.Error(codes.InvalidArgument, "The volume_capability field must be specified.")
+var ErrSpecifiedPublishVolumeInfo = status.Error(codes.InvalidArgument, "The publish_volume_info field must not be specified.")
+
+func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
-	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+	volumeId := request.GetVolumeId()
+	if volumeId == nil {
+		return ErrMissingVolumeId
 	}
-	if request.GetPublishVolumeInfo() != nil {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_UNDEFINED, callerMustNotRetry, "The publish_volume_info field must not be specified."}
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+	publishVolumeInfo := request.GetPublishVolumeInfo()
+	if publishVolumeInfo != "" {
+		return ErrSpecifiedPublishVolumeInfo
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."}
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+		return ErrMissingTargetPath
 	}
 	volumeCapability := request.GetVolumeCapability()
 	if volumeCapability == nil {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The volume_capability field must be specified."}
-		response := &csi.NodePublishVolumeResponse{
-			&csi.NodePublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("NodePublishVolume: failed: %+v", err)
-		return response, false
+		return ErrMissingVolumeCapability
 	} else {
 		const unsupportedFsIsError = false
 		if err := s.validateVolumeCapability(volumeCapability, unsupportedFsIsError); err != nil {
-			response := &csi.NodePublishVolumeResponse{
-				&csi.NodePublishVolumeResponse_Error{
-					err,
-				},
-			}
-			log.Printf("NodePublishVolume: failed: %+v", err)
-			return response, false
+			return err
 		}
 	}
-	return nil, true
+	return nil
 }
 
-func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, bool) {
+func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		response := &csi.NodeUnpublishVolumeResponse{
-			&csi.NodeUnpublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodeUnpublishVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
-		response := &csi.NodeUnpublishVolumeResponse{
-			&csi.NodeUnpublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodeUnpublishVolume: failed: %+v", err)
-		return response, false
+		return err
 	}
-	if err := s.validateVolumeHandle(request.GetVolumeHandle()); err != nil {
-		response := &csi.NodeUnpublishVolumeResponse{
-			&csi.NodeUnpublishVolumeResponse_Error{
-				err,
-			},
-		}
-		log.Printf("NodeUnpublishVolume: failed: %+v", err)
-		return response, false
+	volumeId := request.GetVolumeId()
+	if volumeId == nil {
+		return ErrMissingVolumeId
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
-		err := &csi.Error_GeneralError{csi.Error_GeneralError_MISSING_REQUIRED_FIELD, callerMayRetry, "The target_path field must be specified."}
-		response := &csi.NodeUnpublishVolumeResponse{
-			&csi.NodeUnpublishVolumeResponse_Error{
-				&csi.Error{
-					&csi.Error_GeneralError_{
-						err,
-					},
-				},
-			},
-		}
-		log.Printf("NodeUnpublishVolume: failed: %+v", err)
-		return response, false
+		return ErrMissingTargetPath
 	}
-	return nil, true
+	return nil
 }
 
 func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, bool) {

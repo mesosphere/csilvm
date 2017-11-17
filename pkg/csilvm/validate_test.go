@@ -526,26 +526,9 @@ func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.Version = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "This service is running in 'remove volume group' mode."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -555,24 +538,8 @@ func TestNodePublishVolumeMissingVersion(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.Version = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -582,105 +549,30 @@ func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
-func TestNodePublishVolumeMissingVolumeHandle(t *testing.T) {
+func TestNodePublishVolumeMissingVolumeId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.VolumeHandle = nil
+	req.VolumeId = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVolumeId) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume handle must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
-func TestNodePublishVolumeMissingVolumeHandleId(t *testing.T) {
+func TestNodePublishVolumePresentPublishVolumeInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.VolumeHandle.Id = ""
+	req.PublishVolumeInfo = map[string]string{"foo": "bar"}
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrSpecifiedPublishVolumeInfo) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_handle.id field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestNodePublishVolumeNotMissingPublishVolumeInfo(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.PublishVolumeInfo = &csi.PublishVolumeInfo{nil}
-	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The publish_volume_info field must not be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -690,24 +582,8 @@ func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.TargetPath = ""
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingTargetPath) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The target_path field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -717,24 +593,8 @@ func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVolumeCapability) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -744,24 +604,8 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessType = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessType) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_type field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -771,24 +615,8 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode = nil
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -798,24 +626,8 @@ func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingAccessModeMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_capability.access_mode.mode field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -824,21 +636,8 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testi
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "ext4", nil)
 	resp, err := client.NodePublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedFilesystem) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetNodePublishVolumeError()
-	expcode := csi.Error_NodePublishVolumeError_UNSUPPORTED_FS_TYPE
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	expdesc := "Requested filesystem type is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -848,26 +647,9 @@ func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
-	req.Version = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNDEFINED
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "This service is running in 'remove volume group' mode."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -877,24 +659,8 @@ func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.Version = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The version field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -904,78 +670,19 @@ func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.Version = &csi.Version{0, 2, 0}
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_UNSUPPORTED_REQUEST_VERSION
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != true {
-		t.Fatal("Expected CallerMustNotRetry to be true")
-	}
-	expdesc := "The requested version is not supported."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
-func TestNodeUnpublishVolumeMissingVolumeHandle(t *testing.T) {
+func TestNodeUnpublishVolumeMissingVolumeId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
-	req.VolumeHandle = nil
+	req.VolumeId = nil
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingVolumeId) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume handle must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
-	}
-}
-
-func TestNodeUnpublishVolumeMissingVolumeHandleId(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
-	req.VolumeHandle.Id = ""
-	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The volume_handle.id field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 
@@ -985,24 +692,8 @@ func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.TargetPath = ""
 	resp, err := client.NodeUnpublishVolume(context.Background(), req)
-	if err != nil {
+	if !grpcErrorEqual(err, ErrMissingTargetPath) {
 		t.Fatal(err)
-	}
-	result := resp.GetResult()
-	if result != nil {
-		t.Fatalf("Expected Result to be nil but was: %+v", resp.GetResult())
-	}
-	error := resp.GetError().GetGeneralError()
-	expcode := csi.Error_GeneralError_MISSING_REQUIRED_FIELD
-	if error.GetErrorCode() != expcode {
-		t.Fatalf("Expected error code %d but got %d", expcode, error.GetErrorCode())
-	}
-	if error.GetCallerMustNotRetry() != false {
-		t.Fatal("Expected CallerMustNotRetry to be false")
-	}
-	expdesc := "The target_path field must be specified."
-	if error.GetErrorDescription() != expdesc {
-		t.Fatalf("Expected ErrorDescription to be '%s' but was '%s'", expdesc, error.GetErrorDescription())
 	}
 }
 

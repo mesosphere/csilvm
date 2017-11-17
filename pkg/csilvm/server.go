@@ -433,7 +433,7 @@ func (s *Server) GetCapacity(
 	log.Printf("Serving GetCapacity: %v", request)
 	if err := s.validateGetCapacityRequest(request); err != nil {
 		log.Printf("GetCapacity: failed: %v", err)
-		return err
+		return nil, err
 	}
 	if s.removingVolumeGroup {
 		log.Printf("Running with '-remove-volume-group', reporting 0 capacity")
@@ -471,10 +471,11 @@ func (s *Server) GetCapacity(
 func (s *Server) ControllerGetCapabilities(
 	ctx context.Context,
 	request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
+	log.Printf("Serving ControllerGetCapabilities: %v", request)
 	if err := s.validateControllerGetCapabilitiesRequest(request); err != nil {
+		log.Printf("ControllerGetCapabilities: failed: %v", err)
 		return nil, err
 	}
-	log.Printf("Serving ControllerGetCapabilities: %v", request)
 	capabilities := []*csi.ControllerServiceCapability{
 		// CREATE_DELETE_VOLUME
 		{
@@ -519,207 +520,247 @@ type simpleError string
 
 func (s simpleError) Error() string { return string(s) }
 
-const (
-	ErrFilesystemMismatch = simpleError("The volume's existing filesystem does not match the one requested.")
-	ErrTargetPathRO       = simpleError("The targetPath is already mounted read-only.")
-	ErrTargetPathRW       = simpleError("The targetPath is already mounted read-write.")
-	ErrBlockVolNoRO       = simpleError("Cannot publish block volume with AccessMode SINGLE_NODE_READER_ONLY.")
-	ErrTargetPathNotEmpty = simpleError("Unexpected device already mounted at targetPath.")
-)
+var ErrBlockVolNoRO = status.Error(
+	codes.InvalidArgument,
+	"Cannot publish block volume as readonly.")
+
+var ErrTargetPathNotEmpty = status.Error(
+	codes.InvalidArgument,
+	"Unexpected device already mounted at targetPath.")
+
+var ErrTargetPathRO = status.Error(
+	codes.InvalidArgument,
+	"The targetPath is already mounted readonly.")
+
+var ErrTargetPathRW = status.Error(
+	codes.InvalidArgument,
+	"The targetPath is already mounted read-write.")
 
 func (s *Server) NodePublishVolume(
 	ctx context.Context,
 	request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Printf("Serving NodePublishVolume: %v", request)
-	if response, ok := s.validateNodePublishVolumeRequest(request); !ok {
-		return response, nil
+	if err := s.validateNodePublishVolumeRequest(request); err != nil {
+		log.Printf("NodePublishVolume: failed: %v", err)
+		return nil, err
 	}
-	id := request.GetVolumeHandle().GetId()
+	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		log.Printf("Cannot find volume with id=%v", id)
-		return ErrNodePublishVolume_VolumeDoesNotExist(err), nil
+		return nil, ErrVolumeNotFound
 	}
 	log.Printf("Determining volume path")
 	sourcePath, err := lv.Path()
 	if err != nil {
 		log.Printf("Cannot determine volume path: err=%v", err)
-		return ErrNodePublishVolume_GeneralError_Undefined(err), nil
+		return nil, status.Errorf(
+			codes.Internal,
+			"Error in Path(): err=%v",
+			err)
 	}
 	log.Printf("Volume path is %v", sourcePath)
 	targetPath := request.GetTargetPath()
 	log.Printf("Target path is %v", targetPath)
+	readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
+	readonly |= request.GetReadonly()
+	log.Printf("Mounting readonly: %v", readonly)
 	switch accessType := request.GetVolumeCapability().GetAccessType().(type) {
 	case *csi.VolumeCapability_Block:
-		log.Printf("Attempting to publish volume %v as BLOCK_DEVICE to %v", sourcePath, targetPath)
-		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
-		if readonly {
-			log.Printf("Cannot publish volume: err=%v", ErrBlockVolNoRO)
-			return ErrNodePublishVolume_MountError(ErrBlockVolNoRO), nil
-		}
-		log.Printf("Determining mount info at %v", targetPath)
-		// Check whether something is already mounted at targetPath.
-		mp, err := getMountAt(targetPath)
-		if err != nil {
-			log.Printf("Cannot get mount info at %v", targetPath)
-			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-		}
-		log.Printf("Mount info at %v: %+v", targetPath, mp)
-		if mp != nil {
-			// With lvm2, the sourcePath is typically a symlink to a
-			// devicemapper device, for example:
-			//   /dev/some-volume-group/some-logical-volume -> /dev/dm-4
-			//
-			// However, the mountpoint root shows the actual device, not
-			// the symlink. As such, to determine whether or not the
-			// device mounted at targetPath is the expected one, we need
-			// to resolve the symlink and compare the targets.
-			log.Printf("Following symlinks at %v", sourcePath)
-			sourceDevicePath, err := filepath.EvalSymlinks(sourcePath)
-			if err != nil {
-				log.Printf("Failed to follow symlinks at %v: err=%v", sourcePath, err)
-				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-			}
-			log.Printf("Determined that %v -> %v", sourcePath, sourceDevicePath)
-			// For bindmounts, we use the mountpoint root
-			// in the current filesystem.
-			mpdev := "/dev" + mp.root
-			if mpdev != sourceDevicePath {
-				return ErrNodePublishVolume_MountError(ErrTargetPathNotEmpty), nil
-			}
-			log.Printf("The volume %v is already bind mounted to %v", sourcePath, targetPath)
-			// For bind mounts, the filesystemtype and
-			// mount options are ignored.
-			response := &csi.NodePublishVolumeResponse{
-				&csi.NodePublishVolumeResponse_Result_{
-					&csi.NodePublishVolumeResponse_Result{},
-				},
-			}
-			log.Printf("NodePublishVolume succeeded (idempotent)")
-			return response, nil
-		}
-		log.Printf("Nothing mounted at targetPath %v yet", targetPath)
-		// Perform a bind mount of the raw block device. The
-		// `filesystemtype` and `data` parameters to the
-		// mount(2) system call are ignored in this case.
-		flags := uintptr(syscall.MS_BIND)
-		log.Printf("Performing bind mount of %s -> %s", sourcePath, targetPath)
-		if err := syscall.Mount(sourcePath, targetPath, "", flags, ""); err != nil {
-			log.Printf("Failed to perform bind mount: err=%v", err)
-			_, ok := err.(syscall.Errno)
-			if !ok {
-				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-			}
-			return ErrNodePublishVolume_MountError(err), nil
+		if err := s.nodePublishVolume_Block(sourcePath, targetPath, readonly); err != nil {
+			return err
 		}
 	case *csi.VolumeCapability_Mount:
-		log.Printf("Attempting to publish volume %v as MOUNT_DEVICE to %v", sourcePath, targetPath)
-		var flags uintptr
-		readonly := request.GetVolumeCapability().GetAccessMode().GetMode() == csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
-		if readonly {
-			flags |= syscall.MS_RDONLY
-		}
 		fstype := request.GetVolumeCapability().GetMount().GetFsType()
-		// Request validation ensures that the fstype is among
-		// our list of supported filesystems.
-		log.Printf("Requested filesystem type is '%v'", fstype)
-		if fstype == "" {
-			// If the fstype was not specified, pick the default.
-			fstype = s.supportedFilesystems[""]
-			log.Printf("No specific filesystem type requested, defaulting to %v", fstype)
-		}
-		// Check whether something is already mounted at targetPath.
-		log.Printf("Determining mount info at %v", targetPath)
-		mp, err := getMountAt(targetPath)
-		if err != nil {
-			log.Printf("Cannot get mount info at %v", targetPath)
-			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-		}
-		log.Printf("Mount info at %v: %+v", targetPath, mp)
-		if mp != nil {
-			// For regular mounts, we use the mount source.
-			if mp.mountsource != sourcePath {
-				log.Printf("TargetPath %s not empty: err=%v", targetPath, ErrTargetPathNotEmpty)
-				return ErrNodePublishVolume_MountError(ErrTargetPathNotEmpty), nil
-			}
-			// Something is mounted at targetPath. We
-			// check that the filesystem matches the
-			// requested one and that the readonly status
-			// matches the requested readonly status. If
-			// so, to support idempotency we return
-			// success, otherwise we return an error as
-			// the targetPath is not mounted in the
-			// requested way.
-			if mp.fstype != fstype {
-				log.Printf("Device mounted at %v has unexpected filesystem type (%v != %v)", mp.fstype, fstype)
-				return ErrNodePublishVolume_MountError(ErrFilesystemMismatch), nil
-			}
-			if mp.isReadonly() != readonly {
-				if mp.isReadonly() {
-					log.Printf("%v", ErrTargetPathRO)
-					return ErrNodePublishVolume_MountError(ErrTargetPathRO), nil
-				} else {
-					log.Printf("%v", ErrTargetPathRW)
-					return ErrNodePublishVolume_MountError(ErrTargetPathRW), nil
-				}
-			}
-			// The device, fstype and readonly option of
-			// the filesystem at targetPath matches that
-			// which is requested, to support idempotency
-			// we return success.
-			response := &csi.NodePublishVolumeResponse{
-				&csi.NodePublishVolumeResponse_Result_{
-					&csi.NodePublishVolumeResponse_Result{},
-				},
-			}
-			log.Printf("NodePublishVolume succeeded (idempotent)")
-			return response, nil
-		}
-		log.Printf("Determining filesystem type at %v", sourcePath)
-		existingFstype, err := determineFilesystemType(sourcePath)
-		if err != nil {
-			log.Printf("Cannot determine filesystem type: err=%v", err)
-			return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-		}
-		log.Printf("Existing filesystem type is '%v'", existingFstype)
-		if existingFstype == "" {
-			// There is no existing filesystem on the
-			// device, format it with the requested
-			// filesystem.
-			log.Printf("The device %v has no existing filesystem, formatting with %v", sourcePath, fstype)
-			if err := formatDevice(sourcePath, fstype); err != nil {
-				log.Printf("formatDevice failed: err=%v", err)
-				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-			}
-			existingFstype = fstype
-		}
-		if fstype != existingFstype {
-			log.Printf("Requested fstype %v does not match existing fstype %v", fstype, existingFstype)
-			return ErrNodePublishVolume_MountError(ErrFilesystemMismatch), nil
-		}
-		mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
-		mountOptionsStr := strings.Join(mountOptions, ",")
-		// Try to mount the volume by assuming it is correctly formatted.
-		log.Printf("Mounting %v at %v fstype=%v, flags=%v mountOptions=%v", sourcePath, targetPath, fstype, flags, mountOptionsStr)
-		if err := syscall.Mount(sourcePath, targetPath, fstype, flags, mountOptionsStr); err != nil {
-			log.Printf("Failed to perform mount: err=%v", err)
-			_, ok := err.(syscall.Errno)
-			if !ok {
-				return ErrNodePublishVolume_GeneralError_Undefined(err), nil
-			}
-			return ErrNodePublishVolume_MountError(err), nil
+		if err := s.nodePublishVolume_Mount(sourcePath, targetPath, readonly, fstype); err != nil {
+			return err
 		}
 	default:
 		panic(fmt.Sprintf("lvm: unknown access_type: %+v", accessType))
 	}
-	response := &csi.NodePublishVolumeResponse{
-		&csi.NodePublishVolumeResponse_Result_{
-			&csi.NodePublishVolumeResponse_Result{},
-		},
+	response := &csi.NodePublishVolumeResponse{}
+	return response, nil
+}
+
+func (s *Server) nodePublishVolume_Block(sourcePath, targetPath string, readonly bool) error {
+	log.Printf("Attempting to publish volume %v as BLOCK_DEVICE to %v", sourcePath, targetPath)
+	if readonly {
+		log.Printf("Cannot publish volume: err=%v", ErrBlockVolNoRO)
+		return ErrBlockVolNoRO
+	}
+	log.Printf("Determining mount info at %v", targetPath)
+	// Check whether something is already mounted at targetPath.
+	mp, err := getMountAt(targetPath)
+	if err != nil {
+		log.Printf("Cannot get mount info at %v", targetPath)
+		return status.Errorf(
+			codes.Internal,
+			"Cannot get mount info at %v: err=%v",
+			targetPath, err)
+	}
+	log.Printf("Mount info at %v: %+v", targetPath, mp)
+	if mp != nil {
+		// With lvm2, the sourcePath is typically a symlink to a
+		// devicemapper device, for example:
+		//   /dev/some-volume-group/some-logical-volume -> /dev/dm-4
+		//
+		// However, the mountpoint root shows the actual device, not
+		// the symlink. As such, to determine whether or not the
+		// device mounted at targetPath is the expected one, we need
+		// to resolve the symlink and compare the targets.
+		log.Printf("Following symlinks at %v", sourcePath)
+		sourceDevicePath, err := filepath.EvalSymlinks(sourcePath)
+		if err != nil {
+			log.Printf("Failed to follow symlinks at %v: err=%v", sourcePath, err)
+			return status.Errorf(
+				codes.Internal,
+				"Failed to follow symlinks at %v: err=%v",
+				sourcePath, err)
+		}
+		log.Printf("Determined that %v -> %v", sourcePath, sourceDevicePath)
+		// For bindmounts, we use the mountpoint root
+		// in the current filesystem.
+		mpdev := "/dev" + mp.root
+		if mpdev != sourceDevicePath {
+			log.Printf("The target path is not empty: current device != source device (%v != %v)", mpdev, sourceDevicePath)
+			return ErrTargetPathNotEmpty
+		}
+		log.Printf("The volume %v is already bind mounted to %v", sourcePath, targetPath)
+		// For bind mounts, the filesystemtype and
+		// mount options are ignored.
+		log.Printf("NodePublishVolume succeeded (idempotent)")
+		return nil
+	}
+	log.Printf("Nothing mounted at targetPath %v yet", targetPath)
+	// Perform a bind mount of the raw block device. The
+	// `filesystemtype` and `data` parameters to the
+	// mount(2) system call are ignored in this case.
+	flags := uintptr(syscall.MS_BIND)
+	log.Printf("Performing bind mount of %s -> %s", sourcePath, targetPath)
+	if err := syscall.Mount(sourcePath, targetPath, "", flags, ""); err != nil {
+		log.Printf("Failed to perform bind mount: err=%v", err)
+		_, ok := err.(syscall.Errno)
+		if !ok {
+			return status.Errorf(
+				codes.Internal,
+				"Failed to perform bind mount: err=%v",
+				err)
+		}
+		return status.Errorf(
+			codes.FailedPrecondition,
+			"Failed to perform bind mount: err=%v",
+			err)
 	}
 	log.Printf("NodePublishVolume succeeded")
-	return response, nil
+	return nil
+}
+
+func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly bool, fstype string) error {
+	log.Printf("Attempting to publish volume %v as MOUNT_DEVICE to %v", sourcePath, targetPath)
+	var flags uintptr
+	if readonly {
+		flags |= syscall.MS_RDONLY
+	}
+	// Request validation ensures that the fstype is in our list of
+	// supported filesystems.
+	log.Printf("Requested filesystem type is '%v'", fstype)
+	if fstype == "" {
+		// If the fstype was not specified, pick the default.
+		fstype = s.supportedFilesystems[""]
+		log.Printf("No specific filesystem type requested, defaulting to %v", fstype)
+	}
+	// Check whether something is already mounted at targetPath.
+	log.Printf("Determining mount info at %v", targetPath)
+	mp, err := getMountAt(targetPath)
+	if err != nil {
+		log.Printf("Cannot get mount info at %v", targetPath)
+		return status.Errorf(
+			codes.Internal,
+			"Cannot get mount info at %v: err=%v",
+			targetPath, err)
+	}
+	log.Printf("Mount info at %v: %+v", targetPath, mp)
+	if mp != nil {
+		// For regular mounts, we use the mount source.
+		if mp.mountsource != sourcePath {
+			log.Printf("TargetPath %s not empty.", ErrTargetPathNotEmpty)
+			return ErrTargetPathNotEmpty
+		}
+		// Something is mounted at targetPath. We check that
+		// the filesystem matches the requested one and that
+		// the readonly status matches the requested readonly
+		// status. If so, to support idempotency we return
+		// success, otherwise we return an error as the
+		// targetPath is not mounted in the requested way.
+		if mp.fstype != fstype {
+			log.Printf("Device mounted at %v has unexpected filesystem type (%v != %v)", mp.fstype, fstype)
+			return ErrMismatchedFilesystemType
+		}
+		if mp.isReadonly() != readonly {
+			if mp.isReadonly() {
+				log.Printf("%v", ErrTargetPathRO)
+				return ErrTargetPathRO
+			} else {
+				log.Printf("%v", ErrTargetPathRW)
+				return ErrTargetPathRW
+			}
+		}
+		// The device, fstype and readonly option of
+		// the filesystem at targetPath matches that
+		// which is requested, to support idempotency
+		// we return success.
+		log.Printf("NodePublishVolume succeeded (idempotent)")
+		return nil
+	}
+	log.Printf("Determining filesystem type at %v", sourcePath)
+	existingFstype, err := determineFilesystemType(sourcePath)
+	if err != nil {
+		log.Printf("Cannot determine filesystem type: err=%v", err)
+		return status.Errorf(
+			codes.Internal,
+			"Cannot determine filesystem type: err=%v",
+			err)
+	}
+	log.Printf("Existing filesystem type is '%v'", existingFstype)
+	if existingFstype == "" {
+		// There is no existing filesystem on the
+		// device, format it with the requested
+		// filesystem.
+		log.Printf("The device %v has no existing filesystem, formatting with %v", sourcePath, fstype)
+		if err := formatDevice(sourcePath, fstype); err != nil {
+			log.Printf("formatDevice failed: err=%v", err)
+			return status.Errorf(
+				codes.Internal,
+				"formatDevice failed: err=%v",
+				err)
+		}
+		existingFstype = fstype
+	}
+	if fstype != existingFstype {
+		log.Printf("Requested fstype %v does not match existing fstype %v", fstype, existingFstype)
+		return ErrMismatchedFilesystemType
+	}
+	mountOptions := request.GetVolumeCapability().GetMount().GetMountFlags()
+	mountOptionsStr := strings.Join(mountOptions, ",")
+	// Try to mount the volume by assuming it is correctly formatted.
+	log.Printf("Mounting %v at %v fstype=%v, flags=%v mountOptions=%v", sourcePath, targetPath, fstype, flags, mountOptionsStr)
+	if err := syscall.Mount(sourcePath, targetPath, fstype, flags, mountOptionsStr); err != nil {
+		log.Printf("Failed to perform mount: err=%v", err)
+		_, ok := err.(syscall.Errno)
+		if !ok {
+			return status.Errorf(
+				codes.Internal,
+				"Failed to perform mount: err=%v",
+				err)
+		}
+		return status.Errorf(
+			codes.FailedPrecondition,
+			"Failed to perform mount: err=%v",
+			err)
+	}
+	log.Printf("NodePublishVolume succeeded")
+	return nil
 }
 
 func determineFilesystemType(devicePath string) (string, error) {
@@ -758,22 +799,26 @@ func (s *Server) NodeUnpublishVolume(
 	ctx context.Context,
 	request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log.Printf("Serving NodeUnpublishVolume: %v", request)
-	if response, ok := s.validateNodeUnpublishVolumeRequest(request); !ok {
-		return response, nil
+	if err := s.validateNodeUnpublishVolumeRequest(request); err != nil {
+		log.Printf("NodeUnpublishVolume: failed: %v", err)
+		return err
 	}
-	id := request.GetVolumeHandle().GetId()
+	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	_, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
 		log.Printf("Cannot find volume with id=%v", id)
-		return ErrNodeUnpublishVolume_VolumeDoesNotExist(err), nil
+		return nil, ErrVolumeNotFound
 	}
 	targetPath := request.GetTargetPath()
 	log.Printf("Determining mount info at %v", targetPath)
 	mp, err := getMountAt(targetPath)
 	if err != nil {
 		log.Printf("Cannot get mount info at %v", targetPath)
-		return ErrNodeUnpublishVolume_GeneralError_Undefined(err), nil
+		return status.Errorf(
+			codes.Internal,
+			"Cannot get mount info at %v: err=%v",
+			targetPath, err)
 	}
 	log.Printf("Mount info at %v: %+v", targetPath, mp)
 	if mp == nil {
@@ -790,9 +835,15 @@ func (s *Server) NodeUnpublishVolume(
 		log.Printf("Failed to perform unmount: err=%v", err)
 		_, ok := err.(syscall.Errno)
 		if !ok {
-			return ErrNodeUnpublishVolume_GeneralError_Undefined(err), nil
+			return status.Errorf(
+				codes.Internal,
+				"Failed to perform unmount: err=%v",
+				err)
 		}
-		return ErrNodeUnpublishVolume_UnmountError(err), nil
+		return status.Errorf(
+			codes.FailedPrecondition,
+			"Failed to perform unmount: err=%v",
+			err)
 	}
 	response := &csi.NodeUnpublishVolumeResponse{}
 	log.Printf("NodeUnpublishVolume succeeded")
