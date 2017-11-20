@@ -27,6 +27,7 @@ Logical volumes are named according to the following pattern
 
 The following command-line utilties must be present in the `PATH`:
 
+* `udevadm`
 * `lsblk`
 * `pvscan` from the lvm2 utils
 * `mkfs`
@@ -42,5 +43,12 @@ be installed:
 
 It is not possible to bind mount a device as 'ro' and thereby prevent write access to it.
 
-As such, this plugin does not support the `SINGLE_NODE_READER_ONLY` access mode for a 
+As such, this plugin does not support the `SINGLE_NODE_READER_ONLY` access mode for a
 volume of access type `BLOCK_DEVICE`.
+
+## Tests
+
+The tests can be run using `make sudo-test`. As the target suggests, this
+target need the current user to be able to run sudo without a password. The
+tests create loopback devices, mount and unmount LVM2 logical volumes, etc, and
+therefore must be run as root.
