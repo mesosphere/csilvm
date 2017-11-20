@@ -2613,14 +2613,21 @@ func prepareNodeProbeTest(vgname string, pvnames []string, serverOpts ...ServerO
 		return nil
 	})
 
+	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
 	var opts []grpc.ServerOption
+	opts = append(opts,
+		grpc.UnaryInterceptor(
+			ChainUnaryServer(
+				LoggingInterceptor(),
+			),
+		),
+	)
 	// setup logging
 	logprefix := fmt.Sprintf("[%s]", vgname)
 	logflags := stdlog.LstdFlags | stdlog.Lshortfile
 	SetLogger(stdlog.New(os.Stderr, logprefix, logflags))
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
