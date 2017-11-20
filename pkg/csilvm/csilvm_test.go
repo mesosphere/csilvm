@@ -286,8 +286,7 @@ func TestCreateVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Check that trying to create the volume again fails with
-	// ErrVolumeAlreadyExists.
+	// Check that trying to create the exact same volume again succeeds.
 	resp2, err := client.CreateVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +303,171 @@ func TestCreateVolume_Idempotent(t *testing.T) {
 	}
 }
 
-func TestCreateVolumeUnsupportedCapacityRange(t *testing.T) {
+func TestCreateVolume_AlreadyExists_CapacityRange(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.CapacityRange.RequiredBytes /= 2
+	_, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check that trying to create a volume with the same name but
+	// incompatible capacity_range fails.
+	req.CapacityRange.RequiredBytes += 1
+	_, err = client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrVolumeAlreadyExists) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
+	// Prepare a test server with a known volume group name.
+	var cleanup cleanup.Steps
+	defer func() {
+		if x := recover(); x != nil {
+			cleanup.Unwind()
+			panic(x)
+		}
+	}()
+	// Create a volume group for the server to manage.
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup.Add(loop.Close)
+	// Create a volume group containing the physical volume.
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup2 := prepareNodeProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
+	// Initialize the Server by calling ProbeNode.
+	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup.Add(func() error { cleanup2(); return nil })
+	defer cleanup.Unwind()
+
+	// Create a test volume.
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.CapacityRange.RequiredBytes /= 2
+	resp1, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Format the newly created volume with xfs.
+	vg, err := lvm.LookupVolumeGroup(vgname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolumeInfo().GetId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lvpath, err := lv.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := formatDevice(lvpath, "xfs"); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for filesystem creation to be reflected in udev.
+	_, err = exec.Command("udevadm", "settle").CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and create the same volume, with 'ext4' specified as fs_type in
+	// a mount volume_capability.
+	req.VolumeCapabilities[1].GetMount().FsType = "ext4"
+	_, err = client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrVolumeAlreadyExists) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
+	// Prepare a test server with a known volume group name.
+	var cleanup cleanup.Steps
+	defer func() {
+		if x := recover(); x != nil {
+			cleanup.Unwind()
+			panic(x)
+		}
+	}()
+	// Create a volume group for the server to manage.
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup.Add(loop.Close)
+	// Create a volume group containing the physical volume.
+	vgname := "test-vg-" + uuid.New().String()
+	client, cleanup2 := prepareNodeProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
+	// Initialize the Server by calling ProbeNode.
+	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanup.Add(func() error { cleanup2(); return nil })
+	defer cleanup.Unwind()
+
+	// Create a test volume.
+	req := testCreateVolumeRequest()
+	// Use only half the usual size so there is enough space for a
+	// second volume to be created.
+	req.CapacityRange.RequiredBytes /= 2
+	resp1, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Format the newly created volume with xfs.
+	vg, err := lvm.LookupVolumeGroup(vgname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolumeInfo().GetId())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lvpath, err := lv.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := formatDevice(lvpath, "xfs"); err != nil {
+		t.Fatal(err)
+	}
+	// Wait for filesystem creation to be reflected in udev.
+	_, err = exec.Command("udevadm", "settle").CombinedOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try and create the same volume, with no specified fs_type in a mount
+	// volume_capability.
+	req.VolumeCapabilities[1].GetMount().FsType = ""
+	resp2, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volInfo := resp2.GetVolumeInfo()
+	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
+		t.Fatalf("Unexpected capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
+	}
+	if got := volInfo.GetId(); got != resp1.GetVolumeInfo().GetId() {
+		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolumeInfo().GetId())
+	}
+	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolumeInfo().GetAttributes()) {
+		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolumeInfo().GetAttributes())
+	}
+}
+
+func TestCreateVolumeCapacityRangeNotSatisfied(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testCreateVolumeRequest()
@@ -858,6 +1021,28 @@ func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
 
 func TestControllerGetCapabilities(t *testing.T) {
 	client, cleanup := startTest()
+	defer cleanup()
+	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
+	resp, err := client.ControllerGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []csi.ControllerServiceCapability_RPC_Type{
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+		csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+	}
+	got := []csi.ControllerServiceCapability_RPC_Type{}
+	for _, capability := range resp.GetCapabilities() {
+		got = append(got, capability.GetRpc().GetType())
+	}
+	if !reflect.DeepEqual(expected, got) {
+		t.Fatalf("Expected capabilities %+v but got %+v", expected, got)
+	}
+}
+
+func TestControllerGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
 	resp, err := client.ControllerGetCapabilities(context.Background(), req)
@@ -1747,6 +1932,19 @@ func TestGetNodeID(t *testing.T) {
 	}
 }
 
+func TestGetNodeID(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
+	defer cleanup()
+	req := testGetNodeIDRequest()
+	resp, err := client.GetNodeID(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetNodeId() != "" {
+		t.Fatalf("Expected node_id to be ''.")
+	}
+}
+
 func testNodeProbeRequest() *csi.NodeProbeRequest {
 	req := &csi.NodeProbeRequest{
 		&csi.Version{0, 1, 0},
@@ -2333,6 +2531,16 @@ func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
 
 func TestNodeGetCapabilities(t *testing.T) {
 	client, cleanup := startTest()
+	defer cleanup()
+	req := testNodeGetCapabilitiesRequest()
+	_, err := client.NodeGetCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testNodeGetCapabilitiesRequest()
 	_, err := client.NodeGetCapabilities(context.Background(), req)

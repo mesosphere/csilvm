@@ -176,10 +176,16 @@ func (s *Server) CreateVolume(
 	log.Printf("Determining whether volume with id=%v already exists", volumeId)
 	if lv, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
 		log.Printf("Volume %s already exists.", request.GetName())
+		// The volume already exists. Determine whether or not the
+		// existing volume satisfies the request. If so, return a
+		// successful response. If not, return ErrVolumeAlreadyExists.
+		if err := s.validateExistingVolume(lv, request); err != nil {
+			return nil, err
+		}
 		response := &csi.CreateVolumeResponse{
 			&csi.VolumeInfo{
 				lv.SizeInBytes(),
-				volumeId,
+				lv.Name(),
 				nil,
 			},
 		}
@@ -238,6 +244,91 @@ func (s *Server) CreateVolume(
 	}
 	log.Printf("Served CreateVolume: %v", response)
 	return response, nil
+}
+
+func (s *Server) validateExistingVolume(lv *lvm.LogicalVolume, request *csi.CreateVolumeRequest) error {
+	// Determine whether the existing volume satisfies the capacity_range
+	// of the current request.
+	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
+		// If required_bytes is specified, is that requirement
+		// satisfied by the existing volume?
+		if requiredBytes := capacityRange.GetRequiredBytes(); requiredBytes != 0 {
+			if requiredBytes > lv.SizeInBytes() {
+				log.Printf("Existing volume does not satisfy request: required_bytes > volume size (%d > %d)", requiredBytes, lv.SizeInBytes())
+				// The existing volume is not big enough.
+				return ErrVolumeAlreadyExists
+			}
+		}
+		if limitBytes := capacityRange.GetLimitBytes(); limitBytes != 0 {
+			if limitBytes < lv.SizeInBytes() {
+				log.Printf("Existing volume does not satisfy request: limit_bytes < volume size (%d < %d)", limitBytes, lv.SizeInBytes())
+				// The existing volume is too big.
+				return ErrVolumeAlreadyExists
+			}
+		}
+		// We know that one of limit_bytes or required_bytes was
+		// specified, thanks to the specification and the request
+		// validation logic.
+	}
+	// The existing volume matches the requested capacity_range.  We
+	// determine whether the existing volume satisfies all requested
+	// volume_capabilities.
+	sourcePath, err := lv.Path()
+	if err != nil {
+		log.Printf("Cannot determine volume path: err=%v", err)
+		return status.Errorf(
+			codes.Internal,
+			"Error in Path(): err=%v",
+			err)
+	}
+	log.Printf("Volume path is %v", sourcePath)
+	existingFsType, err := determineFilesystemType(sourcePath)
+	if err != nil {
+		log.Printf("Cannot determine filesystem type: err=%v", err)
+		return status.Errorf(
+			codes.Internal,
+			"Cannot determine filesystem type: err=%v",
+			err)
+	}
+	log.Printf("Existing filesystem type is '%v'", existingFsType)
+	for _, volumeCapability := range request.GetVolumeCapabilities() {
+		if mnt := volumeCapability.GetMount(); mnt != nil {
+			// This is a MOUNT_VOLUME capability. We know that the
+			// requested filesystem type is supported on this host
+			// thanks to the request validation logic.
+			if existingFsType != "" {
+				// The volume has already been formatted with
+				// some filesystem. If the requested
+				// volume_capability.fs_type is different to
+				// the filesystem already on the volume, then
+				// this volume_capability is unsatisfiable
+				// using the existing volume and we return an
+				// error.
+				requestedFstype := mnt.GetFsType()
+				if requestedFstype != "" && requestedFstype != existingFsType {
+					// The existing volume is already
+					// formatted with a filesystem that
+					// does not match the requested
+					// volume_capability so it does not
+					// satisfy the request.
+					log.Printf("Existing volume does not satisfy request: fs_type != volume fs (%v != %v)", requestedFstype, existingFsType)
+					return ErrVolumeAlreadyExists
+				}
+				log.Printf("Existing fs type = '%v', expecting '%v'", existingFsType, requestedFstype)
+				// The existing volume satisfies this
+				// volume_capability.
+			} else {
+				// The existing volume has not been formatted
+				// with a filesystem and can therefore satisfy
+				// this volume_capability (by formatting it
+				// with the specified fs_type, whatever it is).
+			}
+			// We ignore whether or not the volume_capability
+			// specifies readonly as any filesystem can be mounted
+			// readonly or not depending on how it gets published.
+		}
+	}
+	return nil
 }
 
 var ErrVolumeNotFound = status.Error(codes.NotFound, "The volume does not exist.")
@@ -516,7 +607,7 @@ func (s *Server) ControllerGetCapabilities(
 	}
 	log.Printf("ControllerGetCapabilities: [CREATE_DELETE_VOLUME, LIST_VOLUMES, GET_CAPACITY]")
 	response := &csi.ControllerGetCapabilitiesResponse{capabilities}
-	log.Printf("Serrved ControllerGetCapabilities: %v", response)
+	log.Printf("Served ControllerGetCapabilities: %v", response)
 	return response, nil
 }
 
@@ -525,10 +616,6 @@ func (s *Server) ControllerGetCapabilities(
 type simpleError string
 
 func (s simpleError) Error() string { return string(s) }
-
-var ErrBlockVolNoRO = status.Error(
-	codes.InvalidArgument,
-	"Cannot publish block volume as readonly.")
 
 var ErrTargetPathNotEmpty = status.Error(
 	codes.InvalidArgument,
@@ -593,10 +680,6 @@ func (s *Server) NodePublishVolume(
 
 func (s *Server) nodePublishVolume_Block(sourcePath, targetPath string, readonly bool) error {
 	log.Printf("Attempting to publish volume %v as BLOCK_DEVICE to %v", sourcePath, targetPath)
-	if readonly {
-		log.Printf("Cannot publish volume: err=%v", ErrBlockVolNoRO)
-		return ErrBlockVolNoRO
-	}
 	log.Printf("Determining mount info at %v", targetPath)
 	// Check whether something is already mounted at targetPath.
 	mp, err := getMountAt(targetPath)
@@ -771,6 +854,22 @@ func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly
 }
 
 func determineFilesystemType(devicePath string) (string, error) {
+	// This is a best-effort function. It is possible that a device may
+	// have be formatted with a new filesystem in the very recent past, in
+	// which case the udev event may not have been processed yet and this
+	// function will erroneously report that the device has no filesystem.
+	// The only way around that (using lsblk) would be to use `udevadm
+	// settle` with a timeout, but that comes with its own issues (how long
+	// to set the timeout, how to determine whether the command failed due
+	// to timeout or some other reason, what to do if the timeout fires and
+	// the event still has not been processed, etc.)  As such, we hope for
+	// the best. Fortunately, the consequence of getting this wrong is
+	// minimal and amount to the client seeing an error in
+	// NodePublishVolume that could have been seen in
+	// ValidateVolumeCapabilities already, or temporary loss of idempotency
+	// (two NodePublishVolume requests for the same volume shortly after
+	// each other may both attempt to format the device and the second will
+	// fail and must be retried anyway.)
 	output, err := exec.Command("lsblk", "-P", "-o", "FSTYPE", devicePath).CombinedOutput()
 	if err != nil {
 		return "", err
@@ -1016,7 +1115,7 @@ func (s *Server) NodeProbe(
 		log.Printf("Cannot lookup tags: err=%v", err)
 		return nil, status.Errorf(
 			codes.Internal,
-			"Cannot lookup tags %v: err=%v",
+			"Cannot lookup tags: err=%v",
 			err)
 	}
 	log.Printf("Volume group tags: %v", tags)

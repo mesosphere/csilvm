@@ -144,6 +144,63 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
+func TestCreateVolumeVolumeCapabilitiesAccessModeUnsupported(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrUnsupportedAccessMode) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolumeVolumeCapabilitiesAccessModeInvalid(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.VolumeCapabilities[0].AccessMode.Mode = 1000
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrInvalidAccessMode) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolumeVolumeCapabilitiesReadonlyBlock(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrBlockVolNoRO) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolumeVolumeCapabilitiesCapacityRangeRequiredLessThanLimit(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.CapacityRange.RequiredBytes = 1000
+	req.CapacityRange.LimitBytes = req.CapacityRange.RequiredBytes - 1
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrCapacityRangeInvalidSize) {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateVolumeVolumeCapabilitiesCapacityRangeUnspecified(t *testing.T) {
+	client, cleanup := startTest()
+	defer cleanup()
+	req := testCreateVolumeRequest()
+	req.CapacityRange.RequiredBytes = 0
+	req.CapacityRange.LimitBytes = 0
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrCapacityRangeUnspecified) {
+		t.Fatal(err)
+	}
+}
+
 func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
@@ -384,16 +441,6 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
-func TestControllerGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
-	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{}
-	_, err := client.ControllerGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrRemovingMode) {
-		t.Fatal(err)
-	}
-}
-
 func TestControllerGetCapabilitiesInfoMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -593,16 +640,6 @@ func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	}
 }
 
-func TestGetNodeID_RemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
-	defer cleanup()
-	req := testGetNodeIDRequest()
-	_, err := client.GetNodeID(context.Background(), req)
-	if !grpcErrorEqual(err, ErrRemovingMode) {
-		t.Fatal(err)
-	}
-}
-
 func TestGetNodeIDMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -643,16 +680,6 @@ func TestNodeProbeUnsupportedVersion(t *testing.T) {
 	req.Version = &csi.Version{0, 2, 0}
 	_, err := client.NodeProbe(context.Background(), req)
 	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
-	defer cleanup()
-	req := testNodeGetCapabilitiesRequest()
-	_, err := client.NodeGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrRemovingMode) {
 		t.Fatal(err)
 	}
 }
