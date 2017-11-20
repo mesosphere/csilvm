@@ -1932,7 +1932,7 @@ func TestGetNodeID(t *testing.T) {
 	}
 }
 
-func TestGetNodeID(t *testing.T) {
+func TestGetNodeID_RemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testGetNodeIDRequest()

@@ -6,11 +6,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	callerMustNotRetry = true
-	callerMayRetry     = false
-)
-
 var ErrRemovingMode = status.Error(
 	codes.FailedPrecondition,
 	"This service is running in 'remove volume group' mode.")
