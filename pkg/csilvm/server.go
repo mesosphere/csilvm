@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	stdlog "log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,17 +21,6 @@ import (
 
 const PluginName = "io.mesosphere.dcos.storage/csilvm"
 const PluginVersion = "1.11.0"
-
-type logger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-}
-
-var log logger = stdlog.New(os.Stderr, "", stdlog.LstdFlags|stdlog.Lshortfile)
-
-func SetLogger(l logger) {
-	log = l
-}
 
 type Server struct {
 	vgname               string

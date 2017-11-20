@@ -2618,7 +2618,7 @@ func prepareNodeProbeTest(vgname string, pvnames []string, serverOpts ...ServerO
 	opts = append(opts,
 		grpc.UnaryInterceptor(
 			ChainUnaryServer(
-				loggingInterceptor(),
+				LoggingInterceptor(),
 			),
 		),
 	)

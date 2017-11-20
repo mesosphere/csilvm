@@ -51,7 +51,15 @@ func main() {
 		log.Fatalf("[%s] Failed to listen: %v", *vgnameF, err)
 	}
 	// Setup server
-	grpcServer := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	grpcOpts = append(grpcOpts,
+		grpc.UnaryInterceptor(
+			csilvm.ChainUnaryServer(
+				csilvm.LoggingInterceptor(),
+			),
+		),
+	)
+	grpcServer := grpc.NewServer(grpcOpts...)
 	var opts []csilvm.ServerOpt
 	opts = append(opts, csilvm.DefaultVolumeSize(*defaultVolumeSizeF))
 	if *removeF {
