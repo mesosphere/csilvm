@@ -25,7 +25,7 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 		v, err := handler(ctx, req)
 		if err != nil {
 			log.Printf("%v failed: err=%v", info.FullMethod, err)
-			return nil, err
+			return v, err
 		}
 		log.Printf("Served %v: resp=%v", info.FullMethod, v)
 		return v, nil
