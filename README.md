@@ -1,4 +1,4 @@
-# CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20)
+# CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20and%20status%20!%3D%20Resolved%20)
 
 This is a container storage interface (CSI) plugin for LVM2. It
 exposes a CSI-compliant API to a LVM2 volume group (VG). The volume
@@ -52,3 +52,9 @@ The tests can be run using `make sudo-test`. As the target suggests, this
 target need the current user to be able to run sudo without a password. The
 tests create loopback devices, mount and unmount LVM2 logical volumes, etc, and
 therefore must be run as root.
+
+# Issues
+
+This project uses JIRA instead of GitHub issues to track bugs and feature requests.
+You may review the [currently open issues](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20and%20status%20!%3D%20Resolved%20) or else [create a new issue](https://jira.mesosphere.com/secure/CreateIssueDetails!init.jspa?pid=14105&issuetype=1&components=20732&customfield_12300=3&summary=CSILVM%3a+bug+summary+goes+here&description=Environment%3a%0d%0dWhat+you+attempted+to+do%3a%0d%0dThe+result+you+expected%3a%0d%0dThe+result+you+saw+instead%3a%0d).
+If you are filing an issue that is NOT a bug then please use an issue type of *Task* in the JIRA form.
