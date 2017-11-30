@@ -1,4 +1,4 @@
-# CSI plugin for LVM2
+# CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20)
 
 This is a container storage interface (CSI) plugin for LVM2. It
 exposes a CSI-compliant API to a LVM2 volume group (VG). The volume
