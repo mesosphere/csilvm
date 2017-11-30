@@ -1,10 +1,9 @@
 # CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20and%20status%20!%3D%20Resolved%20)
 
-This is a container storage interface (CSI) plugin for LVM2. It
-exposes a CSI-compliant API to a LVM2 volume group (VG). The volume
-group (VG) and the physical volumes (PVs) that consists of are passed
-to the plugin at launch time as command-line parameters. CSI volumes
-map to LVM2 logical volumes (LVs).
+This is a [container storage interface (CSI)](https://github.com/container-storage-interface/spec) plugin for LVM2.
+It exposes a CSI-compliant API to a LVM2 volume group (VG).
+The volume group (VG) and the physical volumes (PVs) that consists of are passed to the plugin at launch time as command-line parameters.
+CSI volumes map to LVM2 logical volumes (LVs).
 
 ## Destroying a volume group
 
