@@ -2,10 +2,11 @@
 
 OS := $(shell uname)
 
-DEV_DOCKER_IMAGE := csilvm_dev
+DOCKERFILE_MD5SUM=$(shell md5sum ./Dockerfile | cut -d" " -f1)
+DEV_DOCKER_IMAGE := csilvm_dev:$(DOCKERFILE_MD5SUM)
 
 ifeq ($(OS), Linux)
-DOCKER ?= no
+DOCKER ?= yes
 else ifeq ($(OS), Darwin)
   ifeq ($(MAKECMDGOALS), check)
   DOCKER ?= yes
@@ -21,14 +22,15 @@ endif
 .PHONY: dev_image build check all clean
 
 dev_image:
-	docker build --rm -t $(DEV_DOCKER_IMAGE) .
+	docker inspect $(DEV_DOCKER_IMAGE) &> /dev/null || docker build --rm -t $(DEV_DOCKER_IMAGE) .
 
 ifeq ($(DOCKER), yes)
 TEST_PREFIX := docker run --rm $(DEV_DOCKER_IMAGE)
-BUILD_PREFIX := docker run --rm $(DEV_DOCKER_IMAGE)
+BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE)
 
 build: dev_image
 check: dev_image
+	$(BUILD_PREFIX) sh -c "cd /go/src/github.com/mesosphere/csilvm && go build -v ./... && gometalinter --config=gometalinter.conf --vendor ./..."
 endif
 
 build:
