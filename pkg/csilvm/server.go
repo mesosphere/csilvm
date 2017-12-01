@@ -11,10 +11,9 @@ import (
 	"strings"
 	"syscall"
 
-	"golang.org/x/net/context"
-
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -550,10 +549,6 @@ func (s *Server) ControllerGetCapabilities(
 
 // NodeService RPCs
 
-type simpleError string
-
-func (s simpleError) Error() string { return string(s) }
-
 var ErrTargetPathNotEmpty = status.Error(
 	codes.InvalidArgument,
 	"Unexpected device already mounted at targetPath.")
@@ -906,6 +901,7 @@ func (s *Server) NodeProbe(
 			return nil, status.Errorf(
 				codes.FailedPrecondition,
 				"Invalid tag '%v': err=%v",
+				tag,
 				err)
 		}
 	}
@@ -927,7 +923,8 @@ func (s *Server) NodeProbe(
 		var pvs []*lvm.PhysicalVolume
 		for _, pvname := range s.pvnames {
 			log.Printf("Looking up LVM2 physical volume %v", pvname)
-			pv, err := lvm.LookupPhysicalVolume(pvname)
+			var pv *lvm.PhysicalVolume
+			pv, err = lvm.LookupPhysicalVolume(pvname)
 			if err == nil {
 				log.Printf("Found LVM2 physical volume %v", pvname)
 				pvs = append(pvs, pv)
@@ -953,7 +950,7 @@ func (s *Server) NodeProbe(
 						pvname, err)
 				}
 				log.Printf("Creating LVM2 physical volume %v", pvname)
-				pv, err := lvm.CreatePhysicalVolume(pvname)
+				pv, err = lvm.CreatePhysicalVolume(pvname)
 				if err != nil {
 					return nil, status.Errorf(
 						codes.FailedPrecondition,

@@ -55,7 +55,6 @@ func listMounts() (mounts []mountpoint, err error) {
 		if line == "" {
 			continue
 		}
-		line := string(line)
 		fields := strings.Fields(line)
 		mount := mountpoint{
 			root:        fields[3],
