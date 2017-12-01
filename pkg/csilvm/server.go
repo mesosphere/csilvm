@@ -33,7 +33,7 @@ type Server struct {
 
 func (s *Server) supportedVersions() []*csi.Version {
 	return []*csi.Version{
-		&csi.Version{0, 1, 0},
+		{0, 1, 0},
 	}
 }
 

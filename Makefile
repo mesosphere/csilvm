@@ -30,6 +30,7 @@ BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(
 
 build: dev_image
 check: dev_image
+gofmt: dev_image
 
 shell: dev_image
 	docker run --rm -ti -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE) /bin/bash
@@ -40,6 +41,10 @@ check:
 
 build:
 	$(BUILD_PREFIX) go build ./cmd/csilvm
+
+gofmt:
+	$(BUILD_PREFIX) sh -c "find pkg -name '*.go' | xargs gofmt -s -w"
+	$(BUILD_PREFIX) sh -c "find cmd -name '*.go' | xargs gofmt -s -w"
 
 all: build
 
