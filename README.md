@@ -1,4 +1,4 @@
-# CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20and%20status%20not%20in%20(Resolved%2C%20Closed))
+# CSI plugin for LVM2 [![Issues](https://img.shields.io/badge/Issues-JIRA-ff69b4.svg?style=flat)](https://jira.mesosphere.com/issues/?jql=project%20%3D%20DCOS_OSS%20and%20component%20%3D%20csilvm%20and%20status%20not%20in%20(Resolved%2C%20Closed)) [![Build Status](https://jenkins.mesosphere.com/service/jenkins/job/public-csilvm/badge/icon)](https://jenkins.mesosphere.com/service/jenkins/job/public-csilvm/)
 
 This is a [container storage interface (CSI)](https://github.com/container-storage-interface/spec) plugin for LVM2.
 It exposes a CSI-compliant API to a LVM2 volume group (VG).

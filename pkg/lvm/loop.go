@@ -39,11 +39,11 @@ func CreateLoopDevice(size uint64) (device *LoopDevice, err error) {
 	cleanup.Add(func() error { return os.Remove(file.Name()) })
 	// Close the file as we're not going to manipulate its
 	// contents manually.
-	if err := file.Close(); err != nil {
+	if err = file.Close(); err != nil {
 		return nil, err
 	}
 
-	if err := os.Truncate(file.Name(), int64(size)); err != nil {
+	if err = os.Truncate(file.Name(), int64(size)); err != nil {
 		return nil, err
 	}
 

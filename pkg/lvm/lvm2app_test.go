@@ -64,7 +64,7 @@ func TestCreatePhysicalDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	if err := PVScan(loop.Path()); err != nil {
+	if err = PVScan(loop.Path()); err != nil {
 		t.Fatal(err)
 	}
 	// Create a physical volume using the loop device.
@@ -86,7 +86,7 @@ func TestListPhysicalVolumes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	if err := PVScan(loop.Path()); err != nil {
+	if err = PVScan(loop.Path()); err != nil {
 		t.Fatal(err)
 	}
 	// Create a physical volume using the loop device.
@@ -118,7 +118,7 @@ func TestLookupPhysicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer handle.Close()
-	if err := PVScan(loop.Path()); err != nil {
+	if err = PVScan(loop.Path()); err != nil {
 		t.Fatal(err)
 	}
 	// Create a physical volume using the loop device.
@@ -148,7 +148,7 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	}
 	defer handle.Close()
 	// Create a physical volume using the loop device.
-	if err := PVScan(loop.Path()); err != nil {
+	if err = PVScan(loop.Path()); err != nil {
 		t.Fatal(err)
 	}
 	pv, err := handle.CreatePhysicalVolume(loop.Path())
@@ -233,7 +233,7 @@ func TestListVolumeGroupNames(t *testing.T) {
 	}
 	defer cleanup2()
 	// Scan for new devices and volume groups so the new ones show up.
-	if err := handle.Scan(); err != nil {
+	if err = handle.Scan(); err != nil {
 		t.Fatal(err)
 	}
 	names, err := handle.ListVolumeGroupNames()
@@ -358,7 +358,7 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	vg, err := handle.CreateVolumeGroup("bad name :)", nil, nil)
 	if !IsInvalidName(err) {
 		vg.Remove()
-		t.Fatal("Expected invalidNameError got %#v.", err)
+		t.Fatalf("Expected invalidNameError got %#v.", err)
 	}
 	if vg != nil {
 		vg.Remove()
@@ -649,7 +649,7 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 	lv, err := vg.CreateLogicalVolume("bad name :)", size, nil)
 	if !IsInvalidName(err) {
 		lv.Remove()
-		t.Fatal("Expected an invalidNameError but got %#v.", err)
+		t.Fatalf("Expected an invalidNameError but got %#v.", err)
 	}
 	if lv != nil {
 		lv.Remove()
@@ -964,10 +964,11 @@ func createVolumeGroup(handle *LibHandle, loopdevs []*LoopDevice, tags []string)
 	// Create a physical volume using the loop device.
 	var pvs []*PhysicalVolume
 	for _, loop := range loopdevs {
-		if err := PVScan(loop.Path()); err != nil {
+		if err = PVScan(loop.Path()); err != nil {
 			return nil, nil, err
 		}
-		pv, err := handle.CreatePhysicalVolume(loop.Path())
+		var pv *PhysicalVolume
+		pv, err = handle.CreatePhysicalVolume(loop.Path())
 		if err != nil {
 			return nil, nil, err
 		}
