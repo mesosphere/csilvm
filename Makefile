@@ -30,6 +30,9 @@ BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(
 
 build: dev_image
 check: dev_image
+
+shell: dev_image
+	docker run --rm -ti -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE) /bin/bash
 endif
 
 check:
