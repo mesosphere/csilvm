@@ -30,8 +30,10 @@ BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(
 
 build: dev_image
 check: dev_image
-	$(BUILD_PREFIX) sh -c "cd /go/src/github.com/mesosphere/csilvm && go build -v ./... && gometalinter --config=gometalinter.conf --vendor ./..."
 endif
+
+check:
+	$(BUILD_PREFIX) sh -c "go build -v ./... && gometalinter --config=gometalinter.conf --vendor ./..."
 
 build:
 	$(BUILD_PREFIX) go build ./cmd/csilvm
