@@ -1,284 +1,439 @@
 package lvm
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"regexp"
-	"runtime"
 	"strings"
-	"sync"
-	"unsafe"
 )
-
-/*
-#cgo LDFLAGS: -llvm2app -ldevmapper
-#cgo CFLAGS: -Wno-implicit-function-declaration
-#include <stdlib.h>
-#include <lvm2app.h>
-#include <libdevmapper.h>
-
-// Returns an array of strings obtained from a `dm_list` with entries of type `lvm_str_list`.
-// This is useful for obtaining a list of strings from eg., `lvm_list_vg_names()`.
-char** csilvm_get_strings_from_lvm_str_list(const struct dm_list *list)
-{
-	struct lvm_str_list *strl;
-	char **results;
-	unsigned int list_size;
-
-	list_size = dm_list_size(list);
-	results = malloc(sizeof (char *) * list_size);
-	int ii = 0;
-	dm_list_iterate_items(strl, list) {
-		results[ii] = strdup(strl->str);
-		ii++;
-	}
-	return results;
-}
-
-// Returns the device names of the physical volumes in the given list.
-char** csilvm_get_pv_dev_names_lvm_pv_list(const struct dm_list *list)
-{
-	struct lvm_pv_list *pvl;
-	char **results;
-	unsigned int list_size;
-
-	list_size = dm_list_size(list);
-	results = malloc(sizeof (char *) * list_size);
-	int ii = 0;
-	dm_list_iterate_items(pvl, list) {
-		results[ii] = strdup(lvm_pv_get_name(pvl->pv));
-		ii++;
-	}
-	return results;
-}
-
-// Returns the names of the logical volumes in the given list.
-char** csilvm_get_lv_names_lvm_lv_list(const struct dm_list *list)
-{
-	struct lvm_lv_list *lvl;
-	char **results;
-	unsigned int list_size;
-
-	list_size = dm_list_size(list);
-	results = malloc(sizeof (char *) * list_size);
-	int ii = 0;
-	dm_list_iterate_items(lvl, list) {
-		results[ii] = strdup(lvm_lv_get_name(lvl->lv));
-		ii++;
-	}
-	return results;
-}
-
-// Returns the lv_path of the logical volume.
-const char* csilvm_get_lv_path(const lv_t lv)
-{
-	lvm_property_value_t v;
-	char *prop_name = "lv_path";
-
-	v = lvm_lv_get_property(lv, prop_name);
-	if (!v.is_valid) {
-		return 0;
-	}
-	return v.value.string;
-}
-
-*/
-import "C"
-
-type invalidNameError string
-
-func (err invalidNameError) Error() string {
-	return string(err)
-}
 
 // IsInvalidName returns true if the error is due to an invalid name
 // and false otherwise.
 func IsInvalidName(err error) bool {
-	_, ok := err.(invalidNameError)
-	return ok
+	const prefix = "Name contains invalid character"
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	line := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(line, prefix) {
+		return true
+	}
+	return false
 }
 
 // MaxSize states that all available space should be used by the
 // create operation.
 const MaxSize uint64 = 0
 
-// LibraryGetVersion corresponds to `lvm_library_get_version` in `lvm2app.h`.
-func LibraryGetVersion() string {
-	return C.GoString(C.lvm_library_get_version())
-}
+type simpleError string
 
-// LibHandle holds a handle to the `lvm2app` library. The caller must
-// call `Close()` when completely done with the library.
-type LibHandle struct {
-	// lk is used to synchronize all lvm2app operations performed
-	// using this handle.
-	lk     sync.Mutex
-	handle C.lvm_t
-}
+func (s simpleError) Error() string { return string(s) }
 
-// NewLibHandle returns a new lvm2app library handle. It corresponds to
-// `lvm_init`. The caller must call `Close()` on the *LibHandle that
-// is returned to free the allocated memory.
-func NewLibHandle() (*LibHandle, error) {
-	handle := C.lvm_init(nil)
-	if handle == nil {
-		return nil, errors.New("lvm2app: Init: failed to initialize handle")
-	}
-	return &LibHandle{sync.Mutex{}, handle}, nil
-}
-
-// Err returns the error returned for the last operation, if any. The
-// return type is `*Error`.
-func (h *LibHandle) err() error {
-	errno := C.lvm_errno(h.handle)
-	if errno == 0 {
-		return nil
-	}
-	errmsg := C.GoString(C.lvm_errmsg(h.handle))
-	// Concatenate multi-line errors.
-	errmsg = strings.Replace(errmsg, "\n", " ", -1)
-	// Get the name of the calling function.
-	pc, _, _, ok := runtime.Caller(1)
-	details := runtime.FuncForPC(pc)
-	caller := ""
-	if ok && details != nil {
-		tokens := strings.Split(details.Name(), ".")
-		caller = tokens[len(tokens)-1]
-	}
-	return &Error{caller, errmsg, int(errno)}
-}
-
-type Error struct {
-	Caller string
-	Errmsg string
-	Errno  int
-}
-
-func (e *Error) Error() string {
-	return fmt.Sprintf("lvm: %s: %s (%d)", e.Caller, e.Errmsg, e.Errno)
-}
-
-// goStrings converts an array of C strings to a slice of go strings.
-// See https://stackoverflow.com/questions/36188649/cgo-char-to-slice-string
-func goStrings(argc C.uint, argv **C.char) []string {
-	defer C.free(unsafe.Pointer(argv))
-	length := int(argc)
-	tmpslice := (*[1 << 30]*C.char)(unsafe.Pointer(argv))[:length:length]
-	gostrings := make([]string, length)
-	for i, s := range tmpslice {
-		gostrings[i] = C.GoString(s)
-		C.free(unsafe.Pointer(s))
-	}
-	return gostrings
-}
-
-// ListVolumeGroupNames returns the names of the list of volume groups.
-//
-// It is equivalent to `lvm_list_vg_names` followed by
-// `dm_list_iterate_items` to accumulate the string values.
-//
-// This does not normally scan for devices. To scan for devices, use
-// the `Scan()` function.
-func (handle *LibHandle) ListVolumeGroupNames() ([]string, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	return handle.listVolumeGroupNames()
-}
-
-// listVolumeGroupNames returns the names of the list of volume groups.
-//
-// It is equivalent to `lvm_list_vg_names` followed by
-// `dm_list_iterate_items` to accumulate the string values.
-//
-// This does not normally scan for devices. To scan for devices, use
-// the `Scan()` function.
-//
-// The handle lock must be held by the caller.
-func (handle *LibHandle) listVolumeGroupNames() ([]string, error) {
-	// Get the list of volume group names
-	// The memory for the `dm_list` is freed when the handle is freed.
-	dm_list_names := C.lvm_list_vg_names(handle.handle)
-	if dm_list_names == nil {
-		// We failed to allocate memory for the list.
-		return nil, handle.err()
-	}
-	// If the list is empty, return nil.
-	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/libdm/datastruct/list.c#L81
-	if C.dm_list_empty(dm_list_names) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list_names)
-	cvgnames := C.csilvm_get_strings_from_lvm_str_list(dm_list_names)
-	// Transform the array of C strings into a []string.
-	vgnames := goStrings(size, cvgnames)
-	return vgnames, nil
-}
-
-// ListVolumeGroupUUIDs returns the UUIDs of the list of volume groups.
-//
-// It is equivalent to `lvm_list_vg_uuids` followed by
-// `dm_list_iterate_items` to accumulate the string values.
-//
-// This does not normally scan for devices. To scan for devices, use
-// the `Scan()` function.
-func (handle *LibHandle) ListVolumeGroupUUIDs() ([]string, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	// Get the list of volume group UUIDs
-	// The memory for the `dm_list` is freed when the handle is freed.
-	dm_list_uuids := C.lvm_list_vg_uuids(handle.handle)
-	if dm_list_uuids == nil {
-		// We failed to allocate memory for the list.
-		return nil, handle.err()
-	}
-	// If the list is empty, return nil.
-	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/libdm/datastruct/list.c#L81
-	if C.dm_list_empty(dm_list_uuids) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list_uuids)
-	cvguuids := C.csilvm_get_strings_from_lvm_str_list(dm_list_uuids)
-	// Transform the array of C strings into a []string.
-	vguuids := goStrings(size, cvguuids)
-	return vguuids, nil
-}
-
+const ErrNoSpace = simpleError("lvm: not enough free space")
+const ErrPhysicalVolumeNotFound = simpleError("lvm: physical volume not found")
 const ErrVolumeGroupNotFound = simpleError("lvm: volume group not found")
 
-// LookupVolumeGroup returns the volume group with the given name.
-func (handle *LibHandle) LookupVolumeGroup(name string) (*VolumeGroup, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	vgnames, err := handle.listVolumeGroupNames()
-	if err != nil {
-		return nil, err
-	}
-	had := false
-	for _, vgname := range vgnames {
-		if vgname == name {
-			had = true
-		}
-	}
-	if !had {
-		return nil, ErrVolumeGroupNotFound
-	}
-	vg := &VolumeGroup{name, nil, handle}
-	// Check that the volume group can be opened.
-	if err := vg.open(openReadOnly); err != nil {
-		return nil, err
-	}
-	// Close the volume group, releasing the VG lock. Subsequent
-	// operations will re-open the volume group as necessary.
-	vg.close()
-	return vg, nil
-}
+var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
 
 const ErrTagInvalidLength = simpleError("lvm: tag length must be between 1 and 1024 characters")
 const ErrTagHasInvalidChars = simpleError("lvm: tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
 
-var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
+type PhysicalVolume struct {
+	dev string
+}
+
+// Remove removes the physical volume.
+func (pv *PhysicalVolume) Remove() error {
+	if err := run("pvremove", nil, pv.dev); err != nil {
+		return err
+	}
+	return nil
+}
+
+type VolumeGroup struct {
+	name string
+}
+
+func (vg *VolumeGroup) Name() string {
+	return vg.name
+}
+
+// BytesTotal returns the current size in bytes of the volume group.
+func (vg *VolumeGroup) BytesTotal() (uint64, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_size", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return 0, ErrVolumeGroupNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return vg.VgSize, nil
+		}
+	}
+	return 0, ErrVolumeGroupNotFound
+}
+
+// BytesFree returns the unallocated space in bytes of the volume group.
+func (vg *VolumeGroup) BytesFree() (uint64, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_free", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return 0, ErrVolumeGroupNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return vg.VgFree, nil
+		}
+	}
+	return 0, ErrVolumeGroupNotFound
+}
+
+// ExtentSize returns the size in bytes of a single extent.
+func (vg *VolumeGroup) ExtentSize() (uint64, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_extent_size", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return 0, ErrVolumeGroupNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return vg.VgExtentSize, nil
+		}
+	}
+	return 0, ErrVolumeGroupNotFound
+}
+
+// ExtentCount returns the number of extents.
+func (vg *VolumeGroup) ExtentCount() (uint64, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_extent_count", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return 0, ErrVolumeGroupNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return vg.VgExtentCount, nil
+		}
+	}
+	return 0, ErrVolumeGroupNotFound
+}
+
+// ExtentFreeCount returns the number of free extents.
+func (vg *VolumeGroup) ExtentFreeCount() (uint64, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_free_count", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return 0, ErrVolumeGroupNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return vg.VgFreeExtentCount, nil
+		}
+	}
+	return 0, ErrVolumeGroupNotFound
+}
+
+// CreateLogicalVolume creates a logical volume of the given device
+// and size.
+//
+// The actual size may be larger than asked for as the smallest
+// increment is the size of an extent on the volume group in question.
+//
+// If sizeInBytes is zero the entire available space is allocated.
+func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tag string) (*LogicalVolume, error) {
+	// Validate the tag.
+	var args []string
+	if tag != "" {
+		if err := ValidateTag(tag); err != nil {
+			return nil, err
+		}
+		args = append(args, "--add-tag="+tag)
+	}
+	args = append(args, vg.name)
+	args = append(args, name)
+	if err := run("lvcreate", nil, args...); err != nil {
+		return nil, err
+	}
+	return &LogicalVolume{name, vg}, nil
+}
+
+const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
+
+type lvsOutput struct {
+	Report []struct {
+		Lv []struct {
+			Name   string `json:"name"`
+			VgName string `json:"vg_name"`
+			LvPath string `json:"lv_path"`
+			LvSize uint64 `json:"lv_size,string"`
+			LvTags string `json:"lv_tags"`
+		} `json:"lv"`
+	} `json:"report"`
+}
+
+func IsLogicalVolumeNotFound(err error) bool {
+	const prefix = "Failed to find logical volume"
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	line := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(line, prefix) {
+		return true
+	}
+	return false
+}
+
+// LookupLogicalVolume looks up the logical volume in the volume group
+// with the given name.
+func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) {
+	result := new(lvsOutput)
+	if err := run("lvs", result, "--options=lv_name,vg_name", name); err != nil {
+		if IsLogicalVolumeNotFound(err) {
+			return nil, ErrLogicalVolumeNotFound
+		}
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, lv := range report.Lv {
+			vg := &VolumeGroup{lv.VgName}
+			return &LogicalVolume{lv.Name, vg}, nil
+		}
+	}
+	return nil, ErrLogicalVolumeNotFound
+}
+
+// ListLogicalVolumes returns the names of the logical volumes in this volume group.
+func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
+	var names []string
+	result := new(lvsOutput)
+	if err := run("lvs", result, "--options=lv_name,vg_name", vg.name); err != nil {
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, lv := range report.Lv {
+			if lv.VgName == vg.name {
+				names = append(names, lv.Name)
+			}
+		}
+	}
+	return names, nil
+}
+
+func IsPhysicalVolumeNotFound(err error) bool {
+	const prefix = "Failed to find device"
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	line := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(line, prefix) {
+		return true
+	}
+	return false
+}
+
+func IsVolumeGroupNotFound(err error) bool {
+	const prefix = "Volume group"
+	const suffix = "not found"
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	line := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(line, prefix) && strings.HasSuffix(line, suffix) {
+		return true
+	}
+	return false
+}
+
+// ListPhysicalVolumeNames returns the names of the physical volumes in this volume group.
+func (vg *VolumeGroup) ListPhysicalVolumeNames() ([]string, error) {
+	var names []string
+	result := new(pvsOutput)
+	if err := run("pvs", result, "--options=pv_name,vg_name", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return nil, ErrVolumeGroupNotFound
+		}
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, pv := range report.Pv {
+			if pv.VgName == vg.name {
+				names = append(names, pv.Name)
+			}
+		}
+	}
+	return names, nil
+}
+
+// Tags returns the volume group tags.
+func (vg *VolumeGroup) Tags() ([]string, error) {
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_tags", vg.name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return nil, ErrVolumeGroupNotFound
+		}
+
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return strings.Split(vg.VgTags, ","), nil
+		}
+	}
+	return nil, ErrVolumeGroupNotFound
+}
+
+// Remove removes the volume group from disk.
+//
+// It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
+// change.
+func (vg *VolumeGroup) Remove() error {
+	if err := run("vgremove", nil, vg.name); err != nil {
+		return err
+	}
+	return nil
+}
+
+const (
+	openReadWrite = false
+	openReadOnly  = true
+)
+
+type LogicalVolume struct {
+	name string
+	vg   *VolumeGroup
+}
+
+func (lv *LogicalVolume) Name() string {
+	return lv.name
+}
+
+func (lv *LogicalVolume) SizeInBytes() (uint64, error) {
+	result := new(lvsOutput)
+	if err := run("lvs", result, "--options=lv_size", lv.vg.name+"/"+lv.name); err != nil {
+		if IsLogicalVolumeNotFound(err) {
+			return 0, ErrLogicalVolumeNotFound
+		}
+		return 0, err
+	}
+	for _, report := range result.Report {
+		for _, lv := range report.Lv {
+			return lv.LvSize, nil
+		}
+	}
+	return 0, ErrLogicalVolumeNotFound
+}
+
+// Path returns the device path for the logical volume.
+func (lv *LogicalVolume) Path() (string, error) {
+	result := new(lvsOutput)
+	if err := run("lvs", result, "--options=lv_path", lv.vg.name+"/"+lv.name); err != nil {
+		if IsLogicalVolumeNotFound(err) {
+			return "", ErrLogicalVolumeNotFound
+		}
+		return "", err
+	}
+	for _, report := range result.Report {
+		for _, lv := range report.Lv {
+			return lv.LvPath, nil
+		}
+	}
+	return "", ErrLogicalVolumeNotFound
+}
+
+// Tags returns the volume group tags.
+func (lv *LogicalVolume) Tags() ([]string, error) {
+	result := new(lvsOutput)
+	if err := run("lvs", result, "--options=lv_tags", lv.vg.name+"/"+lv.name); err != nil {
+		if IsLogicalVolumeNotFound(err) {
+			return nil, ErrLogicalVolumeNotFound
+		}
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, lv := range report.Lv {
+			return strings.Split(lv.LvTags, ","), nil
+		}
+	}
+	return nil, ErrLogicalVolumeNotFound
+}
+
+func (lv *LogicalVolume) Remove() error {
+	if err := run("lvremove", nil, lv.vg.name+"/"+lv.name); err != nil {
+		return err
+	}
+	return nil
+}
+
+// PVScan runs the `pvscan --cache <dev>` command. It scans for the
+// device at `dev` and adds it to the LVM metadata cache if `lvmetad`
+// is running. If `dev` is an empty string, it scans all devices.
+func PVScan(dev string) error {
+	args := []string{"--cache"}
+	if dev != "" {
+		args = append(args, dev)
+	}
+	return run("pvscan", nil, args...)
+}
+
+// VGScan runs the `vgscan --cache <name>` command. It scans for the
+// volume group and adds it to the LVM metadata cache if `lvmetad`
+// is running. If `name` is an empty string, it scans all volume groups.
+func VGScan(name string) error {
+	args := []string{"--cache"}
+	if name != "" {
+		args = append(args, name)
+	}
+	return run("vgscan", nil, args...)
+}
+
+// CreateVolumeGroup creates a new volume group.
+func CreateVolumeGroup(
+	name string,
+	pvs []*PhysicalVolume,
+	tag string) (*VolumeGroup, error) {
+	var args []string
+	if tag != "" {
+		if err := ValidateTag(tag); err != nil {
+			return nil, err
+		}
+		args = append(args, "--add-tag="+tag)
+	}
+	args = append(args, name)
+	for _, pv := range pvs {
+		args = append(args, pv.dev)
+	}
+	if err := run("vgcreate", nil, args...); err != nil {
+		return nil, err
+	}
+	// Perform a best-effort scan to trigger a lvmetad cache refresh.
+	// We ignore errors as for better or worse, the volume group now exists.
+	// Without this lvmetad can fail to pickup newly created volume groups.
+	// See https://bugzilla.redhat.com/show_bug.cgi?id=837599
+	PVScan("")
+	VGScan("")
+	return &VolumeGroup{name}, nil
+}
 
 /*
+ValidateTag validates a tag.
+
 LVM tags are strings of up to 1024 characters. LVM tags cannot
 start with a hyphen.
 
@@ -289,8 +444,8 @@ tags can contain the /, =, !, :, #, and & characters.
 
 ~ https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/logical_volume_manager_administration/lvm_tags
 */
-func (handle *LibHandle) ValidateTag(tag string) error {
-	if len(tag) < 1 || len(tag) > 1024 {
+func ValidateTag(tag string) error {
+	if len(tag) > 1024 {
 		return ErrTagInvalidLength
 	}
 	if !tagRegexp.MatchString(tag) {
@@ -299,578 +454,36 @@ func (handle *LibHandle) ValidateTag(tag string) error {
 	return nil
 }
 
-// CreateVolumeGroup creates a new volume group.
-func (handle *LibHandle) CreateVolumeGroup(name string, pvs []*PhysicalVolume, tags []string) (*VolumeGroup, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	// Validate the volume group name.
-	if err := handle.validateVolumeGroupName(name); err != nil {
-		return nil, err
-	}
-	// Validate the tags.
-	for _, tag := range tags {
-		if err := handle.ValidateTag(tag); err != nil {
-			return nil, err
-		}
-	}
-	// Create the volume group memory object.
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	cvg := C.lvm_vg_create(handle.handle, cname)
-	if cvg == nil {
-		return nil, handle.err()
-	}
-	vg := &VolumeGroup{name, cvg, handle}
-	defer vg.close()
-
-	// Tag the volume group
-	for _, tag := range tags {
-		ctag := C.CString(tag)
-		rc := C.lvm_vg_add_tag(cvg, ctag)
-		C.free(unsafe.Pointer(ctag))
-		if rc != 0 {
-			return nil, handle.err()
-		}
-	}
-
-	// Add physical volumes to the volume group.
-	for _, pv := range pvs {
-		cpv := C.CString(pv.dev)
-		defer C.free(unsafe.Pointer(cpv))
-		res := C.lvm_vg_extend(cvg, cpv)
-		if res != 0 {
-			return nil, handle.err()
-		}
-	}
-
-	// Persist the volume group to disk.
-	res := C.lvm_vg_write(vg.vg)
-	if res != 0 {
-		return nil, vg.handle.err()
-	}
-	return vg, nil
-}
-
-func (handle *LibHandle) validateVolumeGroupName(name string) error {
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	res := C.lvm_vg_name_validate(handle.handle, cname)
-	if res != 0 {
-		return invalidNameError(handle.err().Error())
-	}
-	return nil
-}
-
-// Scan scans for new devices and volume groups.
-func (handle *LibHandle) Scan() error {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	res := C.lvm_scan(handle.handle)
-	if res != 0 {
-		return handle.err()
-	}
-	return nil
-}
-
-// ListPhysicalVolumes lists all physical volumes.
-func (handle *LibHandle) ListPhysicalVolumes() ([]*PhysicalVolume, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	return handle.listPhysicalVolumes()
-}
-
-// listPhysicalVolumes lists all physical volumes.
-//
-// The handle lock must be held by the caller.
-func (handle *LibHandle) listPhysicalVolumes() ([]*PhysicalVolume, error) {
-	dm_list := C.lvm_list_pvs(handle.handle)
-	if dm_list == nil {
-		return nil, handle.err()
-	}
-	// We need to free this dm_list explicitly.
-	defer func() {
-		res := C.lvm_list_pvs_free(dm_list)
-		if res != 0 {
-			panic(handle.err())
-		}
-	}()
-	if C.dm_list_empty(dm_list) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list)
-	cdevnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
-	// Transform the array of C strings into a []string.
-	devnames := goStrings(size, cdevnames)
-	var pvs []*PhysicalVolume
-	for _, name := range devnames {
-		pvs = append(pvs, &PhysicalVolume{name, handle})
-	}
-	return pvs, nil
-}
-
-const ErrPhysicalVolumeNotFound = simpleError("lvm: physical volume not found")
-
-// LookupPhysicalVolume returns the physical volume for the given device.
-func (handle *LibHandle) LookupPhysicalVolume(dev string) (*PhysicalVolume, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	pvs, err := handle.listPhysicalVolumes()
-	if err != nil {
-		return nil, err
-	}
-	for _, pv := range pvs {
-		if pv.dev == dev {
-			return pv, nil
-		}
-	}
-	return nil, ErrPhysicalVolumeNotFound
-}
-
-// CreatePhysicalVolume creates a physical volume of the given device.
-func (handle *LibHandle) CreatePhysicalVolume(dev string) (*PhysicalVolume, error) {
-	handle.lk.Lock()
-	defer handle.lk.Unlock()
-	cdev := C.CString(dev)
-	defer C.free(unsafe.Pointer(cdev))
-	res := C.lvm_pv_create(handle.handle, cdev, 0)
-	if res != 0 {
-		return nil, handle.err()
-	}
-	return &PhysicalVolume{dev, handle}, nil
-}
-
-// Close releases the underlying handle by calling `lvm_quit`.
-func (h *LibHandle) Close() error {
-	C.lvm_quit(h.handle)
-	return nil
-}
-
-type PhysicalVolume struct {
-	dev    string
-	handle *LibHandle
-}
-
-// Remove removes the physical volume.
-func (pv *PhysicalVolume) Remove() error {
-	pv.handle.lk.Lock()
-	defer pv.handle.lk.Unlock()
-	cdev := C.CString(pv.dev)
-	defer C.free(unsafe.Pointer(cdev))
-	res := C.lvm_pv_remove(pv.handle.handle, cdev)
-	if res != 0 {
-		return pv.handle.err()
-	}
-	return nil
-}
-
-type VolumeGroup struct {
-	name   string
-	vg     C.vg_t
-	handle *LibHandle
-}
-
-func (vg *VolumeGroup) Name() string {
-	return vg.name
-}
-
-// BytesTotal returns the current size in bytes of the volume group.
-func (vg *VolumeGroup) BytesTotal() (uint64, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return 0, err
-	}
-	defer vg.close()
-	return uint64(C.lvm_vg_get_size(vg.vg)), nil
-}
-
-// BytesFree returns the unallocated space in bytes of the volume group.
-func (vg *VolumeGroup) BytesFree() (uint64, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return 0, err
-	}
-	defer vg.close()
-	return uint64(C.lvm_vg_get_free_size(vg.vg)), nil
-}
-
-// ExtentSize returns the size in bytes of a single extent.
-func (vg *VolumeGroup) ExtentSize() (uint64, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return 0, err
-	}
-	defer vg.close()
-	return uint64(C.lvm_vg_get_extent_size(vg.vg)), nil
-}
-
-type simpleError string
-
-func (s simpleError) Error() string { return string(s) }
-
-const ErrNoSpace = simpleError("lvm: not enough free space")
-
-// CreateLogicalVolume creates a logical volume of the given device
-// and size.
-//
-// The actual size may be larger than asked for as the smallest
-// increment is the size of an extent on the volume group in question.
-//
-// If sizeInBytes is zero the entire available space is allocated.
-func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags []string) (*LogicalVolume, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	// Validate the tags.
-	for _, tag := range tags {
-		if err := vg.handle.ValidateTag(tag); err != nil {
-			return nil, err
-		}
-	}
-	if err := vg.open(openReadWrite); err != nil {
-		return nil, err
-	}
-	defer vg.close()
-	if err := vg.validateLogicalVolumeName(name); err != nil {
-		return nil, err
-	}
-	freeExtents := uint64(C.lvm_vg_get_free_extent_count(vg.vg))
-	extentSize := uint64(C.lvm_vg_get_extent_size(vg.vg))
-	if sizeInBytes == 0 {
-		sizeInBytes = extentSize * freeExtents
-	}
-	// Calculate the number of extents required to satisfy size.
-	extentsForSize := (sizeInBytes / extentSize)
-	if sizeInBytes%extentSize != 0 {
-		extentsForSize++
-	}
-	// Check that there's enough free space available.
-	if extentsForSize > freeExtents {
-		return nil, ErrNoSpace
-	}
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	// The documentation insists that this function expects the
-	// size in number of extents, but the source code appears to
-	// disagree and calculates the number of extents required.
-	//
-	// See https://github.com/twitter/bittern/blob/a95aab6d4a43c7961d36bacd9f4e23387a4cb9d7/lvm2/liblvm/lvm_lv.c#L244
-	clv := C.lvm_vg_create_lv_linear(vg.vg, cname, C.uint64_t(sizeInBytes))
-	if clv == nil {
-		return nil, vg.handle.err()
-	}
-	// Tag the volume group
-	for _, tag := range tags {
-		ctag := C.CString(tag)
-		rc := C.lvm_lv_add_tag(clv, ctag)
-		C.free(unsafe.Pointer(ctag))
-		if rc != 0 {
-			return nil, vg.handle.err()
-		}
-	}
-	if len(tags) > 0 {
-		// Tags are persisted by writing to the volume group.
-		res := C.lvm_vg_write(vg.vg)
-		if res != 0 {
-			return nil, vg.handle.err()
-		}
-	}
-	actualSize := extentsForSize * extentSize
-	return &LogicalVolume{name, clv, vg, actualSize}, nil
-}
-
-func (vg *VolumeGroup) validateLogicalVolumeName(name string) error {
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	res := C.lvm_lv_name_validate(vg.vg, cname)
-	if res != 0 {
-		return invalidNameError(vg.handle.err().Error())
-	}
-	return nil
-}
-
-const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
-
-// LookupLogicalVolume looks up the logical volume in the volume group
-// with the given name.
-func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return nil, err
-	}
-	defer vg.close()
-	cname := C.CString(name)
-	defer C.free(unsafe.Pointer(cname))
-	lv := C.lvm_lv_from_name(vg.vg, cname)
-	if lv == nil {
-		// If `lv == nil` the LV name is not associated with the VG handle.
-		return nil, ErrLogicalVolumeNotFound
-	}
-	actualSize := uint64(C.lvm_lv_get_size(lv))
-	return &LogicalVolume{name, lv, vg, actualSize}, nil
-}
-
-// ListLogicalVolumes returns the names of the logical volumes in this volume group.
-func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return nil, err
-	}
-	defer vg.close()
-	dm_list := C.lvm_vg_list_lvs(vg.vg)
-	if dm_list == nil {
-		return nil, vg.handle.err()
-	}
-	if C.dm_list_empty(dm_list) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list)
-	clvnames := C.csilvm_get_lv_names_lvm_lv_list(dm_list)
-	// Transform the array of C strings into a []string.
-	lvnames := goStrings(size, clvnames)
-	return lvnames, nil
-}
-
-// ListPhysicalVolumeNames returns the names of the physical volumes in this volume group.
-func (vg *VolumeGroup) ListPhysicalVolumeNames() ([]string, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return nil, err
-	}
-	defer vg.close()
-	dm_list := C.lvm_vg_list_pvs(vg.vg)
-	if dm_list == nil {
-		return nil, vg.handle.err()
-	}
-	if C.dm_list_empty(dm_list) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list)
-	cpvnames := C.csilvm_get_pv_dev_names_lvm_pv_list(dm_list)
-	// Transform the array of C strings into a []string.
-	pvnames := goStrings(size, cpvnames)
-	return pvnames, nil
-}
-
-// Tags returns the volume group tags.
-func (vg *VolumeGroup) Tags() ([]string, error) {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadOnly); err != nil {
-		return nil, err
-	}
-	defer vg.close()
-	dm_list := C.lvm_vg_get_tags(vg.vg)
-	if dm_list == nil {
-		return nil, vg.handle.err()
-	}
-	if C.dm_list_empty(dm_list) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list)
-	ctags := C.csilvm_get_strings_from_lvm_str_list(dm_list)
-	// Transform the array of C strings into a []string.
-	tags := goStrings(size, ctags)
-	return tags, nil
-}
-
-// Remove removes the volume group from disk.
-//
-// It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
-// change.
-func (vg *VolumeGroup) Remove() error {
-	vg.handle.lk.Lock()
-	defer vg.handle.lk.Unlock()
-	if err := vg.open(openReadWrite); err != nil {
-		return err
-	}
-	defer vg.close()
-	res := C.lvm_vg_remove(vg.vg)
-	if res != 0 {
-		return vg.handle.err()
-	}
-	res = C.lvm_vg_write(vg.vg)
-	if res != 0 {
-		return vg.handle.err()
-	}
-	return nil
-}
-
-const (
-	openReadWrite = false
-	openReadOnly  = true
-)
-
-// open calls `lvm_vg_open()` to get a handle to the underlying volume group.
-func (vg *VolumeGroup) open(readonly bool) error {
-	if vg.vg != nil {
-		return errors.New("already open")
-	}
-	cname := C.CString(vg.name)
-	defer C.free(unsafe.Pointer(cname))
-	mode := "w"
-	if readonly {
-		mode = "r"
-	}
-	cmode := C.CString(mode)
-	defer C.free(unsafe.Pointer(cmode))
-	const ignoredFlags = 0
-	cvg := C.lvm_vg_open(vg.handle.handle, cname, cmode, ignoredFlags)
-	if cvg == nil {
-		return vg.handle.err()
-	}
-	vg.vg = cvg
-	return nil
-}
-
-// close calls `lvm_vg_close()` to release the underlying volume group
-// handle and the VG lock. This function panics if the close fails or
-// if the volume group is already closed.  As this is an internal
-// function, the latter should never happen.
-func (vg *VolumeGroup) close() {
-	if vg.vg == nil {
-		panic("already closed")
-	}
-	res := C.lvm_vg_close(vg.vg)
-	if res != 0 {
-		panic(vg.handle.err())
-	}
-	vg.vg = nil
-}
-
-type LogicalVolume struct {
-	name        string
-	lv          C.lv_t
-	vg          *VolumeGroup
-	sizeInBytes uint64
-}
-
-func (lv *LogicalVolume) Name() string {
-	return lv.name
-}
-
-func (lv *LogicalVolume) SizeInBytes() uint64 {
-	return lv.sizeInBytes
-}
-
-// Path returns the device path for the logical volume.
-func (lv *LogicalVolume) Path() (string, error) {
-	lv.vg.handle.lk.Lock()
-	defer lv.vg.handle.lk.Unlock()
-	if err := lv.vg.open(openReadWrite); err != nil {
-		return "", err
-	}
-	defer lv.vg.close()
-	cname := C.CString(lv.name)
-	defer C.free(unsafe.Pointer(cname))
-	// The memory for the logical volume handle is tied to the
-	// vg_t and does not need to be freed on its own.
-	// For example:
-	// https://github.com/malachheb/liblvm/blob/master/ext/liblvm.c#L164-L183
-	clv := C.lvm_lv_from_name(lv.vg.vg, cname)
-	if clv == nil {
-		return "", lv.vg.handle.err()
-	}
-	path := C.csilvm_get_lv_path(clv)
-	if path == nil {
-		return "", lv.vg.handle.err()
-	}
-	return C.GoString(path), nil
-}
-
-// Tags returns the volume group tags.
-func (lv *LogicalVolume) Tags() ([]string, error) {
-	lv.vg.handle.lk.Lock()
-	defer lv.vg.handle.lk.Unlock()
-	if err := lv.vg.open(openReadWrite); err != nil {
-		return nil, err
-	}
-	defer lv.vg.close()
-	cvg := lv.vg.vg
-	cname := C.CString(lv.name)
-	defer C.free(unsafe.Pointer(cname))
-	// The memory for the logical volume handle is tied to the
-	// vg_t and does not need to be freed on its own.
-	// For example:
-	// https://github.com/malachheb/liblvm/blob/master/ext/liblvm.c#L164-L183
-	clv := C.lvm_lv_from_name(cvg, cname)
-	if clv == nil {
-		return nil, lv.vg.handle.err()
-	}
-	dm_list := C.lvm_lv_get_tags(clv)
-	if dm_list == nil {
-		return nil, lv.vg.handle.err()
-	}
-	if C.dm_list_empty(dm_list) != 0 {
-		return nil, nil
-	}
-	size := C.dm_list_size(dm_list)
-	ctags := C.csilvm_get_strings_from_lvm_str_list(dm_list)
-	// Transform the array of C strings into a []string.
-	tags := goStrings(size, ctags)
-	return tags, nil
-}
-
-func (lv *LogicalVolume) Remove() error {
-	lv.vg.handle.lk.Lock()
-	defer lv.vg.handle.lk.Unlock()
-	if err := lv.vg.open(openReadWrite); err != nil {
-		return err
-	}
-	defer lv.vg.close()
-	cvg := lv.vg.vg
-	cname := C.CString(lv.name)
-	defer C.free(unsafe.Pointer(cname))
-	// The memory for the logical volume handle is tied to the
-	// vg_t and does not need to be freed on its own.
-	// For example:
-	// https://github.com/malachheb/liblvm/blob/master/ext/liblvm.c#L164-L183
-	clv := C.lvm_lv_from_name(cvg, cname)
-	if clv == nil {
-		return lv.vg.handle.err()
-	}
-	res := C.lvm_vg_remove_lv(clv)
-	if res != 0 {
-		return lv.vg.handle.err()
-	}
-	return nil
-}
-
-var defaultHandle *LibHandle
-
-func init() {
-	var err error
-	defaultHandle, err = NewLibHandle()
-	if err != nil {
-		panic(err)
-	}
-}
-
-// Scan scans for new devices and volume groups.
-func Scan() error {
-	return defaultHandle.Scan()
-}
-
-// CreateVolumeGroup creates a new volume group.
-func CreateVolumeGroup(
-	name string,
-	pvs []*PhysicalVolume,
-	tags []string) (*VolumeGroup, error) {
-	return defaultHandle.CreateVolumeGroup(name, pvs, tags)
-}
-
-// ValidateTag validates a tag.
-func ValidateTag(tag string) error {
-	return defaultHandle.ValidateTag(tag)
+type vgsOutput struct {
+	Report []struct {
+		Vg []struct {
+			Name              string `json:"vg_name"`
+			UUID              string `json:"vg_uuid"`
+			VgSize            uint64 `json:"vg_size,string"`
+			VgFree            uint64 `json:"vg_free,string"`
+			VgExtentSize      uint64 `json:"vg_extent_size,string"`
+			VgExtentCount     uint64 `json:"vg_extent_count,string"`
+			VgFreeExtentCount uint64 `json:"vg_free_count,string"`
+			VgTags            string `json:"vg_tags"`
+		} `json:"vg"`
+	} `json:"report"`
 }
 
 // LookupVolumeGroup returns the volume group with the given name.
 func LookupVolumeGroup(name string) (*VolumeGroup, error) {
-	return defaultHandle.LookupVolumeGroup(name)
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_name", name); err != nil {
+		if IsVolumeGroupNotFound(err) {
+			return nil, ErrVolumeGroupNotFound
+		}
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			return &VolumeGroup{vg.Name}, nil
+		}
+	}
+	return nil, ErrVolumeGroupNotFound
 }
 
 // ListVolumeGroupNames returns the names of the list of volume groups.
@@ -881,7 +494,17 @@ func LookupVolumeGroup(name string) (*VolumeGroup, error) {
 // This does not normally scan for devices. To scan for devices, use
 // the `Scan()` function.
 func ListVolumeGroupNames() ([]string, error) {
-	return defaultHandle.ListVolumeGroupNames()
+	result := new(vgsOutput)
+	if err := run("vgs", result); err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			names = append(names, vg.Name)
+		}
+	}
+	return names, nil
 }
 
 // ListVolumeGroupUUIDs returns the UUIDs of the list of volume groups.
@@ -892,23 +515,103 @@ func ListVolumeGroupNames() ([]string, error) {
 // This does not normally scan for devices. To scan for devices, use
 // the `Scan()` function.
 func ListVolumeGroupUUIDs() ([]string, error) {
-	return defaultHandle.ListVolumeGroupUUIDs()
+	result := new(vgsOutput)
+	if err := run("vgs", result, "--options=vg_uuid"); err != nil {
+		return nil, err
+	}
+	var uuids []string
+	for _, report := range result.Report {
+		for _, vg := range report.Vg {
+			uuids = append(uuids, vg.UUID)
+		}
+	}
+	return uuids, nil
 }
 
 // CreatePhysicalVolume creates a physical volume of the given device.
 func CreatePhysicalVolume(dev string) (*PhysicalVolume, error) {
-	return defaultHandle.CreatePhysicalVolume(dev)
+	if err := run("pvcreate", nil, dev); err != nil {
+		return nil, err
+	}
+	return &PhysicalVolume{dev}, nil
+}
+
+type pvsOutput struct {
+	Report []struct {
+		Pv []struct {
+			Name   string `json:"pv_name"`
+			VgName string `json:"vg_name"`
+		} `json:"pv"`
+	} `json:"report"`
 }
 
 // ListPhysicalVolumes lists all physical volumes.
 func ListPhysicalVolumes() ([]*PhysicalVolume, error) {
-	return defaultHandle.ListPhysicalVolumes()
+	result := new(pvsOutput)
+	if err := run("pvs", result); err != nil {
+		return nil, err
+	}
+	var pvs []*PhysicalVolume
+	for _, report := range result.Report {
+		for _, pv := range report.Pv {
+			pvs = append(pvs, &PhysicalVolume{pv.Name})
+		}
+	}
+	return pvs, nil
 }
 
 // LookupPhysicalVolume returns a physical volume with the given name.
 func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
-	return defaultHandle.LookupPhysicalVolume(name)
+	result := new(pvsOutput)
+	if err := run("pvs", result, "--options=pv_name", name); err != nil {
+		if IsPhysicalVolumeNotFound(err) {
+			return nil, ErrPhysicalVolumeNotFound
+		}
+		return nil, err
+	}
+	for _, report := range result.Report {
+		for _, pv := range report.Pv {
+			return &PhysicalVolume{pv.Name}, nil
+		}
+	}
+	return nil, ErrPhysicalVolumeNotFound
 }
 
 // Extent sizing for linear logical volumes:
 // https://github.com/Jajcus/lvm2/blob/266d6564d7a72fcff5b25367b7a95424ccf8089e/lib/metadata/metadata.c#L983
+
+func run(cmd string, v interface{}, extraArgs ...string) error {
+	var args []string
+	if v != nil {
+		args = append(args, "--reportformat=json")
+		args = append(args, "--units=b")
+		args = append(args, "--nosuffix")
+	}
+	args = append(args, extraArgs...)
+	c := exec.Command(cmd, args...)
+	fmt.Println("executing", c)
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	c.Stdout = stdout
+	c.Stderr = stderr
+	if err := c.Run(); err != nil {
+		buf := stdout.Bytes()
+		buf2 := stderr.Bytes()
+		fmt.Println(string(buf))
+		fmt.Println(string(buf2))
+		return errors.New(strings.TrimSpace(stderr.String()))
+	}
+	if v != nil {
+		buf := stdout.Bytes()
+		buf2 := stderr.Bytes()
+		fmt.Println(string(buf))
+		fmt.Println(string(buf2))
+		if err := json.Unmarshal(buf, v); err != nil {
+			return fmt.Errorf("%v: [%v]", err, string(buf))
+		}
+	}
+	buf := stdout.Bytes()
+	buf2 := stderr.Bytes()
+	fmt.Println(string(buf))
+	fmt.Println(string(buf2))
+	return nil
+}
