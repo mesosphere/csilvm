@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const PluginName = "io.mesosphere.dcos.storage/csilvm"
+const PluginName = "io.mesosphere.dcos.storage.csilvm"
 const PluginVersion = "1.11.0"
 
 type Server struct {
