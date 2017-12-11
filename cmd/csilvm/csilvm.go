@@ -37,6 +37,7 @@ func main() {
 	defaultFsF := flag.String("default-fs", defaultDefaultFs, "The default filesystem to format new volumes with")
 	defaultVolumeSizeF := flag.Uint64("default-volume-size", defaultDefaultVolumeSize, "The default volume size in bytes")
 	socketFileF := flag.String("unix-addr", "", "The path to the listening unix socket file")
+	socketFileEnvF := flag.String("unix-addr-env", "", "An optional environment variable from which to read the unix-addr")
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
 	var tagsF stringsFlag
 	flag.Var(&tagsF, "tag", "Value to tag the volume group with (can be given multiple times)")
@@ -45,8 +46,19 @@ func main() {
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
 	logflags := log.LstdFlags | log.Lshortfile
 	csilvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
+	// Determine listen address.
+	if *socketFileF != "" && *socketFileEnvF != "" {
+		log.Fatalf("[%s] cannot specify -unix-addr and -unix-addr-env", *vgnameF)
+	}
+	sock := *socketFileF
+	if *socketFileEnvF != "" {
+		sock = os.Getenv(*socketFileEnvF)
+	}
+	if strings.HasPrefix(sock, "unix://") {
+		sock = sock[len("unix://"):]
+	}
 	// Setup socket listener
-	lis, err := net.Listen("unix", *socketFileF)
+	lis, err := net.Listen("unix", sock)
 	if err != nil {
 		log.Fatalf("[%s] Failed to listen: %v", *vgnameF, err)
 	}
