@@ -13,7 +13,6 @@ import (
 /*
 #cgo LDFLAGS: -llvm2app -ldevmapper
 #cgo CFLAGS: -Wno-implicit-function-declaration
-#cgo pkg-config: --libs glib-2.0
 #include <stdlib.h>
 #include <lvm2app.h>
 #include <libdevmapper.h>

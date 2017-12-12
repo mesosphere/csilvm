@@ -1,7 +1,7 @@
 FROM golang:1.9.2
 
 RUN apt-get update && \
-    apt-get install -y libglib2.0-dev liblvm2-dev
+    apt-get install -y liblvm2-dev
 
 RUN mkdir -p /go/src/github.com/alecthomas && \
     cd /go/src/github.com/alecthomas && \
