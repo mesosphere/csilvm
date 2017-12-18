@@ -1,6 +1,6 @@
 FROM centos:7
 
-RUN yum install -y gcc gcc-c++ make git lvm2-devel blkid
+RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-devel util-linux
 
 ENV GOLANG_VERSION 1.9.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
