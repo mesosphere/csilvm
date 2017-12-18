@@ -764,43 +764,37 @@ func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly
 }
 
 func determineFilesystemType(devicePath string) (string, error) {
-	// This is a best-effort function. It is possible that a device may
-	// have be formatted with a new filesystem in the very recent past, in
-	// which case the udev event may not have been processed yet and this
-	// function will erroneously report that the device has no filesystem.
-	// The only way around that (using lsblk) would be to use `udevadm
-	// settle` with a timeout, but that comes with its own issues (how long
-	// to set the timeout, how to determine whether the command failed due
-	// to timeout or some other reason, what to do if the timeout fires and
-	// the event still has not been processed, etc.)  As such, we hope for
-	// the best. Fortunately, the consequence of getting this wrong is
-	// minimal and amount to the client seeing an error in
-	// NodePublishVolume that could have been seen in
-	// ValidateVolumeCapabilities already, or temporary loss of idempotency
-	// (two NodePublishVolume requests for the same volume shortly after
-	// each other may both attempt to format the device and the second will
-	// fail and must be retried anyway.)
-	output, err := exec.Command("lsblk", "-P", "-o", "FSTYPE", devicePath).CombinedOutput()
+	// We use `file -bsL` to determine whether any filesystem type is detected.
+	// If a filesystem is detected (ie., the output is not "data", we use
+	// `blkid` to determine what the filesystem is. We use `blkid` as `file`
+	// has inconvenient output.
+	// We do *not* use `lsblk` as that requires udev to be up-to-date which
+	// is often not the case when a device is erased using `dd`.
+	output, err := exec.Command("file", "-bsL", devicePath).CombinedOutput()
 	if err != nil {
 		return "", err
 	}
-	parseErr := errors.New("Cannot parse output of lsblk.")
+	if strings.TrimSpace(string(output)) == "data" {
+		// No filesystem detected.
+		return "", nil
+	}
+	// Some filesystem was detected, we use blkid to figure out what it is.
+	output, err = exec.Command("blkid", "-c", "/dev/null", "-o", "export", devicePath).CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	parseErr := errors.New("Cannot parse output of blkid.")
 	lines := strings.Split(string(output), "\n")
-	if len(lines) != 2 {
-		return "", parseErr
+	for _, line := range lines {
+		fields := strings.Split(strings.TrimSpace(line), "=")
+		if len(fields) != 2 {
+			return "", parseErr
+		}
+		if fields[0] == "TYPE" {
+			return fields[1], nil
+		}
 	}
-	if lines[1] != "" {
-		return "", parseErr
-	}
-	line := lines[0]
-	const prefix = "FSTYPE=\""
-	const suffix = "\""
-	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
-		return "", parseErr
-	}
-	line = strings.TrimPrefix(line, prefix)
-	line = strings.TrimSuffix(line, suffix)
-	return line, nil
+	return "", parseErr
 }
 
 func formatDevice(devicePath, fstype string) error {
