@@ -27,7 +27,7 @@ Logical volumes are named according to the following pattern
 The following command-line utilties must be present in the `PATH`:
 
 * `udevadm`
-* `lsblk`
+* `blkid`
 * `pvscan` from the lvm2 utils
 * `mkfs`
 * the filesystem listed as `-default-fs` (defaults to: `xfs`)
