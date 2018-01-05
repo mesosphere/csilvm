@@ -536,7 +536,7 @@ func TestDeleteVolume_Idempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = client.DeleteVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrVolumeNotFound) {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -546,7 +546,7 @@ func TestDeleteVolumeUnknownVolume(t *testing.T) {
 	defer clean()
 	req := testDeleteVolumeRequest("missing-volume")
 	_, err := client.DeleteVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrVolumeNotFound) {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1919,29 +1919,13 @@ func testGetNodeIDRequest() *csi.GetNodeIDRequest {
 	return req
 }
 
-func TestGetNodeID(t *testing.T) {
+func TestGetNodeIDNotSupported(t *testing.T) {
 	client, clean := startTest()
 	defer clean()
-	req := testGetNodeIDRequest()
-	resp, err := client.GetNodeID(context.Background(), req)
-	if err != nil {
+	req := &csi.GetNodeIDRequest{}
+	_, err := client.GetNodeID(context.Background(), req)
+	if !grpcErrorEqual(err, ErrCallNotImplemented) {
 		t.Fatal(err)
-	}
-	if resp.GetNodeId() != "" {
-		t.Fatalf("Expected node_id to be ''.")
-	}
-}
-
-func TestGetNodeID_RemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
-	defer clean()
-	req := testGetNodeIDRequest()
-	resp, err := client.GetNodeID(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.GetNodeId() != "" {
-		t.Fatalf("Expected node_id to be ''.")
 	}
 }
 
