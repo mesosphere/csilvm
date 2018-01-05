@@ -640,28 +640,6 @@ func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	}
 }
 
-func TestGetNodeIDMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetNodeIDRequest()
-	req.Version = nil
-	_, err := client.GetNodeID(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestGetNodeIDUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetNodeIDRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.GetNodeID(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
 func TestNodeProbeMissingVersion(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()

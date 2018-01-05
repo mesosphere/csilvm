@@ -310,7 +310,9 @@ func (s *Server) DeleteVolume(
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
 	if err != nil {
-		return nil, ErrVolumeNotFound
+		// It is idempotent to succeed if a volume is not found.
+		response := &csi.DeleteVolumeResponse{}
+		return response, nil
 	}
 	log.Printf("Determining volume path")
 	path, err := lv.Path()
@@ -642,8 +644,8 @@ func (s *Server) nodePublishVolume_Block(sourcePath, targetPath string, readonly
 			return ErrTargetPathNotEmpty
 		}
 		log.Printf("The volume %v is already bind mounted to %v", sourcePath, targetPath)
-		// For bind mounts, the filesystemtype and
-		// mount options are ignored.
+		// For bind mounts, the filesystemtype and mount options are
+		// ignored. As this RPC is idempotent, we respond with success.
 		return nil
 	}
 	log.Printf("Nothing mounted at targetPath %v yet", targetPath)
@@ -856,11 +858,8 @@ func (s *Server) NodeUnpublishVolume(
 func (s *Server) GetNodeID(
 	ctx context.Context,
 	request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, error) {
-	if err := s.validateGetNodeIDRequest(request); err != nil {
-		return nil, err
-	}
-	response := &csi.GetNodeIDResponse{}
-	return response, nil
+	log.Printf("GetNodeID not supported")
+	return nil, ErrCallNotImplemented
 }
 
 func zeroPartitionTable(devicePath string) error {

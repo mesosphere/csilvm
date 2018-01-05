@@ -292,13 +292,6 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 	return nil
 }
 
-func (s *Server) validateGetNodeIDRequest(request *csi.GetNodeIDRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (s *Server) validateNodeProbeRequest(request *csi.NodeProbeRequest) error {
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
