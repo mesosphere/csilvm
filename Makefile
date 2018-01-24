@@ -28,7 +28,7 @@ dev-image:
 	docker inspect $(DEV_DOCKER_IMAGE) &> /dev/null || docker build --rm -t $(DEV_DOCKER_IMAGE) .
 
 ifeq ($(DOCKER), yes)
-TEST_PREFIX := docker run --rm $(DEV_DOCKER_IMAGE)
+TEST_PREFIX := docker run --rm --privileged -v /run:/run -v /tmp:/tmp -v `pwd`:/go/src/github.com/mesosphere/csilvm -v /dev:/dev --ipc=host $(DEV_DOCKER_IMAGE)
 BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE)
 
 build: dev-image
@@ -53,7 +53,5 @@ all: build
 
 .PHONY: sudo-test
 sudo-test:
-	go test -c -i ./pkg/lvm
-	sudo ./lvm.test -test.v
-	go test -c -i ./pkg/csilvm
-	sudo ./csilvm.test -test.v
+	$(TEST_PREFIX) sh -c "go test -c -i ./pkg/lvm && ./lvm.test -test.v -test.run=${FILTER}"
+	$(TEST_PREFIX) sh -c "go test -c -i ./pkg/csilvm && ./csilvm.test -test.v -test.run=${FILTER}"

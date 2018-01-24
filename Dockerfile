@@ -1,6 +1,6 @@
 FROM centos:7
 
-RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-devel util-linux
+RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-devel util-linux xfsprogs file
 
 ENV GOLANG_VERSION 1.9.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
@@ -23,5 +23,9 @@ RUN mkdir -p /go/src/github.com/alecthomas && \
     gometalinter --install && \
     go get -u golang.org/x/tools/cmd/goimports && \
     mkdir -p /go/src/github.com/mesosphere/csilvm
+
+# We explicitly disable use of lvmetad as the cache appears to yield inconsistent results,
+# at least when running in docker.
+RUN sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf
 
 WORKDIR /go/src/github.com/mesosphere/csilvm

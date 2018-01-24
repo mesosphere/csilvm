@@ -1,6 +1,7 @@
 package csilvm
 
 import (
+	"errors"
 	"io/ioutil"
 	"strings"
 )
@@ -51,17 +52,34 @@ func listMounts() (mounts []mountpoint, err error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseMountinfo(buf)
+}
+
+func parseMountinfo(buf []byte) (mounts []mountpoint, err error) {
 	for _, line := range strings.Split(string(buf), "\n") {
 		if line == "" {
 			continue
 		}
 		fields := strings.Fields(line)
+		// There may be one or more optional fields between column 6
+		// and before the '-'.
+		foundSep := false
+		sepoffset := 6
+		for ; sepoffset < len(fields); sepoffset++ {
+			if fields[sepoffset] == "-" {
+				foundSep = true
+				break
+			}
+		}
+		if !foundSep {
+			return nil, errors.New("Failed to parse /proc/mountinfo")
+		}
 		mount := mountpoint{
 			root:        fields[3],
 			path:        fields[4],
-			fstype:      fields[8],
+			fstype:      fields[sepoffset+1],
 			mountopts:   strings.Split(fields[5], ","),
-			mountsource: fields[9],
+			mountsource: fields[sepoffset+2],
 		}
 		mounts = append(mounts, mount)
 	}
