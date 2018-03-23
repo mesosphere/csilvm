@@ -30,6 +30,7 @@ The following command-line utilties must be present in the `PATH`:
 * `blkid`
 * `pvscan` from the lvm2 utils
 * `mkfs`
+* `file`
 * the filesystem listed as `-default-fs` (defaults to: `xfs`)
 
 The following shared libraries are dynamically linked against and must
