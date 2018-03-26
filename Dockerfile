@@ -26,6 +26,8 @@ RUN mkdir -p /go/src/github.com/alecthomas && \
 
 # We explicitly disable use of lvmetad as the cache appears to yield inconsistent results,
 # at least when running in docker.
-RUN sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf
+RUN sed -i 's/udev_rules = 1/udev_rules = 0/' /etc/lvm/lvm.conf && \
+    sed -i 's/udev_sync = 1/udev_sync = 0/' /etc/lvm/lvm.conf && \
+    sed -i 's/use_lvmetad = 1/use_lvmetad = 0/' /etc/lvm/lvm.conf
 
 WORKDIR /go/src/github.com/mesosphere/csilvm

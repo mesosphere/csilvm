@@ -25,11 +25,11 @@ rebuild-dev-image:
 	docker build --rm -t $(DEV_DOCKER_IMAGE) .
 
 dev-image:
-	docker inspect $(DEV_DOCKER_IMAGE) &> /dev/null || docker build --rm -t $(DEV_DOCKER_IMAGE) .
+	docker inspect $(DEV_DOCKER_IMAGE) > /dev/null || docker build --rm -t $(DEV_DOCKER_IMAGE) .
 
 ifeq ($(DOCKER), yes)
-TEST_PREFIX := docker run --rm --privileged -v /run:/run -v /tmp:/tmp -v `pwd`:/go/src/github.com/mesosphere/csilvm -v /dev:/dev --ipc=host $(DEV_DOCKER_IMAGE)
-BUILD_PREFIX := docker run --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE)
+TEST_PREFIX := docker run -t --rm --privileged --tmpfs /run --tmpfs /tmp -v /var/lock/lvm:/var/lock/lvm -v `pwd`:/go/src/github.com/mesosphere/csilvm --ipc=host --pid=host --net=host $(DEV_DOCKER_IMAGE)
+BUILD_PREFIX := docker run -t --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE)
 
 build: dev-image
 check: dev-image
@@ -52,6 +52,6 @@ gofmt:
 all: build
 
 .PHONY: sudo-test
-sudo-test:
+sudo-test: dev-image
 	$(TEST_PREFIX) sh -c "go test -c -i ./pkg/lvm && ./lvm.test -test.v -test.run=${FILTER}"
 	$(TEST_PREFIX) sh -c "go test -c -i ./pkg/csilvm && ./csilvm.test -test.v -test.run=${FILTER}"
