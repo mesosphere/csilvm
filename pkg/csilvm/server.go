@@ -440,6 +440,11 @@ func (s *Server) ListVolumes(
 	if err := s.validateListVolumesRequest(request); err != nil {
 		return nil, err
 	}
+	if s.removingVolumeGroup {
+		log.Printf("Running with '-remove-volume-group', reporting no volumes")
+		response := &csi.ListVolumesResponse{}
+		return response, nil
+	}
 	volnames, err := s.volumeGroup.ListLogicalVolumeNames()
 	if err != nil {
 		return nil, status.Errorf(
