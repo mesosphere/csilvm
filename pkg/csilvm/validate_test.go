@@ -345,9 +345,12 @@ func TestListVolumesRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
 	defer cleanup()
 	req := testListVolumesRequest()
-	_, err := client.ListVolumes(context.Background(), req)
-	if !grpcErrorEqual(err, ErrRemovingMode) {
+	resp, err := client.ListVolumes(context.Background(), req)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if e := resp.GetEntries(); len(e) > 0 {
+		t.Fatalf("unexpected volumes were listed: %v", e)
 	}
 }
 

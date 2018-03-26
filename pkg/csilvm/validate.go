@@ -204,9 +204,6 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) error {
-	if err := s.validateRemoving(); err != nil {
-		return err
-	}
 	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}
