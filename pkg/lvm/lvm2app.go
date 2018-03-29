@@ -360,11 +360,6 @@ func (vg *VolumeGroup) Remove() error {
 	return nil
 }
 
-const (
-	openReadWrite = false
-	openReadOnly  = true
-)
-
 type LogicalVolume struct {
 	name        string
 	sizeInBytes uint64

@@ -595,7 +595,7 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 	defer lv.Remove()
 	lv2, err := vg.LookupLogicalVolume(lv.name + "a")
 	if err != ErrLogicalVolumeNotFound {
-		t.Fatal("Expected 'not found' error got %s", err)
+		t.Fatalf("Expected 'not found' error got %s", err)
 	}
 	if lv2 != nil {
 		t.Fatal("Expected result to be nil.")
