@@ -486,10 +486,9 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
 	// second volume to be created.
-
 	req.Name = "invalid name : /"
 	_, err := client.CreateVolume(context.Background(), req)
-	expdesc := "The volume name is invalid: err=lvm: validateLogicalVolumeName: Name contains invalid character, valid set includes: [a-zA-Z0-9.-_+]. (-1)"
+	expdesc := "The volume name is invalid: err=lvm: Name contains invalid character, valid set includes: [A-Za-z0-9_+.-]"
 	experr := status.Error(codes.InvalidArgument, expdesc)
 	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
@@ -2028,7 +2027,7 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing
 		codes.FailedPrecondition,
 		"Invalid tag '%v': err=%v",
 		tag,
-		"lvm: tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
+		"lvm: Tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
 	if !grpcErrorEqual(err, experr) {
 		t.Fatal(err)
 	}
@@ -2083,11 +2082,11 @@ func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
-		"Cannot create LVM2 physical volume %s: err=lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem? (-1)",
+		"Cannot create LVM2 physical volume %s: err=lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem?",
 		loop1.Path(),
 		loop1.Path())
 	if !grpcErrorEqual(err, experr) {
-		t.Fatal(err)
+		t.Fatalf("Expected '%#v' but got '%#v'", experr, err)
 	}
 }
 

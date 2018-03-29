@@ -10,19 +10,12 @@ import (
 	"strings"
 )
 
-// IsInvalidName returns true if the error is due to an invalid name
-// and false otherwise.
-func IsInvalidName(err error) bool {
-	const prefix = "Name contains invalid character"
-	lines := strings.Split(err.Error(), "\n")
-	if len(lines) == 0 {
-		return false
-	}
-	line := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(line, prefix) {
-		return true
-	}
-	return false
+// Control verbose output of all LVM CLI commands
+var Verbose bool
+
+// isInsufficientSpace returns true if the error is due to insufficient space
+func isInsufficientSpace(err error) bool {
+	return strings.Contains(err.Error(), "insufficient free space")
 }
 
 // MaxSize states that all available space should be used by the
@@ -37,10 +30,18 @@ const ErrNoSpace = simpleError("lvm: not enough free space")
 const ErrPhysicalVolumeNotFound = simpleError("lvm: physical volume not found")
 const ErrVolumeGroupNotFound = simpleError("lvm: volume group not found")
 
+var vgnameRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
+
+const ErrInvalidVGName = simpleError("lvm: Name contains invalid character, valid set includes: [A-Za-z0-9_+.-]")
+
+var lvnameRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
+
+const ErrInvalidLVName = simpleError("lvm: Name contains invalid character, valid set includes: [A-Za-z0-9_+.-]")
+
 var tagRegexp = regexp.MustCompile("^[A-Za-z0-9_+.][A-Za-z0-9_+.-]*$")
 
-const ErrTagInvalidLength = simpleError("lvm: tag length must be between 1 and 1024 characters")
-const ErrTagHasInvalidChars = simpleError("lvm: tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
+const ErrTagInvalidLength = simpleError("lvm: Tag length must be between 1 and 1024 characters")
+const ErrTagHasInvalidChars = simpleError("lvm: Tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
 
 type PhysicalVolume struct {
 	dev string
@@ -154,21 +155,43 @@ func (vg *VolumeGroup) ExtentFreeCount() (uint64, error) {
 // increment is the size of an extent on the volume group in question.
 //
 // If sizeInBytes is zero the entire available space is allocated.
-func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tag string) (*LogicalVolume, error) {
-	// Validate the tag.
-	var args []string
-	if tag != "" {
-		if err := ValidateTag(tag); err != nil {
-			return nil, err
-		}
-		args = append(args, "--add-tag="+tag)
-	}
-	args = append(args, vg.name)
-	args = append(args, name)
-	if err := run("lvcreate", nil, args...); err != nil {
+func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags []string) (*LogicalVolume, error) {
+	if err := ValidateLogicalVolumeName(name); err != nil {
 		return nil, err
 	}
-	return &LogicalVolume{name, vg}, nil
+	// Validate the tag.
+	var args []string
+	for _, tag := range tags {
+		if tag != "" {
+			if err := ValidateTag(tag); err != nil {
+				return nil, err
+			}
+			args = append(args, "--add-tag="+tag)
+		}
+	}
+	args = append(args, fmt.Sprintf("--size=%db", sizeInBytes))
+	args = append(args, "--name="+name)
+	args = append(args, vg.name)
+	if err := run("lvcreate", nil, args...); err != nil {
+		if isInsufficientSpace(err) {
+			return nil, ErrNoSpace
+		}
+		return nil, err
+	}
+	return &LogicalVolume{name, sizeInBytes, vg}, nil
+}
+
+/*
+ValidateLogicalVolumeName validates a volume group name.
+
+A valid volume group name can consist of a limited range of characters only. The
+allowed characters are [A-Za-z0-9_+.-].
+*/
+func ValidateLogicalVolumeName(name string) error {
+	if !lvnameRegexp.MatchString(name) {
+		return ErrInvalidLVName
+	}
+	return nil
 }
 
 const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
@@ -176,7 +199,7 @@ const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
 type lvsOutput struct {
 	Report []struct {
 		Lv []struct {
-			Name   string `json:"name"`
+			Name   string `json:"lv_name"`
 			VgName string `json:"vg_name"`
 			LvPath string `json:"lv_path"`
 			LvSize uint64 `json:"lv_size,string"`
@@ -202,7 +225,7 @@ func IsLogicalVolumeNotFound(err error) bool {
 // with the given name.
 func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) {
 	result := new(lvsOutput)
-	if err := run("lvs", result, "--options=lv_name,vg_name", name); err != nil {
+	if err := run("lvs", result, "--options=lv_name,lv_size,vg_name", vg.Name()); err != nil {
 		if IsLogicalVolumeNotFound(err) {
 			return nil, ErrLogicalVolumeNotFound
 		}
@@ -210,8 +233,13 @@ func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) 
 	}
 	for _, report := range result.Report {
 		for _, lv := range report.Lv {
-			vg := &VolumeGroup{lv.VgName}
-			return &LogicalVolume{lv.Name, vg}, nil
+			if lv.VgName != vg.Name() {
+				continue
+			}
+			if lv.Name != name {
+				continue
+			}
+			return &LogicalVolume{lv.Name, lv.LvSize, vg}, nil
 		}
 	}
 	return nil, ErrLogicalVolumeNotFound
@@ -235,7 +263,25 @@ func (vg *VolumeGroup) ListLogicalVolumeNames() ([]string, error) {
 }
 
 func IsPhysicalVolumeNotFound(err error) bool {
+	return isPhysicalVolumeNotFound(err) ||
+		isNoPhysicalVolumeLabel(err)
+}
+
+func isPhysicalVolumeNotFound(err error) bool {
 	const prefix = "Failed to find device"
+	lines := strings.Split(err.Error(), "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	line := strings.TrimSpace(lines[0])
+	if strings.HasPrefix(line, prefix) {
+		return true
+	}
+	return false
+}
+
+func isNoPhysicalVolumeLabel(err error) bool {
+	const prefix = "No physical volume label read from"
 	lines := strings.Split(err.Error(), "\n")
 	if len(lines) == 0 {
 		return false
@@ -265,10 +311,7 @@ func IsVolumeGroupNotFound(err error) bool {
 func (vg *VolumeGroup) ListPhysicalVolumeNames() ([]string, error) {
 	var names []string
 	result := new(pvsOutput)
-	if err := run("pvs", result, "--options=pv_name,vg_name", vg.name); err != nil {
-		if IsVolumeGroupNotFound(err) {
-			return nil, ErrVolumeGroupNotFound
-		}
+	if err := run("pvs", result, "--options=pv_name,vg_name"); err != nil {
 		return nil, err
 	}
 	for _, report := range result.Report {
@@ -293,7 +336,14 @@ func (vg *VolumeGroup) Tags() ([]string, error) {
 	}
 	for _, report := range result.Report {
 		for _, vg := range report.Vg {
-			return strings.Split(vg.VgTags, ","), nil
+			var tags []string
+			for _, tag := range strings.Split(vg.VgTags, ",") {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tags = append(tags, tag)
+				}
+			}
+			return tags, nil
 		}
 	}
 	return nil, ErrVolumeGroupNotFound
@@ -304,7 +354,7 @@ func (vg *VolumeGroup) Tags() ([]string, error) {
 // It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
 // change.
 func (vg *VolumeGroup) Remove() error {
-	if err := run("vgremove", nil, vg.name); err != nil {
+	if err := run("vgremove", nil, "-f", vg.name); err != nil {
 		return err
 	}
 	return nil
@@ -316,28 +366,17 @@ const (
 )
 
 type LogicalVolume struct {
-	name string
-	vg   *VolumeGroup
+	name        string
+	sizeInBytes uint64
+	vg          *VolumeGroup
 }
 
 func (lv *LogicalVolume) Name() string {
 	return lv.name
 }
 
-func (lv *LogicalVolume) SizeInBytes() (uint64, error) {
-	result := new(lvsOutput)
-	if err := run("lvs", result, "--options=lv_size", lv.vg.name+"/"+lv.name); err != nil {
-		if IsLogicalVolumeNotFound(err) {
-			return 0, ErrLogicalVolumeNotFound
-		}
-		return 0, err
-	}
-	for _, report := range result.Report {
-		for _, lv := range report.Lv {
-			return lv.LvSize, nil
-		}
-	}
-	return 0, ErrLogicalVolumeNotFound
+func (lv *LogicalVolume) SizeInBytes() uint64 {
+	return lv.sizeInBytes
 }
 
 // Path returns the device path for the logical volume.
@@ -368,14 +407,21 @@ func (lv *LogicalVolume) Tags() ([]string, error) {
 	}
 	for _, report := range result.Report {
 		for _, lv := range report.Lv {
-			return strings.Split(lv.LvTags, ","), nil
+			var tags []string
+			for _, tag := range strings.Split(lv.LvTags, ",") {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tags = append(tags, tag)
+				}
+			}
+			return tags, nil
 		}
 	}
 	return nil, ErrLogicalVolumeNotFound
 }
 
 func (lv *LogicalVolume) Remove() error {
-	if err := run("lvremove", nil, lv.vg.name+"/"+lv.name); err != nil {
+	if err := run("lvremove", nil, "-f", lv.vg.name+"/"+lv.name); err != nil {
 		return err
 	}
 	return nil
@@ -407,13 +453,18 @@ func VGScan(name string) error {
 func CreateVolumeGroup(
 	name string,
 	pvs []*PhysicalVolume,
-	tag string) (*VolumeGroup, error) {
+	tags []string) (*VolumeGroup, error) {
 	var args []string
-	if tag != "" {
-		if err := ValidateTag(tag); err != nil {
-			return nil, err
+	if err := ValidateVolumeGroupName(name); err != nil {
+		return nil, err
+	}
+	for _, tag := range tags {
+		if tag != "" {
+			if err := ValidateTag(tag); err != nil {
+				return nil, err
+			}
+			args = append(args, "--add-tag="+tag)
 		}
-		args = append(args, "--add-tag="+tag)
 	}
 	args = append(args, name)
 	for _, pv := range pvs {
@@ -429,6 +480,19 @@ func CreateVolumeGroup(
 	PVScan("")
 	VGScan("")
 	return &VolumeGroup{name}, nil
+}
+
+/*
+ValidateVolumeGroupName validates a volume group name.
+
+A valid volume group name can consist of a limited range of characters only. The
+allowed characters are [A-Za-z0-9_+.-].
+*/
+func ValidateVolumeGroupName(name string) error {
+	if !vgnameRegexp.MatchString(name) {
+		return ErrInvalidVGName
+	}
+	return nil
 }
 
 /*
@@ -531,7 +595,7 @@ func ListVolumeGroupUUIDs() ([]string, error) {
 // CreatePhysicalVolume creates a physical volume of the given device.
 func CreatePhysicalVolume(dev string) (*PhysicalVolume, error) {
 	if err := run("pvcreate", nil, dev); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lvm: CreatePhysicalVolume: %v", err)
 	}
 	return &PhysicalVolume{dev}, nil
 }
@@ -589,29 +653,38 @@ func run(cmd string, v interface{}, extraArgs ...string) error {
 	}
 	args = append(args, extraArgs...)
 	c := exec.Command(cmd, args...)
-	fmt.Println("executing", c)
+	log.Printf("Executing: %v", c)
 	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
 	c.Stdout = stdout
 	c.Stderr = stderr
 	if err := c.Run(); err != nil {
-		buf := stdout.Bytes()
-		buf2 := stderr.Bytes()
-		fmt.Println(string(buf))
-		fmt.Println(string(buf2))
-		return errors.New(strings.TrimSpace(stderr.String()))
+		errstr := ignoreWarnings(stderr.String())
+		log.Print("stdout: " + stdout.String())
+		log.Print("stderr: " + errstr)
+		return errors.New(errstr)
 	}
+	stdoutbuf := stdout.Bytes()
+	stderrbuf := stderr.Bytes()
+	errstr := ignoreWarnings(string(stderrbuf))
+	log.Printf("stdout: " + string(stdoutbuf))
+	log.Printf("stderr: " + errstr)
 	if v != nil {
-		buf := stdout.Bytes()
-		buf2 := stderr.Bytes()
-		fmt.Println(string(buf))
-		fmt.Println(string(buf2))
-		if err := json.Unmarshal(buf, v); err != nil {
-			return fmt.Errorf("%v: [%v]", err, string(buf))
+		if err := json.Unmarshal(stdoutbuf, v); err != nil {
+			return fmt.Errorf("%v: [%v]", err, string(stdoutbuf))
 		}
 	}
-	buf := stdout.Bytes()
-	buf2 := stderr.Bytes()
-	fmt.Println(string(buf))
-	fmt.Println(string(buf2))
 	return nil
+}
+
+func ignoreWarnings(str string) string {
+	lines := strings.Split(str, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "WARNING") {
+			continue
+		}
+		result = append(result, line)
+	}
+	return strings.TrimSpace(strings.Join(result, "\n"))
 }

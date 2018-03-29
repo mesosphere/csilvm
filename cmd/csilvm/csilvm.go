@@ -12,6 +12,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
+	"github.com/mesosphere/csilvm/pkg/lvm"
 )
 
 const (
@@ -26,7 +27,8 @@ func (f *stringsFlag) String() string {
 }
 
 func (f *stringsFlag) Set(tag string) error {
-	*f = append(*f, tag)
+	*f = []string{tag}
+	//*f = append(*f, tag)
 	return nil
 }
 
@@ -46,6 +48,7 @@ func main() {
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
 	logflags := log.LstdFlags | log.Lshortfile
 	csilvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
+	lvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
 		log.Fatalf("[%s] cannot specify -unix-addr and -unix-addr-env", *vgnameF)
