@@ -1,75 +1,94 @@
 #!groovy
 
-import groovy.json.JsonOutput
+@Library('sec_ci_libs@v2-latest') _
 
-// The following environemnt variables must be set accordingly:
-// 1. NODE_LABELS (string)
-// 2. GITHUB_CREDENTIAL_ID (string)
-// 3. S3_REGION (string)
-// 4. S3_BUCKET (string)
-// 5. AWS_PROFILE_NAME (string)
+ansiColor('xterm') {
 
-node(env.NODE_LABELS) {
-  checkout scm
+  node {
+    properties([
+      parameters([
+        string(name: "SLACK_CREDENTIAL_ID", defaultValue: "25fe61e8-597e-430f-94bf-e58df726f9eb"),
+        string(name: "SLACK_CHANNEL", defaultValue: "#dcos-storage"),
+        string(name: "ALERTS_FOR_BRANCHES", defaultValue: "master")
+      ])
+    ])
 
-  stage("Prepare") {
-    sh("make rebuild-dev-image")
-  }
-
-  stage("Build and Test") {
-    sh("DOCKER=yes make check")
-    sh("DOCKER=yes make")
-
-    lock(label: "linux-dev-loop") {
-      sh("DOCKER=yes make sudo-test")
+    stage("Verify author") {
+      def alerts_for_branches = params.ALERTS_FOR_BRANCHES.tokenize(",") as String[]
+      user_is_authorized(alerts_for_branches, params.SLACK_CREDENTIAL_ID, params.SLACK_CHANNEL)
     }
   }
 
-  stage("Publish") {
-    def packageSHA = env.ghprbActualCommit
-    if (packageSHA == null) {
-      packageSHA = sh(
+  node("mesos-ubuntu") {
+    properties([
+      parameters([
+        string(name: "GITHUB_CREDENTIAL_ID", defaultValue: "d146870f-03b0-4f6a-ab70-1d09757a51fc"),
+        string(name: "S3_REGION", defaultValue: "us-east-1"),
+        string(name: "S3_BUCKET_CRED_ID", defaultValue: "e15e75be-8686-4ad2-8b46-fe7fa9fcae54"),
+        string(name: "AWS_PROFILE_NAME_CRED_ID", defaultValue: "7e66a13f-51ca-4bb2-9b42-340f3f089118")
+      ])
+    ])
+
+    checkout scm
+
+    stage("Prepare") {
+      sh("make rebuild-dev-image")
+    }
+
+    stage("Build and Test") {
+      withEnv(["DOCKER=yes"]) {
+        sh("make check")
+        sh("make")
+
+        lock(label: "linux-dev-loop") {
+          sh("make sudo-test")
+        }
+      }
+    }
+
+    stage("Publish") {
+      def packageSHA = env.ghprbActualCommit
+      if (packageSHA == null) {
+        packageSHA = sh(
+            returnStdout: true,
+            script: "git rev-parse HEAD").trim()
+      }
+
+      def packageVersion = sh(
           returnStdout: true,
-          script: "git rev-parse HEAD").trim()
-    }
+          script: "git describe --exact-match ${packageSHA} 2>/dev/null || echo ${packageSHA}").trim()
 
-    def packageVersion = sh(
-        returnStdout: true,
-        script: "git describe --exact-match ${packageSHA} 2>/dev/null || echo ${packageSHA}").trim()
+      def isPullRequest = (env.CHANGE_ID != null)
+      def isRelease = (packageSHA != packageVersion)
 
-    def isPullRequest = (env.ghprbPullId != null)
-    def isRelease = (packageSHA != packageVersion)
+      archiveArtifacts(artifacts: "csilvm")
 
-    archiveArtifacts(artifacts: "csilvm")
+      withCredentials([
+          string(credentialsId: params.S3_BUCKET_CRED_ID, variable: "S3_BUCKET"),
+          string(credentialsId: params.AWS_PROFILE_NAME_CRED_ID, variable: "AWS_PROFILE_NAME"),
+      ]) {
+        def s3path= ""
+        if (isRelease) {
+          s3path = "${env.S3_BUCKET}/csilvm/build/tag/${packageVersion}"
+        } else {
+          s3path = "${env.S3_BUCKET}/csilvm/build/sha/${packageSHA}"
+        }
 
-    def s3path= ""
-    if (isRelease) {
-      s3path = "${env.S3_BUCKET}/csilvm/build/tag/${packageVersion}"
-    } else {
-      s3path = "${env.S3_BUCKET}/csilvm/build/sha/${packageSHA}"
-    }
+        publishToS3(s3path, false, "csilvm", env.AWS_PROFILE_NAME)
 
-    publishToS3(s3path, false, "csilvm")
-
-    if (!isPullRequest && !isRelease) {
-      publishToS3("${env.S3_BUCKET}/csilvm/build/latest", true, "csilvm")
-    }
-
-    if (isPullRequest) {
-      postGithubIssueComments(
-          env.ghprbPullId,
-          """\
-          Success! Download the [plugin](https://s3.amazonaws.com/${env.S3_BUCKET}/csilvm/build/sha/${packageSHA}/csilvm) (SHA: ${packageSHA})
-          """.stripIndent())
+        if (!isPullRequest && !isRelease) {
+          publishToS3("${env.S3_BUCKET}/csilvm/build/latest", true, "csilvm", env.AWS_PROFILE_NAME)
+        }
+      }
     }
   }
 }
 
-def publishToS3(String bucket, Boolean keepForever, String sourceFile) {
+def publishToS3(String bucket, Boolean keepForever, String sourceFile, String awsProfileName) {
   step([
       $class: "S3BucketPublisher",
       entries: [[
-          selectedRegion: env.S3_REGION,
+          selectedRegion: params.S3_REGION,
           bucket: bucket,
           sourceFile: sourceFile,
           storageClass: "STANDARD",
@@ -80,31 +99,9 @@ def publishToS3(String bucket, Boolean keepForever, String sourceFile) {
           showDirectlyInBrowser: false,
           keepForever: keepForever
       ]],
-      profileName: env.AWS_PROFILE_NAME,
+      profileName: awsProfileName,
       dontWaitForConcurrentBuildCompletion: false,
       consoleLogLevel: "INFO",
       pluginFailureResultConstraint: "FAILURE"
   ])
-}
-
-def postGithubIssueComments(issue, body) {
-  withCredentials([string(credentialsId: env.GITHUB_CREDENTIAL_ID, variable: "GITHUB_TOKEN")]) {
-    def payload = JsonOutput.toJson(["body": body])
-    def url = "https://api.github.com/repos/mesosphere/csilvm/issues/${issue}/comments"
-    def headers = [
-        "Authorization": "Token ${env.GITHUB_TOKEN}",
-        "Accept": "application/json",
-        "Content-type": "application/json"
-    ]
-
-    def command = "curl -s -X POST -d '${payload}' "
-    headers.each {
-      command += "-H '${it.key}: ${it.value}' "
-    }
-    command += url
-
-    docker.image("appropriate/curl").inside {
-      sh(command)
-    }
-  }
 }
