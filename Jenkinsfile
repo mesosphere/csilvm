@@ -102,19 +102,13 @@ def getPackageSHA() {
   def isPullRequest = (env.CHANGE_ID != null)
 
   if (isPullRequest) {
-    def mergeBase = sh(
-        returnStdout: true,
-        script: "git merge-base HEAD remotes/origin/master").trim()
-
-    def masterSHA = sh(
-        returnStdout: true,
-        script: "git rev-parse remotes/origin/master").trim()
-
-    if (mergeBase != masterSHA) {
-      // Non fast-forward case. HEAD will be the merge commit for github PRs.
-      return sh(
+    def parents = sh(
           returnStdout: true,
-          script: "git log --pretty=%P -n 1 HEAD | cut -d' ' -f 1").trim()
+          script: "git log --pretty=%P -n 1 HEAD").trim()
+
+    if (parents.split().size() != 1) {
+      // Non fast-forward case.
+      return parents[0]
     }
   }
 
