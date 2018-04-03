@@ -47,16 +47,8 @@ ansiColor('xterm') {
     }
 
     stage("Publish") {
-      def packageSHA = env.ghprbActualCommit
-      if (packageSHA == null) {
-        packageSHA = sh(
-            returnStdout: true,
-            script: "git rev-parse HEAD").trim()
-      }
-
-      def packageVersion = sh(
-          returnStdout: true,
-          script: "git describe --exact-match ${packageSHA} 2>/dev/null || echo ${packageSHA}").trim()
+      def packageSHA = getPackageSHA()
+      def packageVersion = getPackageVersion()
 
       def isPullRequest = (env.CHANGE_ID != null)
       def isRelease = (packageSHA != packageVersion)
@@ -104,4 +96,37 @@ def publishToS3(String bucket, Boolean keepForever, String sourceFile, String aw
       consoleLogLevel: "INFO",
       pluginFailureResultConstraint: "FAILURE"
   ])
+}
+
+def getPackageSHA() {
+  def isPullRequest = (env.CHANGE_ID != null)
+
+  if (isPullRequest) {
+    def mergeBase = sh(
+        returnStdout: true,
+        script: "git merge-base HEAD remotes/origin/master").trim()
+
+    def masterSHA = sh(
+        returnStdout: true,
+        script: "git rev-parse remotes/origin/master").trim()
+
+    if (mergeBase != masterSHA) {
+      // Non fast-forward case. HEAD will be the merge commit for github PRs.
+      return sh(
+          returnStdout: true,
+          script: "git log --pretty=%P -n 1 HEAD | cut -d' ' -f 1").trim()
+    }
+  }
+
+  return sh(
+      returnStdout: true,
+      script: "git rev-parse HEAD").trim()
+}
+
+def getPackageVersion() {
+  def packageSHA = getPackageSHA()
+
+  return sh(
+      returnStdout: true,
+      script: "git describe --exact-match ${packageSHA} 2>/dev/null || echo ${packageSHA}").trim()
 }
