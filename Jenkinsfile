@@ -104,9 +104,9 @@ def getPackageSHA() {
   if (isPullRequest) {
     def parents = sh(
           returnStdout: true,
-          script: "git log --pretty=%P -n 1 HEAD").trim()
+          script: "git log --pretty=%P -n 1 HEAD").trim().split()
 
-    if (parents.split().size() != 1) {
+    if (parents.size() != 1) {
       // Non fast-forward case.
       return parents[0]
     }
