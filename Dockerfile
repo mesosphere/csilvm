@@ -1,6 +1,6 @@
-FROM centos:7
+FROM centos:7.3.1611
 
-RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-devel util-linux xfsprogs file
+RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-2.02.171-8.el7 util-linux xfsprogs file
 
 ENV GOLANG_VERSION 1.9.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
