@@ -181,12 +181,9 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags
 	return &LogicalVolume{name, sizeInBytes, vg}, nil
 }
 
-/*
-ValidateLogicalVolumeName validates a volume group name.
-
-A valid volume group name can consist of a limited range of characters only. The
-allowed characters are [A-Za-z0-9_+.-].
-*/
+// ValidateLogicalVolumeName validates a volume group name. A valid volume
+// group name can consist of a limited range of characters only. The allowed
+// characters are [A-Za-z0-9_+.-].
 func ValidateLogicalVolumeName(name string) error {
 	if !lvnameRegexp.MatchString(name) {
 		return ErrInvalidLVName
@@ -350,9 +347,6 @@ func (vg *VolumeGroup) Tags() ([]string, error) {
 }
 
 // Remove removes the volume group from disk.
-//
-// It calls `lvm_vg_remove` followed by `lvm_vg_write` to persist the
-// change.
 func (vg *VolumeGroup) Remove() error {
 	if err := run("vgremove", nil, "-f", vg.name); err != nil {
 		return err
@@ -472,17 +466,18 @@ func CreateVolumeGroup(
 	// We ignore errors as for better or worse, the volume group now exists.
 	// Without this lvmetad can fail to pickup newly created volume groups.
 	// See https://bugzilla.redhat.com/show_bug.cgi?id=837599
-	PVScan("")
-	VGScan("")
+	if err := PVScan(""); err != nil {
+		log.Printf("error during pvscan: %v", err)
+	}
+	if err := VGScan(""); err != nil {
+		log.Printf("error during vgscan: %v", err)
+	}
 	return &VolumeGroup{name}, nil
 }
 
-/*
-ValidateVolumeGroupName validates a volume group name.
-
-A valid volume group name can consist of a limited range of characters only. The
-allowed characters are [A-Za-z0-9_+.-].
-*/
+// ValidateVolumeGroupName validates a volume group name. A valid volume group
+// name can consist of a limited range of characters only. The allowed
+// characters are [A-Za-z0-9_+.-].
 func ValidateVolumeGroupName(name string) error {
 	if !vgnameRegexp.MatchString(name) {
 		return ErrInvalidVGName
@@ -490,19 +485,13 @@ func ValidateVolumeGroupName(name string) error {
 	return nil
 }
 
-/*
-ValidateTag validates a tag.
-
-LVM tags are strings of up to 1024 characters. LVM tags cannot
-start with a hyphen.
-
-A valid tag can consist of a limited range of characters only. The
-allowed characters are [A-Za-z0-9_+.-]. As of the Red Hat Enterprise
-Linux 6.1 release, the list of allowed characters was extended, and
-tags can contain the /, =, !, :, #, and & characters.
-
-~ https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/logical_volume_manager_administration/lvm_tags
-*/
+// ValidateTag validates a tag. LVM tags are strings of up to 1024
+// characters. LVM tags cannot start with a hyphen. A valid tag can consist of
+// a limited range of characters only. The allowed characters are
+// [A-Za-z0-9_+.-]. As of the Red Hat Enterprise Linux 6.1 release, the list of
+// allowed characters was extended, and tags can contain the /, =, !, :, #, and
+// & characters.
+// See https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/logical_volume_manager_administration/lvm_tags
 func ValidateTag(tag string) error {
 	if len(tag) > 1024 {
 		return ErrTagInvalidLength
@@ -545,13 +534,9 @@ func LookupVolumeGroup(name string) (*VolumeGroup, error) {
 	return nil, ErrVolumeGroupNotFound
 }
 
-// ListVolumeGroupNames returns the names of the list of volume groups.
-//
-// It is equivalent to `lvm_list_vg_names` followed by
-// `dm_list_iterate_items` to accumulate the string values.
-//
-// This does not normally scan for devices. To scan for devices, use
-// the `Scan()` function.
+// ListVolumeGroupNames returns the names of the list of volume groups. This
+// does not normally scan for devices. To scan for devices, use the `Scan()`
+// function.
 func ListVolumeGroupNames() ([]string, error) {
 	result := new(vgsOutput)
 	if err := run("vgs", result); err != nil {
@@ -566,13 +551,9 @@ func ListVolumeGroupNames() ([]string, error) {
 	return names, nil
 }
 
-// ListVolumeGroupUUIDs returns the UUIDs of the list of volume groups.
-//
-// It is equivalent to `lvm_list_vg_names` followed by
-// `dm_list_iterate_items` to accumulate the string values.
-//
-// This does not normally scan for devices. To scan for devices, use
-// the `Scan()` function.
+// ListVolumeGroupUUIDs returns the UUIDs of the list of volume groups. This
+// does not normally scan for devices. To scan for devices, use the `Scan()`
+// function.
 func ListVolumeGroupUUIDs() ([]string, error) {
 	result := new(vgsOutput)
 	if err := run("vgs", result, "--options=vg_uuid"); err != nil {
