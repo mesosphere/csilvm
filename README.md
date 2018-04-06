@@ -33,6 +33,11 @@ The following command-line utilties must be present in the `PATH`:
 * `file`
 * the filesystem listed as `-default-fs` (defaults to: `xfs`)
 
+This plugin's tests are run in a centos 7.3.1611 container with
+lvm2-2.02.171-8.el7 installed. It should work with newer versions of lvm2 that
+are backwards-compatible in their command-line interface. It may work with
+older versions.
+
 ## Locking
 
 The plugin is completely stateless and performs no locking around operations.
