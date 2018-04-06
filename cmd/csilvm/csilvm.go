@@ -27,8 +27,7 @@ func (f *stringsFlag) String() string {
 }
 
 func (f *stringsFlag) Set(tag string) error {
-	*f = []string{tag}
-	//*f = append(*f, tag)
+	*f = append(*f, tag)
 	return nil
 }
 
@@ -47,8 +46,9 @@ func main() {
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
 	logflags := log.LstdFlags | log.Lshortfile
-	csilvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
-	lvm.SetLogger(log.New(os.Stderr, logprefix, logflags))
+	logger := log.New(os.Stderr, logprefix, logflags)
+	csilvm.SetLogger(logger)
+	lvm.SetLogger(logger)
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
 		log.Fatalf("[%s] cannot specify -unix-addr and -unix-addr-env", *vgnameF)
