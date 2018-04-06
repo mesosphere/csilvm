@@ -256,11 +256,6 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 		vg.Remove()
 		t.Fatal("Expected no volume group in response")
 	}
-	// Perform a known good operation to ensure that the error was
-	// cleared from the
-	if _, err := ListPhysicalVolumes(); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestLookupVolumeGroup(t *testing.T) {
@@ -501,18 +496,6 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 	if lv != nil {
 		lv.Remove()
 		t.Fatal("Expected no logical volume in response.")
-	}
-	// It appears that there is a bug in lvm2app where an error
-	// returned by lvm_lv_name_validate does not get automatically
-	// cleared when a subsequent call to lvm_vg_list_lvs is made.
-	// Instead the error must be read by the caller explicitly.
-	// We do this by calling err() after
-	// lvm_lv_name_validate and discarding the result. Here we
-	// test that this works as intended by calling
-	// ListLogicalVolumeNames after logical volume name validation
-	// has failed and checking that no error gets returned.
-	if _, err := vg.ListLogicalVolumeNames(); err != nil {
-		t.Fatal(err)
 	}
 }
 
