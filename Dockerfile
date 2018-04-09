@@ -1,3 +1,4 @@
+# Update the README when this base image and/or the version of lvm2 (below) is updated.
 FROM centos:7.3.1611
 
 RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-2.02.171-8.el7 util-linux xfsprogs file
