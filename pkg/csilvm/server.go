@@ -190,7 +190,7 @@ func (s *Server) CreateVolume(
 	log.Printf("Creating logical volume id=%v, size=%v, tags=%v", volumeId, size, s.tags)
 	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags)
 	if err != nil {
-		if lvm.IsInvalidName(err) {
+		if err == lvm.ErrInvalidLVName {
 			return nil, status.Errorf(
 				codes.InvalidArgument,
 				"The volume name is invalid: err=%v",

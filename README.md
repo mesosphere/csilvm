@@ -26,18 +26,22 @@ Logical volumes are named according to the following pattern
 
 The following command-line utilties must be present in the `PATH`:
 
+* the various lvm2 cli utilities (`pvscan`, `vgcreate`, etc.)
 * `udevadm`
 * `blkid`
-* `pvscan` from the lvm2 utils
 * `mkfs`
 * `file`
 * the filesystem listed as `-default-fs` (defaults to: `xfs`)
 
-The following shared libraries are dynamically linked against and must
-be installed:
+This plugin's tests are run in a centos 7.3.1611 container with
+lvm2-2.02.171-8.el7 installed. It should work with newer versions of lvm2 that
+are backwards-compatible in their command-line interface. It may work with
+older versions.
 
-* `libdevmapper`
-* `liblvm2app` (from LVM2)
+## Locking
+
+The plugin is completely stateless and performs no locking around operations.
+Instead, it relies on LVM2 to lock around operations that are not reentrant.
 
 ## SINGLE_NODE_READER_ONLY
 
