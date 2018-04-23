@@ -676,16 +676,3 @@ func ignoreWarnings(str string) string {
 	}
 	return strings.TrimSpace(strings.Join(result, "\n"))
 }
-
-func ignoreFileDescriptorWarning(str string) string {
-	lines := strings.Split(str, "\n")
-	result := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "File descriptor") {
-			continue
-		}
-		result = append(result, line)
-	}
-	return strings.TrimSpace(strings.Join(result, "\n"))
-}
