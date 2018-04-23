@@ -662,6 +662,7 @@ func ignoreWarnings(str string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "WARNING") {
+			log.Printf(line)
 			continue
 		}
 		// Ignore warnings of the kind:
@@ -670,6 +671,7 @@ func ignoreWarnings(str string) string {
 		// that it didn't create when it exits. This doesn't play nice with the fact
 		// that csilvm gets launched by e.g., mesos-agent.
 		if strings.HasPrefix(line, "File descriptor") {
+			log.Printf(line)
 			continue
 		}
 		result = append(result, line)
