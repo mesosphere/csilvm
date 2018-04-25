@@ -41,7 +41,9 @@ ansiColor('xterm') {
         sh("make")
 
         lock(label: "linux-dev-loop") {
-          sh("make sudo-test")
+          timeout(30) {
+            sh("make sudo-test")
+          }
         }
       }
     }
