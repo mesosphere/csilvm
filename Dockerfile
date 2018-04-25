@@ -1,7 +1,19 @@
 # Update the README when this base image and/or the version of lvm2 (below) is updated.
 FROM centos:7.3.1611
 
-RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git lvm2-2.02.171-8.el7 util-linux xfsprogs file
+RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git util-linux xfsprogs file
+
+ENV LVM2_DOWNLOAD_URL http://mirrors.kernel.org/sourceware/lvm2/LVM2.2.02.177.tgz
+
+RUN curl -fsSL "$LVM2_DOWNLOAD_URL" -o LVM2.2.02.177.tgz && \
+      tar -xzvf LVM2.2.02.177.tgz && \
+      cd LVM2.2.02.177 && \
+      ./configure && \
+      make && \
+      make install && \
+      ldconfig && \
+      cd .. && \
+      rm -f LVM2.2.02.177.tgz
 
 ENV GOLANG_VERSION 1.9.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
