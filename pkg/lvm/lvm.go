@@ -211,9 +211,10 @@ func IsLogicalVolumeNotFound(err error) bool {
 	if len(lines) == 0 {
 		return false
 	}
-	line := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(line, prefix) {
-		return true
+	for _, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
 	}
 	return false
 }
@@ -270,9 +271,10 @@ func isPhysicalVolumeNotFound(err error) bool {
 	if len(lines) == 0 {
 		return false
 	}
-	line := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(line, prefix) {
-		return true
+	for _, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
 	}
 	return false
 }
@@ -283,9 +285,10 @@ func isNoPhysicalVolumeLabel(err error) bool {
 	if len(lines) == 0 {
 		return false
 	}
-	line := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(line, prefix) {
-		return true
+	for _, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
 	}
 	return false
 }
@@ -297,9 +300,10 @@ func IsVolumeGroupNotFound(err error) bool {
 	if len(lines) == 0 {
 		return false
 	}
-	line := strings.TrimSpace(lines[0])
-	if strings.HasPrefix(line, prefix) && strings.HasSuffix(line, suffix) {
-		return true
+	for _, line := range lines {
+		if strings.HasPrefix(line, prefix) && strings.HasSuffix(line, suffix) {
+			return true
+		}
 	}
 	return false
 }
@@ -658,6 +662,16 @@ func ignoreWarnings(str string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "WARNING") {
+			log.Printf(line)
+			continue
+		}
+		// Ignore warnings of the kind:
+		// "File descriptor 13 (pipe:[120900]) leaked on vgs invocation. Parent PID 2: ./csilvm"
+		// For some reason lvm2 decided to complain if there are open file descriptors
+		// that it didn't create when it exits. This doesn't play nice with the fact
+		// that csilvm gets launched by e.g., mesos-agent.
+		if strings.HasPrefix(line, "File descriptor") {
+			log.Printf(line)
 			continue
 		}
 		result = append(result, line)
