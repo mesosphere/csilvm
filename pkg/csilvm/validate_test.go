@@ -5,57 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc/status"
 )
 
 // IdentityService RPCs
 
-func TestGetPluginInfoMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetPluginInfoRequest()
-	req.Version = nil
-	_, err := client.GetPluginInfo(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestGetPluginInfoUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetPluginInfoRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.GetPluginInfo(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
+// ...
 
 // ControllerService RPCs
-
-func TestControllerProbeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testControllerProbeRequest()
-	req.Version = nil
-	_, err := client.ControllerProbe(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestControllerProbeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testControllerProbeRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.ControllerProbe(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
 
 func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
 	client, cleanup := startTest(RemoveVolumeGroup())
@@ -63,28 +21,6 @@ func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
 	req := testCreateVolumeRequest()
 	_, err := client.CreateVolume(context.Background(), req)
 	if !grpcErrorEqual(err, ErrRemovingMode) {
-		t.Fatal(err)
-	}
-}
-
-func TestCreateVolumeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testCreateVolumeRequest()
-	req.Version = nil
-	_, err := client.CreateVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestCreateVolumeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testCreateVolumeRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.CreateVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
 	}
 }
@@ -211,28 +147,6 @@ func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-func TestDeleteVolumeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testDeleteVolumeRequest("test-volume")
-	req.Version = nil
-	_, err := client.DeleteVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestDeleteVolumeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testDeleteVolumeRequest("test-volume")
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.DeleteVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
 func TestDeleteVolumeMissingVolumeId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -250,28 +164,6 @@ func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	_, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if !grpcErrorEqual(err, ErrRemovingMode) {
-		t.Fatal(err)
-	}
-}
-
-func TestValidateVolumeCapabilitiesMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
-	req.Version = nil
-	_, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestValidateVolumeCapabilitiesUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.ValidateVolumeCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
 	}
 }
@@ -354,50 +246,6 @@ func TestListVolumesRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-func TestListVolumesMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testListVolumesRequest()
-	req.Version = nil
-	_, err := client.ListVolumes(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestListVolumesUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testListVolumesRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.ListVolumes(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestGetCapacityMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetCapacityRequest("xfs")
-	req.Version = nil
-	_, err := client.GetCapacity(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestGetCapacityUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testGetCapacityRequest("xfs")
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.GetCapacity(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
 func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -444,26 +292,6 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 	}
 }
 
-func TestControllerGetCapabilitiesInfoMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{}
-	_, err := client.ControllerGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestControllerGetCapabilitiesInfoUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 2, 0}}
-	_, err := client.ControllerGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
 // NodeService RPCs
 
 var fakeMountDir = "/run/dcos/csilvm/mnt"
@@ -474,28 +302,6 @@ func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	_, err := client.NodePublishVolume(context.Background(), req)
 	if !grpcErrorEqual(err, ErrRemovingMode) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodePublishVolumeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.Version = nil
-	_, err := client.NodePublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodePublishVolumeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.NodePublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
 	}
 }
@@ -515,9 +321,9 @@ func TestNodePublishVolumePresentPublishVolumeInfo(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.PublishVolumeInfo = map[string]string{"foo": "bar"}
+	req.PublishInfo = map[string]string{"foo": "bar"}
 	_, err := client.NodePublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrSpecifiedPublishVolumeInfo) {
+	if !grpcErrorEqual(err, ErrSpecifiedPublishInfo) {
 		t.Fatal(err)
 	}
 }
@@ -599,28 +405,6 @@ func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-func TestNodeUnpublishVolumeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
-	req.Version = nil
-	_, err := client.NodeUnpublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeUnpublishVolumeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.NodeUnpublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
 func TestNodeUnpublishVolumeMissingVolumeId(t *testing.T) {
 	client, cleanup := startTest()
 	defer cleanup()
@@ -639,50 +423,6 @@ func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
 	req.TargetPath = ""
 	_, err := client.NodeUnpublishVolume(context.Background(), req)
 	if !grpcErrorEqual(err, ErrMissingTargetPath) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeProbeMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeProbeRequest()
-	req.Version = nil
-	_, err := client.NodeProbe(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeProbeUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeProbeRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.NodeProbe(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeGetCapabilitiesRequestMissingVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeGetCapabilitiesRequest()
-	req.Version = nil
-	_, err := client.NodeGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrMissingVersion) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeGetCapabilitiesRequestUnsupportedVersion(t *testing.T) {
-	client, cleanup := startTest()
-	defer cleanup()
-	req := testNodeGetCapabilitiesRequest()
-	req.Version = &csi.Version{0, 2, 0}
-	_, err := client.NodeGetCapabilities(context.Background(), req)
-	if !grpcErrorEqual(err, ErrUnsupportedVersion) {
 		t.Fatal(err)
 	}
 }

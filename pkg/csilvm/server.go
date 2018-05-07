@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
@@ -19,7 +19,7 @@ import (
 )
 
 const PluginName = "io.mesosphere.dcos.storage.csilvm"
-const PluginVersion = "1.11.0"
+const PluginVersion = "0.2.0"
 
 type Server struct {
 	vgname               string
@@ -29,12 +29,6 @@ type Server struct {
 	supportedFilesystems map[string]string
 	removingVolumeGroup  bool
 	tags                 []string
-}
-
-func (s *Server) supportedVersions() []*csi.Version {
-	return []*csi.Version{
-		{0, 1, 0},
-	}
 }
 
 // NewServer returns a new Server that will manage the given LVM
@@ -87,10 +81,9 @@ func SupportedFilesystem(fstype string) ServerOpt {
 	}
 }
 
-// RemoveVolumeGroup configures the Server to operate in "remove"
-// mode. The volume group will be removed when NodeProbe is
-// called. All RPCs other than GetSupportedVersions, GetPluginInfo and
-// NodeProbe will fail if the plugin is started in this mode.
+// RemoveVolumeGroup configures the Server to operate in "remove" mode. The
+// volume group will be removed when Probe is called. All RPCs other than those
+// of the Identity service will fail if the plugin is started in this mode.
 func RemoveVolumeGroup() ServerOpt {
 	return func(s *Server) {
 		s.removingVolumeGroup = true
@@ -107,15 +100,6 @@ func Tag(tag string) ServerOpt {
 
 // IdentityService RPCs
 
-func (s *Server) GetSupportedVersions(
-	ctx context.Context,
-	request *csi.GetSupportedVersionsRequest) (*csi.GetSupportedVersionsResponse, error) {
-	response := &csi.GetSupportedVersionsResponse{
-		s.supportedVersions(),
-	}
-	return response, nil
-}
-
 func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
@@ -126,17 +110,178 @@ func (s *Server) GetPluginInfo(
 	return response, nil
 }
 
-// ControllerService RPCs
-
-func (s *Server) ControllerProbe(
+func (s *Server) GetPluginCapabilities(
 	ctx context.Context,
-	request *csi.ControllerProbeRequest) (*csi.ControllerProbeResponse, error) {
-	if err := s.validateControllerProbeRequest(request); err != nil {
+	request *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
+	if err := s.validateGetPluginCapabilitiesRequest(request); err != nil {
 		return nil, err
 	}
-	response := &csi.ControllerProbeResponse{}
+	response := &csi.GetPluginCapabilitiesResponse{
+		Capabilities: []*csi.PluginCapability{
+			{
+				Type: &csi.PluginCapability_Service_{
+					Service: &csi.PluginCapability_Service{
+						Type: csi.PluginCapability_Service_CONTROLLER_SERVICE,
+					},
+				},
+			},
+		},
+	}
 	return response, nil
 }
+
+// Probe initializes the Server by creating or opening the VolumeGroup. The
+// sanity checks and initialization logic are idempotent to allow this call to
+// be performed after initialization.
+func (s *Server) Probe(
+	ctx context.Context,
+	request *csi.ProbeRequest) (*csi.ProbeResponse, error) {
+	if err := s.validateProbeRequest(request); err != nil {
+		return nil, err
+	}
+	log.Printf("Validating tags: %v", s.tags)
+	for _, tag := range s.tags {
+		if err := lvm.ValidateTag(tag); err != nil {
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"Invalid tag '%v': err=%v",
+				tag,
+				err)
+		}
+	}
+	log.Printf("Looking up volume group %v", s.vgname)
+	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
+	if err == lvm.ErrVolumeGroupNotFound {
+		if s.removingVolumeGroup {
+			// We've been instructed to remove the volume
+			// group but it already does not exist. Return
+			// success.
+			log.Printf("Running in '-remove-volume-group' mode and volume group cannot be found.")
+			response := &csi.ProbeResponse{}
+			return response, nil
+		}
+		log.Printf("Cannot find volume group %v", s.vgname)
+		// The volume group does not exist yet so see if we can create it.
+		// We check if the physical volumes are available.
+		log.Printf("Getting LVM2 physical volumes %v", s.pvnames)
+		var pvs []*lvm.PhysicalVolume
+		for _, pvname := range s.pvnames {
+			log.Printf("Looking up LVM2 physical volume %v", pvname)
+			var pv *lvm.PhysicalVolume
+			pv, err = lvm.LookupPhysicalVolume(pvname)
+			if err == nil {
+				log.Printf("Found LVM2 physical volume %v", pvname)
+				pvs = append(pvs, pv)
+				continue
+			}
+			if err == lvm.ErrPhysicalVolumeNotFound {
+				log.Printf("Cannot find LVM2 physical volume %v", pvname)
+				// The physical volume cannot be found. Try to create it.
+				// First, wipe the partition table on the device in accordance
+				// with the `pvcreate` man page.
+				if err := statDevice(pvname); err != nil {
+					return nil, status.Errorf(
+						codes.FailedPrecondition,
+						"Could not stat device %v: err=%v",
+						pvname, err)
+				}
+				log.Printf("Stat device %v", pvname)
+				log.Printf("Zeroing partition table on %v", pvname)
+				if err := zeroPartitionTable(pvname); err != nil {
+					return nil, status.Errorf(
+						codes.Internal,
+						"Cannot zero partition table on %v: err=%v",
+						pvname, err)
+				}
+				log.Printf("Creating LVM2 physical volume %v", pvname)
+				pv, err = lvm.CreatePhysicalVolume(pvname)
+				if err != nil {
+					return nil, status.Errorf(
+						codes.FailedPrecondition,
+						"Cannot create LVM2 physical volume %v: err=%v",
+						pvname, err)
+				}
+				log.Printf("Created LVM2 physical volume %v", pvname)
+				pvs = append(pvs, pv)
+				continue
+			}
+			return nil, status.Errorf(
+				codes.Internal,
+				"Cannot lookup physical volume %v: err=%v",
+				pvname, err)
+		}
+		log.Printf("Creating volume group %v with physical volumes %v and tags %v", s.vgname, s.pvnames, s.tags)
+		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, s.tags)
+		if err != nil {
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"Cannot create volume group %v: err=%v",
+				s.vgname, err)
+		}
+		log.Printf("Created volume group %v", s.vgname)
+	} else if err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot lookup volume group %v: err=%v",
+			s.vgname, err)
+	}
+	log.Printf("Found volume group %v", s.vgname)
+	// The volume group already exists. We check that the list of
+	// physical volumes matches the provided list.
+	log.Printf("Listing physical volumes in volume group %s", s.vgname)
+	existing, err := volumeGroup.ListPhysicalVolumeNames()
+	if err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot list physical volumes: err=%v",
+			err)
+	}
+	missing, unexpected := calculatePVDiff(existing, s.pvnames)
+	if len(missing) != 0 || len(unexpected) != 0 {
+		return nil, status.Errorf(
+			codes.FailedPrecondition,
+			"Volume group contains unexpected volumes %v and is missing volumes %v",
+			unexpected, missing)
+	}
+	// We check that the volume group tags match those we expect.
+	log.Printf("Looking up volume group tags")
+	tags, err := volumeGroup.Tags()
+	if err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot lookup tags: err=%v",
+			err)
+	}
+	log.Printf("Volume group tags: %v", tags)
+	if err := s.checkVolumeGroupTags(tags); err != nil {
+		return nil, status.Errorf(
+			codes.FailedPrecondition,
+			"Volume group tags did not match expected: err=%v",
+			err)
+	}
+	// The volume group is configured as expected.
+	log.Printf("Volume group matches configuration")
+	if s.removingVolumeGroup {
+		log.Printf("Running with '-remove-volume-group'.")
+		// The volume group matches our config. We remove it
+		// as requested in the startup flags.
+		log.Printf("Removing volume group %v", s.vgname)
+		if err := volumeGroup.Remove(); err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"Failed to remove volume group: err=%v",
+				err)
+		}
+		log.Printf("Removed volume group %v", s.vgname)
+		response := &csi.ProbeResponse{}
+		return response, nil
+	}
+	s.volumeGroup = volumeGroup
+	response := &csi.ProbeResponse{}
+	return response, nil
+}
+
+// ControllerService RPCs
 
 var ErrVolumeAlreadyExists = status.Error(codes.AlreadyExists, "The volume already exists")
 var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free space")
@@ -160,8 +305,8 @@ func (s *Server) CreateVolume(
 			return nil, err
 		}
 		response := &csi.CreateVolumeResponse{
-			&csi.VolumeInfo{
-				lv.SizeInBytes(),
+			&csi.Volume{
+				int64(lv.SizeInBytes()),
 				lv.Name(),
 				nil,
 			},
@@ -181,11 +326,11 @@ func (s *Server) CreateVolume(
 		}
 		log.Printf("BytesFree: %v", bytesFree)
 		// Check whether there is enough free space available.
-		if bytesFree < capacityRange.GetRequiredBytes() {
+		if int64(bytesFree) < capacityRange.GetRequiredBytes() {
 			return nil, ErrInsufficientCapacity
 		}
 		// Set the volume size to the minimum requested  size.
-		size = capacityRange.GetRequiredBytes()
+		size = uint64(capacityRange.GetRequiredBytes())
 	}
 	log.Printf("Creating logical volume id=%v, size=%v, tags=%v", volumeId, size, s.tags)
 	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags)
@@ -207,8 +352,8 @@ func (s *Server) CreateVolume(
 			err)
 	}
 	response := &csi.CreateVolumeResponse{
-		&csi.VolumeInfo{
-			lv.SizeInBytes(),
+		&csi.Volume{
+			int64(lv.SizeInBytes()),
 			volumeId,
 			nil,
 		},
@@ -223,14 +368,14 @@ func (s *Server) validateExistingVolume(lv *lvm.LogicalVolume, request *csi.Crea
 		// If required_bytes is specified, is that requirement
 		// satisfied by the existing volume?
 		if requiredBytes := capacityRange.GetRequiredBytes(); requiredBytes != 0 {
-			if requiredBytes > lv.SizeInBytes() {
+			if requiredBytes > int64(lv.SizeInBytes()) {
 				log.Printf("Existing volume does not satisfy request: required_bytes > volume size (%d > %d)", requiredBytes, lv.SizeInBytes())
 				// The existing volume is not big enough.
 				return ErrVolumeAlreadyExists
 			}
 		}
 		if limitBytes := capacityRange.GetLimitBytes(); limitBytes != 0 {
-			if limitBytes < lv.SizeInBytes() {
+			if limitBytes < int64(lv.SizeInBytes()) {
 				log.Printf("Existing volume does not satisfy request: limit_bytes < volume size (%d < %d)", limitBytes, lv.SizeInBytes())
 				// The existing volume is too big.
 				return ErrVolumeAlreadyExists
@@ -459,8 +604,8 @@ func (s *Server) ListVolumes(
 		if err != nil {
 			return nil, ErrVolumeNotFound
 		}
-		info := &csi.VolumeInfo{
-			lv.SizeInBytes(),
+		info := &csi.Volume{
+			int64(lv.SizeInBytes()),
 			volname,
 			nil,
 		}
@@ -508,7 +653,7 @@ func (s *Server) GetCapacity(
 			err)
 	}
 	log.Printf("BytesFree: %v", bytesFree)
-	response := &csi.GetCapacityResponse{bytesFree}
+	response := &csi.GetCapacityResponse{int64(bytesFree)}
 	return response, nil
 }
 
@@ -555,6 +700,20 @@ func (s *Server) ControllerGetCapabilities(
 }
 
 // NodeService RPCs
+
+func (s *Server) NodeStageVolume(
+	ctx context.Context,
+	request *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	log.Printf("NodeStageVolume not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s *Server) NodeUnstageVolume(
+	ctx context.Context,
+	request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	log.Printf("NodeUnstageVolume not supported")
+	return nil, ErrCallNotImplemented
+}
 
 var ErrTargetPathNotEmpty = status.Error(
 	codes.InvalidArgument,
@@ -860,10 +1019,10 @@ func (s *Server) NodeUnpublishVolume(
 	return response, nil
 }
 
-func (s *Server) GetNodeID(
+func (s *Server) NodeGetId(
 	ctx context.Context,
-	request *csi.GetNodeIDRequest) (*csi.GetNodeIDResponse, error) {
-	log.Printf("GetNodeID not supported")
+	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
+	log.Printf("NodeGetId not supported")
 	return nil, ErrCallNotImplemented
 }
 
@@ -884,155 +1043,6 @@ func zeroPartitionTable(devicePath string) error {
 func statDevice(devicePath string) error {
 	_, err := os.Stat(devicePath)
 	return err
-}
-
-// NodeProbe initializes the Server by creating or opening the VolumeGroup.
-func (s *Server) NodeProbe(
-	ctx context.Context,
-	request *csi.NodeProbeRequest) (*csi.NodeProbeResponse, error) {
-	if err := s.validateNodeProbeRequest(request); err != nil {
-		return nil, err
-	}
-	log.Printf("Validating tags: %v", s.tags)
-	for _, tag := range s.tags {
-		if err := lvm.ValidateTag(tag); err != nil {
-			return nil, status.Errorf(
-				codes.FailedPrecondition,
-				"Invalid tag '%v': err=%v",
-				tag,
-				err)
-		}
-	}
-	log.Printf("Looking up volume group %v", s.vgname)
-	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
-	if err == lvm.ErrVolumeGroupNotFound {
-		if s.removingVolumeGroup {
-			// We've been instructed to remove the volume
-			// group but it already does not exist. Return
-			// success.
-			log.Printf("Running in '-remove-volume-group' mode and volume group cannot be found.")
-			response := &csi.NodeProbeResponse{}
-			return response, nil
-		}
-		log.Printf("Cannot find volume group %v", s.vgname)
-		// The volume group does not exist yet so see if we can create it.
-		// We check if the physical volumes are available.
-		log.Printf("Getting LVM2 physical volumes %v", s.pvnames)
-		var pvs []*lvm.PhysicalVolume
-		for _, pvname := range s.pvnames {
-			log.Printf("Looking up LVM2 physical volume %v", pvname)
-			var pv *lvm.PhysicalVolume
-			pv, err = lvm.LookupPhysicalVolume(pvname)
-			if err == nil {
-				log.Printf("Found LVM2 physical volume %v", pvname)
-				pvs = append(pvs, pv)
-				continue
-			}
-			if err == lvm.ErrPhysicalVolumeNotFound {
-				log.Printf("Cannot find LVM2 physical volume %v", pvname)
-				// The physical volume cannot be found. Try to create it.
-				// First, wipe the partition table on the device in accordance
-				// with the `pvcreate` man page.
-				if err := statDevice(pvname); err != nil {
-					return nil, status.Errorf(
-						codes.FailedPrecondition,
-						"Could not stat device %v: err=%v",
-						pvname, err)
-				}
-				log.Printf("Stat device %v", pvname)
-				log.Printf("Zeroing partition table on %v", pvname)
-				if err := zeroPartitionTable(pvname); err != nil {
-					return nil, status.Errorf(
-						codes.Internal,
-						"Cannot zero partition table on %v: err=%v",
-						pvname, err)
-				}
-				log.Printf("Creating LVM2 physical volume %v", pvname)
-				pv, err = lvm.CreatePhysicalVolume(pvname)
-				if err != nil {
-					return nil, status.Errorf(
-						codes.FailedPrecondition,
-						"Cannot create LVM2 physical volume %v: err=%v",
-						pvname, err)
-				}
-				log.Printf("Created LVM2 physical volume %v", pvname)
-				pvs = append(pvs, pv)
-				continue
-			}
-			return nil, status.Errorf(
-				codes.Internal,
-				"Cannot lookup physical volume %v: err=%v",
-				pvname, err)
-		}
-		log.Printf("Creating volume group %v with physical volumes %v and tags %v", s.vgname, s.pvnames, s.tags)
-		volumeGroup, err = lvm.CreateVolumeGroup(s.vgname, pvs, s.tags)
-		if err != nil {
-			return nil, status.Errorf(
-				codes.FailedPrecondition,
-				"Cannot create volume group %v: err=%v",
-				s.vgname, err)
-		}
-		log.Printf("Created volume group %v", s.vgname)
-	} else if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"Cannot lookup volume group %v: err=%v",
-			s.vgname, err)
-	}
-	log.Printf("Found volume group %v", s.vgname)
-	// The volume group already exists. We check that the list of
-	// physical volumes matches the provided list.
-	log.Printf("Listing physical volumes in volume group %s", s.vgname)
-	existing, err := volumeGroup.ListPhysicalVolumeNames()
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"Cannot list physical volumes: err=%v",
-			err)
-	}
-	missing, unexpected := calculatePVDiff(existing, s.pvnames)
-	if len(missing) != 0 || len(unexpected) != 0 {
-		return nil, status.Errorf(
-			codes.FailedPrecondition,
-			"Volume group contains unexpected volumes %v and is missing volumes %v",
-			unexpected, missing)
-	}
-	// We check that the volume group tags match those we expect.
-	log.Printf("Looking up volume group tags")
-	tags, err := volumeGroup.Tags()
-	if err != nil {
-		return nil, status.Errorf(
-			codes.Internal,
-			"Cannot lookup tags: err=%v",
-			err)
-	}
-	log.Printf("Volume group tags: %v", tags)
-	if err := s.checkVolumeGroupTags(tags); err != nil {
-		return nil, status.Errorf(
-			codes.FailedPrecondition,
-			"Volume group tags did not match expected: err=%v",
-			err)
-	}
-	// The volume group is configured as expected.
-	log.Printf("Volume group matches configuration")
-	if s.removingVolumeGroup {
-		log.Printf("Running with '-remove-volume-group'.")
-		// The volume group matches our config. We remove it
-		// as requested in the startup flags.
-		log.Printf("Removing volume group %v", s.vgname)
-		if err := volumeGroup.Remove(); err != nil {
-			return nil, status.Errorf(
-				codes.Internal,
-				"Failed to remove volume group: err=%v",
-				err)
-		}
-		log.Printf("Removed volume group %v", s.vgname)
-		response := &csi.NodeProbeResponse{}
-		return response, nil
-	}
-	s.volumeGroup = volumeGroup
-	response := &csi.NodeProbeResponse{}
-	return response, nil
 }
 
 func calculatePVDiff(existing, pvnames []string) (missing, unexpected []string) {

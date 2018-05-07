@@ -1,7 +1,7 @@
 package csilvm
 
 import (
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -13,26 +13,6 @@ var ErrRemovingMode = status.Error(
 func (s *Server) validateRemoving() error {
 	if s.removingVolumeGroup {
 		return ErrRemovingMode
-	}
-	return nil
-}
-
-var ErrMissingVersion = status.Error(codes.InvalidArgument, "The version field must be specified.")
-var ErrUnsupportedVersion = status.Error(codes.InvalidArgument, "The requested version is not supported.")
-
-func (s *Server) validateVersion(version *csi.Version) error {
-	if version == nil {
-		return ErrMissingVersion
-	}
-	supportedVersion := false
-	for _, v := range s.supportedVersions() {
-		if *v == *version {
-			supportedVersion = true
-			break
-		}
-	}
-	if !supportedVersion {
-		return ErrUnsupportedVersion
 	}
 	return nil
 }
@@ -118,9 +98,10 @@ func (s *Server) validateVolumeCapability(volumeCapability *csi.VolumeCapability
 // IdentityService RPCs
 
 func (s *Server) validateGetPluginInfoRequest(request *csi.GetPluginInfoRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
+	return nil
+}
+
+func (s *Server) validateGetPluginCapabilitiesRequest(request *csi.GetPluginCapabilitiesRequest) error {
 	return nil
 }
 
@@ -131,9 +112,6 @@ var ErrUnsupportedFilesystem = status.Error(codes.FailedPrecondition, "The reque
 
 func (s *Server) validateCreateVolumeRequest(request *csi.CreateVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		return err
-	}
-	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}
 	name := request.GetName()
@@ -176,9 +154,6 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) e
 	if err := s.validateRemoving(); err != nil {
 		return err
 	}
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	volumeId := request.GetVolumeId()
 	if volumeId == "" {
 		return ErrMissingVolumeId
@@ -188,9 +163,6 @@ func (s *Server) validateDeleteVolumeRequest(request *csi.DeleteVolumeRequest) e
 
 func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.ValidateVolumeCapabilitiesRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		return err
-	}
-	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}
 	volumeId := request.GetVolumeId()
@@ -204,16 +176,10 @@ func (s *Server) validateValidateVolumeCapabilitiesRequest(request *csi.Validate
 }
 
 func (s *Server) validateListVolumesRequest(request *csi.ListVolumesRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	return nil
 }
 
 func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	// If they are provided, the individual volume capabilities must be validated.
 	for _, volumeCapability := range request.GetVolumeCapabilities() {
 		// We don't treat "unsupported fs type" as an error for
@@ -227,9 +193,6 @@ func (s *Server) validateGetCapacityRequest(request *csi.GetCapacityRequest) err
 }
 
 func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -237,22 +200,19 @@ func (s *Server) validateControllerGetCapabilitiesRequest(request *csi.Controlle
 
 var ErrMissingTargetPath = status.Error(codes.InvalidArgument, "The target_path field must be specified.")
 var ErrMissingVolumeCapability = status.Error(codes.InvalidArgument, "The volume_capability field must be specified.")
-var ErrSpecifiedPublishVolumeInfo = status.Error(codes.InvalidArgument, "The publish_volume_info field must not be specified.")
+var ErrSpecifiedPublishInfo = status.Error(codes.InvalidArgument, "The publish_volume_info field must not be specified.")
 
 func (s *Server) validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest) error {
 	if err := s.validateRemoving(); err != nil {
-		return err
-	}
-	if err := s.validateVersion(request.GetVersion()); err != nil {
 		return err
 	}
 	volumeId := request.GetVolumeId()
 	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
-	publishVolumeInfo := request.GetPublishVolumeInfo()
-	if publishVolumeInfo != nil {
-		return ErrSpecifiedPublishVolumeInfo
+	publishInfo := request.GetPublishInfo()
+	if publishInfo != nil {
+		return ErrSpecifiedPublishInfo
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
@@ -275,9 +235,6 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 	if err := s.validateRemoving(); err != nil {
 		return err
 	}
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	volumeId := request.GetVolumeId()
 	if volumeId == "" {
 		return ErrMissingVolumeId
@@ -289,23 +246,10 @@ func (s *Server) validateNodeUnpublishVolumeRequest(request *csi.NodeUnpublishVo
 	return nil
 }
 
-func (s *Server) validateNodeProbeRequest(request *csi.NodeProbeRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Server) validateControllerProbeRequest(request *csi.ControllerProbeRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
+func (s *Server) validateProbeRequest(request *csi.ProbeRequest) error {
 	return nil
 }
 
 func (s *Server) validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest) error {
-	if err := s.validateVersion(request.GetVersion()); err != nil {
-		return err
-	}
 	return nil
 }

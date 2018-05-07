@@ -21,7 +21,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm/pkg/cleanup"
 	"github.com/mesosphere/csilvm/pkg/lvm"
@@ -48,44 +48,8 @@ func init() {
 
 // IdentityService RPCs
 
-func TestGetSupportedVersions(t *testing.T) {
-	client, clean := startTest()
-	defer clean()
-	req := &csi.GetSupportedVersionsRequest{}
-	resp, err := client.GetSupportedVersions(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.GetSupportedVersions()) != 1 {
-		t.Fatalf("Expected only one supported version, got %d", len(resp.GetSupportedVersions()))
-	}
-	got := *resp.GetSupportedVersions()[0]
-	exp := csi.Version{0, 1, 0}
-	if got != exp {
-		t.Fatalf("Expected version %#v but got %#v", exp, got)
-	}
-}
-
-func TestGetSupportedVersionsRemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
-	defer clean()
-	req := &csi.GetSupportedVersionsRequest{}
-	resp, err := client.GetSupportedVersions(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.GetSupportedVersions()) != 1 {
-		t.Fatalf("Expected only one supported version, got %d", len(resp.GetSupportedVersions()))
-	}
-	got := *resp.GetSupportedVersions()[0]
-	exp := csi.Version{0, 1, 0}
-	if got != exp {
-		t.Fatalf("Expected version %#v but got %#v", exp, got)
-	}
-}
-
 func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
-	req := &csi.GetPluginInfoRequest{Version: &csi.Version{0, 1, 0}}
+	req := &csi.GetPluginInfoRequest{}
 	return req
 }
 
@@ -127,24 +91,44 @@ func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-// ControllerService RPCs
-
-func testControllerProbeRequest() *csi.ControllerProbeRequest {
-	req := &csi.ControllerProbeRequest{
-		&csi.Version{0, 1, 0},
-	}
+func testGetPluginCapabilitiesRequest() *csi.GetPluginCapabilitiesRequest {
+	req := &csi.GetPluginCapabilitiesRequest{}
 	return req
 }
 
-func TestControllerProbe(t *testing.T) {
+func TestGetPluginCapabilities(t *testing.T) {
 	client, clean := startTest()
 	defer clean()
-	req := testControllerProbeRequest()
-	_, err := client.ControllerProbe(context.Background(), req)
+	req := testGetPluginCapabilitiesRequest()
+	resp, err := client.GetPluginCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if x := resp.GetCapabilities(); len(x) != 1 {
+		t.Fatalf("Expected 1 capability, but got %v", x)
+	}
+	if x := resp.GetCapabilities()[0].GetService().Type; x != csi.PluginCapability_Service_CONTROLLER_SERVICE {
+		t.Fatalf("Expected plugin to have capability CONTROLLER_SERVICE but had %v", x)
+	}
 }
+
+func TestGetPluginCapabilitiesRemoveVolumeGroup(t *testing.T) {
+	client, clean := startTest()
+	defer clean()
+	req := testGetPluginCapabilitiesRequest()
+	resp, err := client.GetPluginCapabilities(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if x := resp.GetCapabilities(); len(x) != 1 {
+		t.Fatalf("Expected 1 capability, but got %v", x)
+	}
+	if x := resp.GetCapabilities()[0].GetService().Type; x != csi.PluginCapability_Service_CONTROLLER_SERVICE {
+		t.Fatalf("Expected plugin to have capability CONTROLLER_SERVICE but had %v", x)
+	}
+}
+
+// ControllerService RPCs
 
 func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 	const requiredBytes = 80 << 20
@@ -171,7 +155,6 @@ func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 		},
 	}
 	req := &csi.CreateVolumeRequest{
-		&csi.Version{0, 1, 0},
 		"test-volume",
 		&csi.CapacityRange{requiredBytes, limitBytes},
 		volumeCapabilities,
@@ -198,7 +181,7 @@ func TestCreateVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := resp.GetVolumeInfo()
+	info := resp.GetVolume()
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
@@ -216,7 +199,7 @@ func TestCreateVolume_WithTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := resp.GetVolumeInfo()
+	info := resp.GetVolume()
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
@@ -266,8 +249,8 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := resp.GetVolumeInfo()
-	if info.GetCapacityBytes() != defaultVolumeSize {
+	info := resp.GetVolume()
+	if uint64(info.GetCapacityBytes()) != defaultVolumeSize {
 		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
 	}
 	if !strings.HasSuffix(info.GetId(), req.GetName()) {
@@ -291,15 +274,15 @@ func TestCreateVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volInfo := resp2.GetVolumeInfo()
+	volInfo := resp2.GetVolume()
 	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
 		t.Fatalf("Unexpected capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
 	}
-	if got := volInfo.GetId(); got != resp1.GetVolumeInfo().GetId() {
-		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolumeInfo().GetId())
+	if got := volInfo.GetId(); got != resp1.GetVolume().GetId() {
+		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetId())
 	}
-	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolumeInfo().GetAttributes()) {
-		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolumeInfo().GetAttributes())
+	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolume().GetAttributes()) {
+		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetAttributes())
 	}
 }
 
@@ -340,9 +323,9 @@ func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
 	clean.Add(loop.Close)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup2 := prepareNodeProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
+	client, cleanup2 := prepareProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
 	// Initialize the Server by calling ProbeNode.
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +347,7 @@ func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lv, err := vg.LookupLogicalVolume(resp1.GetVolumeInfo().GetId())
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetId())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,9 +390,9 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 	clean.Add(loop.Close)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean2 := prepareNodeProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
+	client, clean2 := prepareProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
 	// Initialize the Server by calling ProbeNode.
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +414,7 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lv, err := vg.LookupLogicalVolume(resp1.GetVolumeInfo().GetId())
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetId())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,15 +438,15 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volInfo := resp2.GetVolumeInfo()
+	volInfo := resp2.GetVolume()
 	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
 		t.Fatalf("Unexpected capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
 	}
-	if got := volInfo.GetId(); got != resp1.GetVolumeInfo().GetId() {
-		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolumeInfo().GetId())
+	if got := volInfo.GetId(); got != resp1.GetVolume().GetId() {
+		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetId())
 	}
-	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolumeInfo().GetAttributes()) {
-		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolumeInfo().GetAttributes())
+	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolume().GetAttributes()) {
+		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetAttributes())
 	}
 }
 
@@ -497,7 +480,6 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 
 func testDeleteVolumeRequest(volumeId string) *csi.DeleteVolumeRequest {
 	req := &csi.DeleteVolumeRequest{
-		&csi.Version{0, 1, 0},
 		volumeId,
 		nil,
 	}
@@ -512,7 +494,7 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	req := testDeleteVolumeRequest(volumeId)
 	_, err = client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -528,7 +510,7 @@ func TestDeleteVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	req := testDeleteVolumeRequest(volumeId)
 	_, err = client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -558,9 +540,9 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	defer loop1.Close()
 	pvnames := []string{loop1.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,8 +552,8 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
-	capacityBytes := createResp.GetVolumeInfo().GetCapacityBytes()
+	volumeId := createResp.GetVolume().GetId()
+	capacityBytes := createResp.GetVolume().GetCapacityBytes()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -620,7 +602,7 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	file.Close()
 	// Check that we wrote at least half the volume's capacity full of ones.
 	// We can't check for equality due to filesystem metadata, etc.
-	if uint64(wrote) < capacityBytes/2 {
+	if int64(wrote) < capacityBytes/2 {
 		t.Fatalf("Failed to write even half of the volume: %v of %v", wrote, capacityBytes)
 	}
 	// Unpublish the volume.
@@ -641,8 +623,8 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId = createResp.GetVolumeInfo().GetId()
-	capacityBytes = createResp.GetVolumeInfo().GetCapacityBytes()
+	volumeId = createResp.GetVolume().GetId()
+	capacityBytes = createResp.GetVolume().GetCapacityBytes()
 	targetPath = filepath.Join(tmpdirPath, volumeId)
 	if file, err := os.Create(targetPath); err != nil {
 		t.Fatal(err)
@@ -671,7 +653,7 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected device to consists of zeros only.")
 	}
-	if uint64(n) != capacityBytes {
+	if int64(n) != capacityBytes {
 		t.Fatalf("Bad read, expected device to have size %d but read only %d bytes", capacityBytes, n)
 	}
 }
@@ -743,7 +725,6 @@ func testValidateVolumeCapabilitiesRequest(volumeId string, filesystem string, m
 		},
 	}
 	req := &csi.ValidateVolumeCapabilitiesRequest{
-		&csi.Version{0, 1, 0},
 		volumeId,
 		volumeCapabilities,
 		nil,
@@ -760,7 +741,7 @@ func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	req := testValidateVolumeCapabilitiesRequest(volumeId, "xfs", nil)
 	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
@@ -783,7 +764,7 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -836,7 +817,7 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -868,7 +849,6 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 
 func testListVolumesRequest() *csi.ListVolumesRequest {
 	req := &csi.ListVolumesRequest{
-		&csi.Version{0, 1, 0},
 		0,
 		"",
 	}
@@ -891,7 +871,7 @@ func TestListVolumes_NoVolumes(t *testing.T) {
 func TestListVolumes_TwoVolumes(t *testing.T) {
 	client, clean := startTest()
 	defer clean()
-	var infos []*csi.VolumeInfo
+	var infos []*csi.Volume
 	// Add the first volume.
 	req := testCreateVolumeRequest()
 	req.Name = "test-volume-1"
@@ -900,7 +880,7 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	infos = append(infos, resp.GetVolumeInfo())
+	infos = append(infos, resp.GetVolume())
 	// Add the second volume.
 	req = testCreateVolumeRequest()
 	req.Name = "test-volume-2"
@@ -909,7 +889,7 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	infos = append(infos, resp.GetVolumeInfo())
+	infos = append(infos, resp.GetVolume())
 	// Check that ListVolumes returns the two volumes.
 	listReq := testListVolumesRequest()
 	listResp, err := client.ListVolumes(context.Background(), listReq)
@@ -923,13 +903,13 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	for _, entry := range entries {
 		had := false
 		for _, info := range infos {
-			if reflect.DeepEqual(info, entry.GetVolumeInfo()) {
+			if reflect.DeepEqual(info, entry.GetVolume()) {
 				had = true
 				break
 			}
 		}
 		if !had {
-			t.Fatalf("Cannot find volume info %+v in %+v.", entry.GetVolumeInfo(), infos)
+			t.Fatalf("Cannot find volume info %+v in %+v.", entry.GetVolume(), infos)
 		}
 	}
 }
@@ -957,7 +937,6 @@ func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 		},
 	}
 	req := &csi.GetCapacityRequest{
-		&csi.Version{0, 1, 0},
 		volumeCapabilities,
 		nil,
 	}
@@ -976,7 +955,7 @@ func TestGetCapacity_NoVolumes(t *testing.T) {
 	const extentSize = uint64(2 << 20)
 	const metadataExtents = 2
 	exp := pvsize - extentSize*metadataExtents
-	if got := resp.GetAvailableCapacity(); got != exp {
+	if got := resp.GetAvailableCapacity(); got != int64(exp) {
 		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
 	}
 }
@@ -997,10 +976,10 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Two extents are reserved for metadata.
-	const extentSize = uint64(2 << 20)
+	const extentSize = int64(2 << 20)
 	const metadataExtents = 2
-	exp := pvsize - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
-	if got := resp.GetAvailableCapacity(); got != exp {
+	exp := int64(pvsize) - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
+	if got := resp.GetAvailableCapacity(); got != int64(exp) {
 		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
 	}
 }
@@ -1021,7 +1000,7 @@ func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
 func TestControllerGetCapabilities(t *testing.T) {
 	client, clean := startTest()
 	defer clean()
-	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
+	req := &csi.ControllerGetCapabilitiesRequest{}
 	resp, err := client.ControllerGetCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -1043,7 +1022,7 @@ func TestControllerGetCapabilities(t *testing.T) {
 func TestControllerGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	client, clean := startTest(RemoveVolumeGroup())
 	defer clean()
-	req := &csi.ControllerGetCapabilitiesRequest{Version: &csi.Version{0, 1, 0}}
+	req := &csi.ControllerGetCapabilitiesRequest{}
 	resp, err := client.ControllerGetCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -1090,24 +1069,18 @@ func testNodePublishVolumeRequest(volumeId string, targetPath string, filesystem
 	}
 	const readonly = false
 	req := &csi.NodePublishVolumeRequest{
-		&csi.Version{0, 1, 0},
-		volumeId,
-		nil,
-		targetPath,
-		volumeCapability,
-		readonly,
-		nil,
-		nil,
+		VolumeId:         volumeId,
+		TargetPath:       targetPath,
+		VolumeCapability: volumeCapability,
+		Readonly:         readonly,
 	}
 	return req
 }
 
 func testNodeUnpublishVolumeRequest(volumeId string, targetPath string) *csi.NodeUnpublishVolumeRequest {
 	req := &csi.NodeUnpublishVolumeRequest{
-		&csi.Version{0, 1, 0},
-		volumeId,
-		targetPath,
-		nil,
+		VolumeId:   volumeId,
+		TargetPath: targetPath,
 	}
 	return req
 }
@@ -1121,7 +1094,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1173,7 +1146,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1272,7 +1245,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1371,7 +1344,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1513,7 +1486,7 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1578,7 +1551,7 @@ func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId1 := createResp1.GetVolumeInfo().GetId()
+	volumeId1 := createResp1.GetVolume().GetId()
 	// Create a second volume.
 	createReq2 := testCreateVolumeRequest()
 	createReq2.Name += "-2"
@@ -1587,7 +1560,7 @@ func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId2 := createResp2.GetVolumeInfo().GetId()
+	volumeId2 := createResp2.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1638,7 +1611,7 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1704,7 +1677,7 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId1 := createResp1.GetVolumeInfo().GetId()
+	volumeId1 := createResp1.GetVolume().GetId()
 	// Create a second volume that we'll try to publish to the same targetPath.
 	createReq2 := testCreateVolumeRequest()
 	createReq2.Name += "-2"
@@ -1713,7 +1686,7 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId2 := createResp2.GetVolumeInfo().GetId()
+	volumeId2 := createResp2.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1763,7 +1736,7 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1839,7 +1812,7 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolumeInfo().GetId()
+	volumeId := createResp.GetVolume().GetId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1911,31 +1884,27 @@ func targetPathIsMountPoint(path string) bool {
 	return true
 }
 
-func testGetNodeIDRequest() *csi.GetNodeIDRequest {
-	req := &csi.GetNodeIDRequest{
-		&csi.Version{0, 1, 0},
-	}
+func testNodeGetIdRequest() *csi.NodeGetIdRequest {
+	req := &csi.NodeGetIdRequest{}
 	return req
 }
 
-func TestGetNodeIDNotSupported(t *testing.T) {
+func TestNodeGetIdNotSupported(t *testing.T) {
 	client, clean := startTest()
 	defer clean()
-	req := &csi.GetNodeIDRequest{}
-	_, err := client.GetNodeID(context.Background(), req)
+	req := &csi.NodeGetIdRequest{}
+	_, err := client.NodeGetId(context.Background(), req)
 	if !grpcErrorEqual(err, ErrCallNotImplemented) {
 		t.Fatal(err)
 	}
 }
 
-func testNodeProbeRequest() *csi.NodeProbeRequest {
-	req := &csi.NodeProbeRequest{
-		&csi.Version{0, 1, 0},
-	}
+func testProbeRequest() *csi.ProbeRequest {
+	req := &csi.ProbeRequest{}
 	return req
 }
 
-func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
+func TestProbe_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -1948,15 +1917,15 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	defer loop2.Close()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
+func TestProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -1971,9 +1940,9 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	vgname := "test-vg-" + uuid.New().String()
 	tag := "blue"
 	expected := []string{tag}
-	client, clean := prepareNodeProbeTest(vgname, pvnames, Tag(tag))
+	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1990,7 +1959,7 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
+func TestProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2020,9 +1989,9 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	tag := "-some-malformed-tag"
-	client, clean := prepareNodeProbeTest(vgname, pvnames, Tag(tag))
+	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
 		"Invalid tag '%v': err=%v",
@@ -2033,12 +2002,12 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
+func TestProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	pvnames := []string{"/dev/does/not/exist"}
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err := client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err := client.Probe(context.Background(), testProbeRequest())
 	experr := status.Error(
 		codes.FailedPrecondition,
 		"Could not stat device /dev/does/not/exist: err=stat /dev/does/not/exist: no such file or directory")
@@ -2047,7 +2016,7 @@ func TestNodeProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
+func TestProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2077,9 +2046,9 @@ func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
 		"Cannot create LVM2 physical volume %s: err=lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem?",
@@ -2090,7 +2059,7 @@ func TestNodeProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
+func TestProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2106,9 +2075,9 @@ func TestNodeProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
 	}
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2150,7 +2119,7 @@ func TestZeroPartitionTable(t *testing.T) {
 	}
 }
 
-func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T) {
+func TestProbe_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2163,15 +2132,15 @@ func TestNodeProbe_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testin
 	defer loop2.Close()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareNodeProbeTest(vgname, pvnames, RemoveVolumeGroup())
+	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNodeProbe_ExistingVolumeGroup(t *testing.T) {
+func TestProbe_ExistingVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2200,15 +2169,15 @@ func TestNodeProbe_ExistingVolumeGroup(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestNodeProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
+func TestProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2237,9 +2206,9 @@ func TestNodeProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Error(
 		codes.FailedPrecondition,
 		"Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]")
@@ -2248,7 +2217,7 @@ func TestNodeProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	}
 }
 
-func TestNodeProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
+func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2277,9 +2246,9 @@ func TestNodeProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
 		"Volume group contains unexpected volumes %v and is missing volumes []",
@@ -2289,7 +2258,7 @@ func TestNodeProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.
 	}
 }
 
-func TestNodeProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
+func TestProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2318,7 +2287,7 @@ func TestNodeProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames, RemoveVolumeGroup())
+	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
 	vgnamesBefore, err := lvm.ListVolumeGroupNames()
 	if err != nil {
@@ -2331,7 +2300,7 @@ func TestNodeProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 		}
 		vgnamesExpect = append(vgnamesExpect, name)
 	}
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2340,11 +2309,11 @@ func TestNodeProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(vgnamesExpect, vgnamesAfter) {
-		t.Fatalf("Expected volume groups %v after NodeProbe but got %v", vgnamesExpect, vgnamesAfter)
+		t.Fatalf("Expected volume groups %v after Probe but got %v", vgnamesExpect, vgnamesAfter)
 	}
 }
 
-func TestNodeProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
+func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2373,9 +2342,9 @@ func TestNodeProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolum
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames, RemoveVolumeGroup())
+	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
 		"Volume group contains unexpected volumes %v and is missing volumes []",
@@ -2415,9 +2384,9 @@ func TestProbeNode_ExistingVolumeGroup_WithTag(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
+	client, clean := prepareProbeTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2453,9 +2422,9 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareNodeProbeTest(vgname, pvnames)
+	client, clean := prepareProbeTest(vgname, pvnames)
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Errorf(
 		codes.FailedPrecondition,
 		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [] != [%s]",
@@ -2495,9 +2464,9 @@ func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	tag := "blue"
-	client, clean := prepareNodeProbeTest(vgname, pvnames, Tag(tag))
+	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
 	defer clean()
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	experr := status.Error(
 		codes.FailedPrecondition,
 		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [blue] != [some-other-tag]")
@@ -2507,9 +2476,7 @@ func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
 }
 
 func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
-	req := &csi.NodeGetCapabilitiesRequest{
-		&csi.Version{0, 1, 0},
-	}
+	req := &csi.NodeGetCapabilitiesRequest{}
 	return req
 }
 
@@ -2533,7 +2500,7 @@ func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-func prepareNodeProbeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+func prepareProbeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	var clean cleanup.Steps
 	defer func() {
 		if x := recover(); x != nil {
@@ -2650,9 +2617,9 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	clean.Add(loop.Close)
 	// Create a volume group containing the physical volume.
 	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup2 := prepareNodeProbeTest(vgname, []string{loop.Path()}, serverOpts...)
+	client, cleanup2 := prepareProbeTest(vgname, []string{loop.Path()}, serverOpts...)
 	// Initialize the Server by calling ProbeNode.
-	_, err = client.NodeProbe(context.Background(), testNodeProbeRequest())
+	_, err = client.Probe(context.Background(), testProbeRequest())
 	if err != nil {
 		panic(err)
 	}

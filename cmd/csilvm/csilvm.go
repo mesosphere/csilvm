@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 )
