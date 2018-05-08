@@ -82,8 +82,8 @@ func SupportedFilesystem(fstype string) ServerOpt {
 }
 
 // RemoveVolumeGroup configures the Server to operate in "remove" mode. The
-// volume group will be removed when Probe is called. All RPCs other than those
-// of the Identity service will fail if the plugin is started in this mode.
+// volume group will be removed when Probe is called. Most RPCs will return an
+// error if the plugin is started in this mode.
 func RemoveVolumeGroup() ServerOpt {
 	return func(s *Server) {
 		s.removingVolumeGroup = true
@@ -130,9 +130,10 @@ func (s *Server) GetPluginCapabilities(
 	return response, nil
 }
 
-// Probe initializes the Server by creating or opening the VolumeGroup. The
-// sanity checks and initialization logic are idempotent to allow this call to
-// be performed after initialization.
+// Probe initializes the Server the first time it is called by creating or
+// opening the VolumeGroup. Subsequent calls to Probe serve as health
+// checks. The sanity checks and initialization logic are idempotent to allow
+// this call to be performed after initialization.
 func (s *Server) Probe(
 	ctx context.Context,
 	request *csi.ProbeRequest) (*csi.ProbeResponse, error) {
