@@ -979,7 +979,7 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 	const extentSize = int64(2 << 20)
 	const metadataExtents = 2
 	exp := int64(pvsize) - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
-	if got := resp.GetAvailableCapacity(); got != int64(exp) {
+	if got := resp.GetAvailableCapacity(); got != exp {
 		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
 	}
 }
