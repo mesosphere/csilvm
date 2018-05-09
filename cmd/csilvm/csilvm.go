@@ -84,6 +84,9 @@ func main() {
 		opts = append(opts, csilvm.Tag(tag))
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
+	if err := s.Setup(); err != nil {
+		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
+	}
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
