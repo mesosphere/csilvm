@@ -55,12 +55,28 @@ func (pv *PhysicalVolume) Remove() error {
 	return nil
 }
 
+// Check runs the pvck command on the physical volume.
+func (pv *PhysicalVolume) Check() error {
+	if err := run("pvck", nil, pv.dev); err != nil {
+		return err
+	}
+	return nil
+}
+
 type VolumeGroup struct {
 	name string
 }
 
 func (vg *VolumeGroup) Name() string {
 	return vg.name
+}
+
+// Check runs the vgck command on the volume group.
+func (vg *VolumeGroup) Check() error {
+	if err := run("vgck", nil, vg.name); err != nil {
+		return err
+	}
+	return nil
 }
 
 // BytesTotal returns the current size in bytes of the volume group.
