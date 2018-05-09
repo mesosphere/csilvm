@@ -2089,12 +2089,12 @@ func TestSetup_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(targetPath)
-	if err := syscall.Mount(pv1name, targetPath, "xfs", 0, ""); err != nil {
-		t.Fatal(err)
+	if merr := syscall.Mount(pv1name, targetPath, "xfs", 0, ""); merr != nil {
+		t.Fatal(merr)
 	}
 	defer func() {
-		if err := syscall.Unmount(targetPath, 0); err != nil {
-			t.Fatal(err)
+		if merr := syscall.Unmount(targetPath, 0); merr != nil {
+			t.Fatal(merr)
 		}
 	}()
 	_, server, clean := prepareSetupTest(vgname, pvnames)
