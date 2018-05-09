@@ -54,7 +54,10 @@ func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
 }
 
 func TestGetPluginInfo(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testGetPluginInfoRequest()
 	resp, err := client.GetPluginInfo(context.Background(), req)
@@ -73,7 +76,10 @@ func TestGetPluginInfo(t *testing.T) {
 }
 
 func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, RemoveVolumeGroup())
 	defer clean()
 	req := testGetPluginInfoRequest()
 	resp, err := client.GetPluginInfo(context.Background(), req)
@@ -97,7 +103,10 @@ func testGetPluginCapabilitiesRequest() *csi.GetPluginCapabilitiesRequest {
 }
 
 func TestGetPluginCapabilities(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testGetPluginCapabilitiesRequest()
 	resp, err := client.GetPluginCapabilities(context.Background(), req)
@@ -113,7 +122,10 @@ func TestGetPluginCapabilities(t *testing.T) {
 }
 
 func TestGetPluginCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, RemoveVolumeGroup())
 	defer clean()
 	req := testGetPluginCapabilitiesRequest()
 	resp, err := client.GetPluginCapabilities(context.Background(), req)
@@ -174,7 +186,10 @@ func (r repeater) Read(buf []byte) (int, error) {
 }
 
 func TestCreateVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testCreateVolumeRequest()
 	resp, err := client.CreateVolume(context.Background(), req)
@@ -192,7 +207,10 @@ func TestCreateVolume(t *testing.T) {
 
 func TestCreateVolume_WithTag(t *testing.T) {
 	expected := []string{"some-tag"}
-	client, clean := startTest(Tag(expected[0]))
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, Tag(expected[0]))
 	defer clean()
 	req := testCreateVolumeRequest()
 	resp, err := client.CreateVolume(context.Background(), req)
@@ -238,8 +256,11 @@ func TestCreateVolume_WithTag(t *testing.T) {
 }
 
 func TestCreateVolumeDefaultSize(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
 	const defaultVolumeSize = uint64(20 << 20)
-	client, clean := startTest(DefaultVolumeSize(defaultVolumeSize))
+	client, clean := startTest(vgname, []string{pvname}, DefaultVolumeSize(defaultVolumeSize))
 	defer clean()
 	req := testCreateVolumeRequest()
 	// Specify no CapacityRange so the volume gets the default
@@ -259,7 +280,10 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 }
 
 func TestCreateVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
@@ -287,7 +311,10 @@ func TestCreateVolume_Idempotent(t *testing.T) {
 }
 
 func TestCreateVolume_AlreadyExists_CapacityRange(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
@@ -315,23 +342,11 @@ func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
 			panic(x)
 		}
 	}()
-	// Create a volume group for the server to manage.
-	loop, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clean.Add(loop.Close)
-	// Create a volume group containing the physical volume.
-	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup2 := prepareProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
-	// Initialize the Server by calling ProbeNode.
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
-		t.Fatal(err)
-	}
-	clean.Add(func() error { cleanup2(); return nil })
-	defer clean.Unwind()
-
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, cleanup := startTest(vgname, []string{pvname}, SupportedFilesystem("ext4"))
+	defer cleanup()
 	// Create a test volume.
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
@@ -382,20 +397,10 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 			panic(x)
 		}
 	}()
-	// Create a volume group for the server to manage.
-	loop, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clean.Add(loop.Close)
-	// Create a volume group containing the physical volume.
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean2 := prepareProbeTest(vgname, []string{loop.Path()}, SupportedFilesystem("ext4"))
-	// Initialize the Server by calling ProbeNode.
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
-		t.Fatal(err)
-	}
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	clean.Add(pvclean)
+	client, clean2 := startTest(vgname, []string{pvname}, SupportedFilesystem("ext4"))
 	clean.Add(func() error { clean2(); return nil })
 	defer clean.Unwind()
 
@@ -451,7 +456,10 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 }
 
 func TestCreateVolumeCapacityRangeNotSatisfied(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
@@ -464,7 +472,10 @@ func TestCreateVolumeCapacityRangeNotSatisfied(t *testing.T) {
 }
 
 func TestCreateVolumeInvalidVolumeName(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testCreateVolumeRequest()
 	// Use only half the usual size so there is enough space for a
@@ -487,7 +498,10 @@ func testDeleteVolumeRequest(volumeId string) *csi.DeleteVolumeRequest {
 }
 
 func TestDeleteVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	createReq := testCreateVolumeRequest()
 	createResp, err := client.CreateVolume(context.Background(), createReq)
@@ -503,7 +517,10 @@ func TestDeleteVolume(t *testing.T) {
 }
 
 func TestDeleteVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	createReq := testCreateVolumeRequest()
 	createResp, err := client.CreateVolume(context.Background(), createReq)
@@ -523,7 +540,10 @@ func TestDeleteVolume_Idempotent(t *testing.T) {
 }
 
 func TestDeleteVolumeUnknownVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testDeleteVolumeRequest("missing-volume")
 	_, err := client.DeleteVolume(context.Background(), req)
@@ -533,19 +553,11 @@ func TestDeleteVolumeUnknownVolume(t *testing.T) {
 }
 
 func TestDeleteVolumeErasesData(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	pvnames := []string{loop1.Path()}
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareProbeTest(vgname, pvnames)
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
 	createResp, err := client.CreateVolume(context.Background(), createReq)
@@ -683,7 +695,10 @@ func containsOnly(devicePath string, i byte) (uint64, bool) {
 }
 
 func TestControllerPublishVolumeNotSupported(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := &csi.ControllerPublishVolumeRequest{}
 	_, err := client.ControllerPublishVolume(context.Background(), req)
@@ -693,7 +708,10 @@ func TestControllerPublishVolumeNotSupported(t *testing.T) {
 }
 
 func TestControllerUnpublishVolumeNotSupported(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := &csi.ControllerUnpublishVolumeRequest{}
 	_, err := client.ControllerUnpublishVolume(context.Background(), req)
@@ -733,7 +751,10 @@ func testValidateVolumeCapabilitiesRequest(volumeId string, filesystem string, m
 }
 
 func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -756,7 +777,10 @@ func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -798,7 +822,10 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilities_MissingVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	validateReq := testValidateVolumeCapabilitiesRequest("foo", "xfs", nil)
@@ -809,7 +836,10 @@ func TestValidateVolumeCapabilities_MissingVolume(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) {
-	client, clean := startTest(SupportedFilesystem("ext4"))
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, SupportedFilesystem("ext4"))
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -856,7 +886,10 @@ func testListVolumesRequest() *csi.ListVolumesRequest {
 }
 
 func TestListVolumes_NoVolumes(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testListVolumesRequest()
 	resp, err := client.ListVolumes(context.Background(), req)
@@ -869,7 +902,10 @@ func TestListVolumes_NoVolumes(t *testing.T) {
 }
 
 func TestListVolumes_TwoVolumes(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	var infos []*csi.Volume
 	// Add the first volume.
@@ -944,7 +980,10 @@ func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 }
 
 func TestGetCapacity_NoVolumes(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testGetCapacityRequest("xfs")
 	resp, err := client.GetCapacity(context.Background(), req)
@@ -961,7 +1000,10 @@ func TestGetCapacity_NoVolumes(t *testing.T) {
 }
 
 func TestGetCapacity_OneVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	createReq := testCreateVolumeRequest()
 	createReq.Name = "test-volume-1"
@@ -985,7 +1027,10 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 }
 
 func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, RemoveVolumeGroup())
 	defer clean()
 	req := testGetCapacityRequest("xfs")
 	resp, err := client.GetCapacity(context.Background(), req)
@@ -998,7 +1043,10 @@ func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {
 }
 
 func TestControllerGetCapabilities(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := &csi.ControllerGetCapabilitiesRequest{}
 	resp, err := client.ControllerGetCapabilities(context.Background(), req)
@@ -1020,7 +1068,10 @@ func TestControllerGetCapabilities(t *testing.T) {
 }
 
 func TestControllerGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, RemoveVolumeGroup())
 	defer clean()
 	req := &csi.ControllerGetCapabilitiesRequest{}
 	resp, err := client.ControllerGetCapabilities(context.Background(), req)
@@ -1086,7 +1137,10 @@ func testNodeUnpublishVolumeRequest(volumeId string, targetPath string) *csi.Nod
 }
 
 func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1138,7 +1192,10 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 }
 
 func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1237,7 +1294,10 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
 }
 
 func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1336,7 +1396,10 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testi
 }
 
 func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1478,7 +1541,10 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 }
 
 func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1542,7 +1608,10 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 }
 
 func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq1 := testCreateVolumeRequest()
@@ -1603,7 +1672,10 @@ func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
 }
 
 func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1668,7 +1740,10 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 }
 
 func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq1 := testCreateVolumeRequest()
@@ -1728,7 +1803,10 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 }
 
 func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1804,7 +1882,10 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 }
 
 func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	// Create the volume that we'll be publishing.
 	createReq := testCreateVolumeRequest()
@@ -1890,7 +1971,10 @@ func testNodeGetIdRequest() *csi.NodeGetIdRequest {
 }
 
 func TestNodeGetIdNotSupported(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := &csi.NodeGetIdRequest{}
 	_, err := client.NodeGetId(context.Background(), req)
@@ -1904,46 +1988,44 @@ func testProbeRequest() *csi.ProbeRequest {
 	return req
 }
 
-func TestProbe_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	pvnames := []string{loop1.Path(), loop2.Path()}
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareProbeTest(vgname, pvnames)
+func TestProbe(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
+	req := testProbeRequest()
+	_, err := client.Probe(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	pvnames := []string{loop1.Path(), loop2.Path()}
-	vgname := "test-vg-" + uuid.New().String()
-	tag := "blue"
-	expected := []string{tag}
-	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
+func TestSetup_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	pvnames := []string{pv1name, pv2name}
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
+	if err := server.Setup(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetup_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	pvnames := []string{pv1name, pv2name}
+	tag := "blue"
+	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tag))
+	defer clean()
+	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
 	vg, err := lvm.LookupVolumeGroup(vgname)
@@ -1954,83 +2036,52 @@ func TestProbe_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	expected := []string{tag}
 	if !reflect.DeepEqual(tags, expected) {
 		t.Fatalf("Expected tags not found %v != %v", expected, tags)
 	}
 }
 
-func TestProbe_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pv1.Remove()
-	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pv2.Remove()
-	pvs := []*lvm.PhysicalVolume{pv1, pv2}
-	vgname := "test-vg-" + uuid.New().String()
-	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer vg.Remove()
-	pvnames := []string{loop1.Path(), loop2.Path()}
+func TestSetup_NewVolumeGroup_NewPhysicalVolumes_WithMalformedTag(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	pvnames := []string{pv1name, pv2name}
 	tag := "-some-malformed-tag"
-	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
+	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tag))
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Errorf(
-		codes.FailedPrecondition,
-		"Invalid tag '%v': err=%v",
+	experr := fmt.Sprintf("Invalid tag '%v': err=%v",
 		tag,
 		"lvm: Tag must consist of only [A-Za-z0-9_+.-] and cannot start with a '-'")
-	if !grpcErrorEqual(err, experr) {
+	err := server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
+func TestSetup_NewVolumeGroup_NonExistantPhysicalVolume(t *testing.T) {
+	vgname := testvgname()
 	pvnames := []string{"/dev/does/not/exist"}
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err := client.Probe(context.Background(), testProbeRequest())
-	experr := status.Error(
-		codes.FailedPrecondition,
-		"Could not stat device /dev/does/not/exist: err=stat /dev/does/not/exist: no such file or directory")
-	if !grpcErrorEqual(err, experr) {
+	experr := "Could not stat device /dev/does/not/exist: err=stat /dev/does/not/exist: no such file or directory"
+	err := server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	pvnames := []string{loop1.Path(), loop2.Path()}
-	vgname := "test-vg-" + uuid.New().String()
+func TestSetup_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	pvnames := []string{pv1name, pv2name}
 	// Format and mount loop1 so it appears busy.
-	if err := formatDevice(loop1.Path(), "xfs"); err != nil {
+	if err := formatDevice(pv1name, "xfs"); err != nil {
 		t.Fatal(err)
 	}
 	targetPath, err := ioutil.TempDir("", "csilvm_tests")
@@ -2038,7 +2089,7 @@ func TestProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(targetPath)
-	if err := syscall.Mount(loop1.Path(), targetPath, "xfs", 0, ""); err != nil {
+	if err := syscall.Mount(pv1name, targetPath, "xfs", 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -2046,39 +2097,32 @@ func TestProbe_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Errorf(
-		codes.FailedPrecondition,
+	experr := fmt.Sprintf(
 		"Cannot create LVM2 physical volume %s: err=lvm: CreatePhysicalVolume: Can't open %s exclusively.  Mounted filesystem?",
-		loop1.Path(),
-		loop1.Path())
-	if !grpcErrorEqual(err, experr) {
-		t.Fatalf("Expected '%#v' but got '%#v'", experr, err)
+		pv1name,
+		pv1name,
+	)
+	err = server.Setup()
+	if err.Error() != experr {
+		t.Fatal(err)
 	}
 }
 
-func TestProbe_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
+func TestSetup_NewVolumeGroup_FormattedPhysicalVolume(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	if err := exec.Command("mkfs", "-t", "xfs", pv2name).Run(); err != nil {
 		t.Fatal(err)
 	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	if err := exec.Command("mkfs", "-t", "xfs", loop2.Path()).Run(); err != nil {
-		t.Fatal(err)
-	}
-	pvnames := []string{loop1.Path(), loop2.Path()}
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareProbeTest(vgname, pvnames)
+	pvnames := []string{pv1name, pv2name}
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
+	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2119,28 +2163,30 @@ func TestZeroPartitionTable(t *testing.T) {
 	}
 }
 
-func TestProbe_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T) {
-	loop1, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop1.Close()
-	loop2, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loop2.Close()
-	pvnames := []string{loop1.Path(), loop2.Path()}
-	vgname := "test-vg-" + uuid.New().String()
-	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
+func TestSetup_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T) {
+	vgname := testvgname()
+	pv1name, pv1clean := testpv()
+	defer pv1clean()
+	pv2name, pv2clean := testpv()
+	defer pv2clean()
+	pvnames := []string{pv1name, pv2name}
+	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
+	if err := server.Setup(); err != nil {
+		t.Fatal(err)
+	}
+	vgs, err := lvm.ListVolumeGroupNames()
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, vg := range vgs {
+		if vg == vgname {
+			t.Fatal("Unexpected volume group")
+		}
 	}
 }
 
-func TestProbe_ExistingVolumeGroup(t *testing.T) {
+func TestSetup_ExistingVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2169,15 +2215,14 @@ func TestProbe_ExistingVolumeGroup(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
+	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2206,18 +2251,16 @@ func TestProbe_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Error(
-		codes.FailedPrecondition,
-		"Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]")
-	if !grpcErrorEqual(err, experr) {
+	experr := "Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]"
+	err = server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2246,19 +2289,18 @@ func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Errorf(
-		codes.FailedPrecondition,
+	experr := fmt.Sprintf(
 		"Volume group contains unexpected volumes %v and is missing volumes []",
 		[]string{loop2.Path()})
-	if !grpcErrorEqual(err, experr) {
+	err = server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2287,7 +2329,7 @@ func TestProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
+	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
 	vgnamesBefore, err := lvm.ListVolumeGroupNames()
 	if err != nil {
@@ -2300,8 +2342,7 @@ func TestProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 		}
 		vgnamesExpect = append(vgnamesExpect, name)
 	}
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
+	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
 	vgnamesAfter, err := lvm.ListVolumeGroupNames()
@@ -2309,11 +2350,11 @@ func TestProbe_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(vgnamesExpect, vgnamesAfter) {
-		t.Fatalf("Expected volume groups %v after Probe but got %v", vgnamesExpect, vgnamesAfter)
+		t.Fatalf("Expected volume groups %v after Setup but got %v", vgnamesExpect, vgnamesAfter)
 	}
 }
 
-func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2342,19 +2383,18 @@ func TestProbe_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGro
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames, RemoveVolumeGroup())
+	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Errorf(
-		codes.FailedPrecondition,
+	experr := fmt.Sprintf(
 		"Volume group contains unexpected volumes %v and is missing volumes []",
 		[]string{loop2.Path()})
-	if !grpcErrorEqual(err, experr) {
+	err = server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_WithTag(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_WithTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2384,15 +2424,15 @@ func TestProbeNode_ExistingVolumeGroup_WithTag(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
+	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
+	err = server.Setup()
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2422,19 +2462,18 @@ func TestProbeNode_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	client, clean := prepareProbeTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Errorf(
-		codes.FailedPrecondition,
+	experr := fmt.Sprintf(
 		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [] != [%s]",
 		tag)
-	if !grpcErrorEqual(err, experr) {
+	err = server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
 
-func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
+func TestSetup_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2464,13 +2503,12 @@ func TestProbeNode_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	tag := "blue"
-	client, clean := prepareProbeTest(vgname, pvnames, Tag(tag))
+	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tag))
 	defer clean()
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	experr := status.Error(
-		codes.FailedPrecondition,
+	experr := fmt.Sprintf(
 		"Volume group tags did not match expected: err=csilvm: Configured tags don't match existing tags: [blue] != [some-other-tag]")
-	if !grpcErrorEqual(err, experr) {
+	err = server.Setup()
+	if err.Error() != experr {
 		t.Fatal(err)
 	}
 }
@@ -2481,7 +2519,10 @@ func testNodeGetCapabilitiesRequest() *csi.NodeGetCapabilitiesRequest {
 }
 
 func TestNodeGetCapabilities(t *testing.T) {
-	client, clean := startTest()
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
 	defer clean()
 	req := testNodeGetCapabilitiesRequest()
 	_, err := client.NodeGetCapabilities(context.Background(), req)
@@ -2491,7 +2532,10 @@ func TestNodeGetCapabilities(t *testing.T) {
 }
 
 func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, clean := startTest(RemoveVolumeGroup())
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, RemoveVolumeGroup())
 	defer clean()
 	req := testNodeGetCapabilitiesRequest()
 	_, err := client.NodeGetCapabilities(context.Background(), req)
@@ -2500,7 +2544,7 @@ func TestNodeGetCapabilitiesRemoveVolumeGroup(t *testing.T) {
 	}
 }
 
-func prepareProbeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, server *Server, cleanupFn func()) {
 	var clean cleanup.Steps
 	defer func() {
 		if x := recover(); x != nil {
@@ -2598,10 +2642,22 @@ func prepareProbeTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 	}
 	clean.Add(conn.Close)
 	client = NewClient(conn)
-	return client, clean.Unwind
+	return client, s, clean.Unwind
 }
 
-func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+func testvgname() string {
+	return "test-vg-" + uuid.New().String()
+}
+
+func testpv() (pvname string, cleanup func() error) {
+	loop, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		panic(err)
+	}
+	return loop.Path(), loop.Close
+}
+
+func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	var clean cleanup.Steps
 	defer func() {
 		if x := recover(); x != nil {
@@ -2609,20 +2665,22 @@ func startTest(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 			panic(x)
 		}
 	}()
+
 	// Create a volume group for the server to manage.
-	loop, err := lvm.CreateLoopDevice(pvsize)
-	if err != nil {
-		panic(err)
-	}
-	clean.Add(loop.Close)
 	// Create a volume group containing the physical volume.
-	vgname := "test-vg-" + uuid.New().String()
-	client, cleanup2 := prepareProbeTest(vgname, []string{loop.Path()}, serverOpts...)
-	// Initialize the Server by calling ProbeNode.
-	_, err = client.Probe(context.Background(), testProbeRequest())
-	if err != nil {
+	if vgname == "" {
+		vgname = testvgname()
+	}
+	if len(pvnames) == 0 {
+		pvname, pvclean := testpv()
+		pvnames = append(pvnames, pvname)
+		clean.Add(pvclean)
+	}
+	client, server, cleanup2 := prepareSetupTest(vgname, pvnames, serverOpts...)
+	clean.Add(func() error { cleanup2(); return nil })
+	// Perform the actual volume group create/remove.
+	if err := server.Setup(); err != nil {
 		panic(err)
 	}
-	clean.Add(func() error { cleanup2(); return nil })
 	return client, clean.Unwind
 }

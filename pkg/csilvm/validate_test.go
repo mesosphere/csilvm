@@ -16,7 +16,7 @@ import (
 // ControllerService RPCs
 
 func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	_, err := client.CreateVolume(context.Background(), req)
@@ -26,7 +26,7 @@ func TestCreateVolumeRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestCreateVolumeMissingName(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.Name = ""
@@ -37,7 +37,7 @@ func TestCreateVolumeMissingName(t *testing.T) {
 }
 
 func TestCreateVolumeMissingVolumeCapabilities(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities = nil
@@ -48,7 +48,7 @@ func TestCreateVolumeMissingVolumeCapabilities(t *testing.T) {
 }
 
 func TestCreateVolumeMissingVolumeCapabilitiesAccessType(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessType = nil
@@ -59,7 +59,7 @@ func TestCreateVolumeMissingVolumeCapabilitiesAccessType(t *testing.T) {
 }
 
 func TestCreateVolumeMissingVolumeCapabilitiesAccessMode(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessMode = nil
@@ -70,7 +70,7 @@ func TestCreateVolumeMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 }
 
 func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
@@ -81,7 +81,7 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 }
 
 func TestCreateVolumeVolumeCapabilitiesAccessModeUnsupported(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY
@@ -92,7 +92,7 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeUnsupported(t *testing.T) {
 }
 
 func TestCreateVolumeVolumeCapabilitiesAccessModeInvalid(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessMode.Mode = 1000
@@ -103,7 +103,7 @@ func TestCreateVolumeVolumeCapabilitiesAccessModeInvalid(t *testing.T) {
 }
 
 func TestCreateVolumeVolumeCapabilitiesReadonlyBlock(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
@@ -114,7 +114,7 @@ func TestCreateVolumeVolumeCapabilitiesReadonlyBlock(t *testing.T) {
 }
 
 func TestCreateVolumeVolumeCapabilitiesCapacityRangeRequiredLessThanLimit(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.CapacityRange.RequiredBytes = 1000
@@ -126,7 +126,7 @@ func TestCreateVolumeVolumeCapabilitiesCapacityRangeRequiredLessThanLimit(t *tes
 }
 
 func TestCreateVolumeVolumeCapabilitiesCapacityRangeUnspecified(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testCreateVolumeRequest()
 	req.CapacityRange.RequiredBytes = 0
@@ -138,7 +138,7 @@ func TestCreateVolumeVolumeCapabilitiesCapacityRangeUnspecified(t *testing.T) {
 }
 
 func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testDeleteVolumeRequest("test-volume")
 	_, err := client.DeleteVolume(context.Background(), req)
@@ -148,7 +148,7 @@ func TestDeleteVolumeRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestDeleteVolumeMissingVolumeId(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testDeleteVolumeRequest("test-volume")
 	req.VolumeId = ""
@@ -159,7 +159,7 @@ func TestDeleteVolumeMissingVolumeId(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	_, err := client.ValidateVolumeCapabilities(context.Background(), req)
@@ -169,7 +169,7 @@ func TestValidateVolumeCapabilitiesRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeId(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeId = ""
@@ -180,7 +180,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeId(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilities(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities = nil
@@ -191,7 +191,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilities(t *testing.T) {
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessType = nil
@@ -202,7 +202,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessType(t *testin
 }
 
 func TestValidateVolumeCapabilitiesNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "ext4", nil)
 	_, err := client.ValidateVolumeCapabilities(context.Background(), req)
@@ -212,7 +212,7 @@ func TestValidateVolumeCapabilitiesNodeUnpublishVolume_MountVolume_BadFilesystem
 }
 
 func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessMode = nil
@@ -223,7 +223,7 @@ func TestValidateVolumeCapabilitiesMissingVolumeCapabilitiesAccessMode(t *testin
 }
 
 func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testValidateVolumeCapabilitiesRequest("fake_volume_id", "", nil)
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
@@ -234,7 +234,7 @@ func TestValidateVolumeCapabilitiesVolumeCapabilitiesAccessModeUNKNOWN(t *testin
 }
 
 func TestListVolumesRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testListVolumesRequest()
 	resp, err := client.ListVolumes(context.Background(), req)
@@ -247,7 +247,7 @@ func TestListVolumesRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessType = nil
@@ -258,7 +258,7 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessType(t *testing.T) {
 }
 
 func TestGetCapacity_BadFilesystem(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testGetCapacityRequest("ext4")
 	resp, err := client.GetCapacity(context.Background(), req)
@@ -271,7 +271,7 @@ func TestGetCapacity_BadFilesystem(t *testing.T) {
 }
 
 func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode = nil
@@ -282,7 +282,7 @@ func TestGetCapacityMissingVolumeCapabilitiesAccessMode(t *testing.T) {
 }
 
 func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testGetCapacityRequest("xfs")
 	req.VolumeCapabilities[0].AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
@@ -297,7 +297,7 @@ func TestGetCapacityVolumeCapabilitiesAccessModeUNKNOWN(t *testing.T) {
 var fakeMountDir = "/run/dcos/csilvm/mnt"
 
 func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	_, err := client.NodePublishVolume(context.Background(), req)
@@ -307,7 +307,7 @@ func TestNodePublishVolumeRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestNodePublishVolumeMissingVolumeId(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeId = ""
@@ -318,7 +318,7 @@ func TestNodePublishVolumeMissingVolumeId(t *testing.T) {
 }
 
 func TestNodePublishVolumePresentPublishVolumeInfo(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.PublishInfo = map[string]string{"foo": "bar"}
@@ -329,7 +329,7 @@ func TestNodePublishVolumePresentPublishVolumeInfo(t *testing.T) {
 }
 
 func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.TargetPath = ""
@@ -340,7 +340,7 @@ func TestNodePublishVolumeMissingTargetPath(t *testing.T) {
 }
 
 func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability = nil
@@ -351,7 +351,7 @@ func TestNodePublishVolumeMissingVolumeCapability(t *testing.T) {
 }
 
 func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessType = nil
@@ -362,7 +362,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessType(t *testing.T) {
 }
 
 func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode = nil
@@ -373,7 +373,7 @@ func TestNodePublishVolumeMissingVolumeCapabilityAccessMode(t *testing.T) {
 }
 
 func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
 	req.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_UNKNOWN
@@ -384,7 +384,7 @@ func TestNodePublishVolumeVolumeCapabilityAccessModeUNKNOWN(t *testing.T) {
 }
 
 func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "ext4", nil)
 	_, err := client.NodePublishVolume(context.Background(), req)
@@ -396,7 +396,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_BadFilesystem(t *testi
 var fakeTargetPath = filepath.Join(fakeMountDir, "fake_volume_id")
 
 func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
-	client, cleanup := startTest(RemoveVolumeGroup())
+	client, cleanup := startTestValidate(RemoveVolumeGroup())
 	defer cleanup()
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	_, err := client.NodeUnpublishVolume(context.Background(), req)
@@ -406,7 +406,7 @@ func TestNodeUnpublishVolumeRemoveVolumeGroup(t *testing.T) {
 }
 
 func TestNodeUnpublishVolumeMissingVolumeId(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.VolumeId = ""
@@ -417,7 +417,7 @@ func TestNodeUnpublishVolumeMissingVolumeId(t *testing.T) {
 }
 
 func TestNodeUnpublishVolumeMissingTargetPath(t *testing.T) {
-	client, cleanup := startTest()
+	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodeUnpublishVolumeRequest("fake_volume_id", fakeTargetPath)
 	req.TargetPath = ""
@@ -437,4 +437,11 @@ func grpcErrorEqual(gotErr, expErr error) bool {
 		return false
 	}
 	return got.Code() == exp.Code() && got.Message() == exp.Message()
+}
+
+func startTestValidate(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	return startTest(vgname, []string{pvname}, serverOpts...)
 }
