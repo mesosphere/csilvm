@@ -108,6 +108,26 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	}
 }
 
+func TestPhysicalVolumeCheck(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	if err = PVScan(loop.Path()); err != nil {
+		t.Fatal(err)
+	}
+	// Create a physical volume using the loop device.
+	pv, err := CreatePhysicalVolume(loop.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv.Remove()
+	if err := pv.Check(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidateTag(t *testing.T) {
 	if err := ValidateTag(strings.Repeat("a", 1025)); err != ErrTagInvalidLength {
 		t.Fatalf("Expected tag to fail validation")
@@ -295,6 +315,22 @@ func TestLookupVolumeGroupNonExistent(t *testing.T) {
 	}
 	if vg2 != nil {
 		t.Fatal("Expected result to be nil.")
+	}
+}
+
+func TestVolumeGroupCheck(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	if err := vg.Check(); err != nil {
+		t.Fatal(err)
 	}
 }
 

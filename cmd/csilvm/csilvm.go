@@ -10,7 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 )
@@ -84,6 +84,9 @@ func main() {
 		opts = append(opts, csilvm.Tag(tag))
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
+	if err := s.Setup(); err != nil {
+		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
+	}
 	csi.RegisterIdentityServer(grpcServer, s)
 	csi.RegisterControllerServer(grpcServer, s)
 	csi.RegisterNodeServer(grpcServer, s)
