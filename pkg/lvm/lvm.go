@@ -15,7 +15,12 @@ var Verbose bool
 
 // isInsufficientSpace returns true if the error is due to insufficient space
 func isInsufficientSpace(err error) bool {
-	return strings.Contains(err.Error(), "insufficient free space")
+	return strings.Contains(strings.ToLower(err.Error()), "insufficient free space")
+}
+
+// isInsufficientDevices returns true if the error is due to insufficient underlying devices
+func isInsufficientDevices(err error) bool {
+	return strings.Contains(err.Error(), "Insufficient suitable allocatable extents for logical volume")
 }
 
 // MaxSize states that all available space should be used by the
@@ -27,6 +32,7 @@ type simpleError string
 func (s simpleError) Error() string { return string(s) }
 
 const ErrNoSpace = simpleError("lvm: not enough free space")
+const ErrTooFewDisks = simpleError("lvm: not enough underlying devices")
 const ErrPhysicalVolumeNotFound = simpleError("lvm: physical volume not found")
 const ErrVolumeGroupNotFound = simpleError("lvm: volume group not found")
 
@@ -97,20 +103,63 @@ func (vg *VolumeGroup) BytesTotal() (uint64, error) {
 }
 
 // BytesFree returns the unallocated space in bytes of the volume group.
-func (vg *VolumeGroup) BytesFree() (uint64, error) {
+func (vg *VolumeGroup) BytesFree(raid RAIDConfig) (uint64, error) {
 	result := new(vgsOutput)
-	if err := run("vgs", result, "--options=vg_free", vg.name); err != nil {
+	if err := run("vgs", result, "--options=vg_free,vg_free_count,vg_extent_size", vg.name); err != nil {
 		if IsVolumeGroupNotFound(err) {
 			return 0, ErrVolumeGroupNotFound
 		}
 		return 0, err
 	}
+	pvnames, err := vg.ListPhysicalVolumeNames()
+	if err != nil {
+		return 0, err
+	}
+	if len(pvnames) < int(raid.NumberOfDevices()) {
+		// There aren't any bytes free given that the number of
+		// underlying devices is too few to create logical volumes with
+		// this RAIDConfig.
+		return 0, nil
+	}
 	for _, report := range result.Report {
 		for _, vg := range report.Vg {
-			return vg.VgFree, nil
+			return raid.extentsFree(vg.VgFreeExtentCount) * vg.VgExtentSize, nil
 		}
 	}
 	return 0, ErrVolumeGroupNotFound
+}
+
+func (r RAIDConfig) extentsFree(count uint64) uint64 {
+	switch r.Type {
+	case VolumeTypeDefault, VolumeTypeLinear:
+		return count
+	case VolumeTypeRAID1:
+		mirrors := r.Mirrors
+		if mirrors == 0 {
+			// Mirrors is unspecified, so we set it to the default value of 1.
+			mirrors = 1
+		}
+		copies := mirrors + 1
+		// Every copy of the data requires at least one extent.
+		//
+		// Note that RAID volumes require extra space:
+		//
+		// When you create a RAID logical volume, LVM creates a metadata subvolume that
+		// is one extent in size for every data or parity subvolume in the array. For
+		// example, creating a 2-way RAID1 array results in two metadata subvolumes
+		// (lv_rmeta_0 and lv_rmeta_1) and two data subvolumes (lv_rimage_0 and
+		// lv_rimage_1). Similarly, creating a 3-way stripe (plus 1 implicit parity
+		// device) RAID4 results in 4 metadata subvolumes (lv_rmeta_0, lv_rmeta_1,
+		// lv_rmeta_2, and lv_rmeta_3) and 4 data subvolumes (lv_rimage_0, lv_rimage_1,
+		// lv_rimage_2, and lv_rimage_3).
+		//
+		// ~ https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/logical_volume_manager_administration/raid_volumes#create-raid
+		count -= copies
+		// Divide the remaining extents by the number of copies.
+		count /= copies
+		return count
+	}
+	panic("unreachable")
 }
 
 // ExtentSize returns the size in bytes of a single extent.
@@ -148,20 +197,136 @@ func (vg *VolumeGroup) ExtentCount() (uint64, error) {
 }
 
 // ExtentFreeCount returns the number of free extents.
-func (vg *VolumeGroup) ExtentFreeCount() (uint64, error) {
+func (vg *VolumeGroup) ExtentFreeCount(raid RAIDConfig) (uint64, error) {
 	result := new(vgsOutput)
-	if err := run("vgs", result, "--options=vg_free_count", vg.name); err != nil {
+	if err := run("vgs", result, "--options=vg_free_count,vg_extent_size", vg.name); err != nil {
 		if IsVolumeGroupNotFound(err) {
 			return 0, ErrVolumeGroupNotFound
 		}
 		return 0, err
 	}
+	pvnames, err := vg.ListPhysicalVolumeNames()
+	if err != nil {
+		return 0, err
+	}
+	if len(pvnames) < int(raid.NumberOfDevices()) {
+		// There aren't any extents free given that the number of
+		// underlying devices is too few to create logical volumes with
+		// this RAIDConfig.
+		return 0, nil
+	}
 	for _, report := range result.Report {
 		for _, vg := range report.Vg {
-			return vg.VgFreeExtentCount, nil
+			return raid.extentsFree(vg.VgFreeExtentCount), nil
 		}
 	}
 	return 0, ErrVolumeGroupNotFound
+}
+
+type LinearConfig struct{}
+
+func (c LinearConfig) Flags() (fs []string) {
+	fs = append(fs, "--type=linear")
+	return fs
+}
+
+// VolumeType controls the value of the --type= flag when logical volumes are
+// created. Its constructor is not exported to ensure that the user cannot
+// specify unexpected values.
+type VolumeType struct{ name string }
+
+var (
+	// VolumeTypeDefault is the zero-value of VolumeType and is used to
+	// specify no --type= flag if an empty RAIDConfig is provided.
+	VolumeTypeDefault VolumeType
+	VolumeTypeLinear  = VolumeType{"linear"}
+	VolumeTypeRAID1   = VolumeType{"raid1"}
+)
+
+// RAIDConfig controls the RAID-related CLI options passed to lvcreate. See the
+// lvmraid or lvcreate man pages for more details on what these options mean
+// and how they may be used.
+type RAIDConfig struct {
+	// Type corresponds to the --type= option to lvcreate.
+	Type VolumeType
+	// Type corresponds to the --mirrors= option to lvcreate.
+	Mirrors uint64
+	// Type corresponds to the --stripes= option to lvcreate.
+	Stripes uint64
+	// Type corresponds to the --stripesize= option to lvcreate.
+	StripeSize uint64
+}
+
+func (c RAIDConfig) NumberOfDevices() uint64 {
+	switch c.Type {
+	case VolumeTypeDefault, VolumeTypeLinear:
+		// Linear volumes require no extra metadata extent.
+		return 1
+	case VolumeTypeRAID1:
+		mirrors := c.Mirrors
+		if mirrors == 0 {
+			// The number of mirrors was unspecified. We assume the
+			// default value of 1.
+			mirrors = 1
+		}
+		return 2 * mirrors
+	}
+	panic("unreachable")
+}
+
+func (c RAIDConfig) Flags() (fs []string) {
+	switch c.Type {
+	case VolumeTypeDefault:
+		// We return no --type flag if no config was specified.
+	case VolumeTypeLinear:
+		fs = append(fs, "--type=linear")
+	case VolumeTypeRAID1:
+		fs = append(fs, "--type=raid1")
+	default:
+		panic(fmt.Sprintf("lvm: unexpected volume type: %v", c.Type))
+	}
+	switch c.Mirrors {
+	case 0:
+		// We return no --mirror flag if 0 mirrors were specified. The
+		// 0 value is an impossible value. Instead, the default value
+		// of 0 for this field type is treated as 'unspecified'.
+	default:
+		fs = append(fs, fmt.Sprintf("--mirrors=%d", c.Mirrors))
+	}
+	switch c.Stripes {
+	case 0:
+		// We return no --stripes flag if 0 was specified. The
+		// 0 value is an impossible value. Instead, the default value
+		// of 0 for this field type is treated as 'unspecified'.
+	default:
+		fs = append(fs, fmt.Sprintf("--stripes=%d", c.Stripes))
+	}
+	switch c.StripeSize {
+	case 0:
+		// We return no --stripesize flag if 0 was specified. The
+		// 0 value is an impossible value. Instead, the default value
+		// of 0 for this field type is treated as 'unspecified'.
+	default:
+		fs = append(fs, fmt.Sprintf("--stripesize=%d", c.StripeSize))
+	}
+	return fs
+}
+
+func RAIDOpt(r RAIDConfig) CreateLogicalVolumeOpt {
+	return func(o *LVOpts) {
+		o.raidconfig = r
+	}
+}
+
+type CreateLogicalVolumeOpt func(opts *LVOpts)
+
+type LVOpts struct {
+	raidconfig RAIDConfig
+}
+
+func (o LVOpts) Flags() (opts []string) {
+	opts = append(opts, o.raidconfig.Flags()...)
+	return opts
 }
 
 // CreateLogicalVolume creates a logical volume of the given device
@@ -171,7 +336,9 @@ func (vg *VolumeGroup) ExtentFreeCount() (uint64, error) {
 // increment is the size of an extent on the volume group in question.
 //
 // If sizeInBytes is zero the entire available space is allocated.
-func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags []string) (*LogicalVolume, error) {
+//
+// Additional optional config items can be specified using CreateLogicalVolumeOpt
+func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags []string, optFns ...CreateLogicalVolumeOpt) (*LogicalVolume, error) {
 	if err := ValidateLogicalVolumeName(name); err != nil {
 		return nil, err
 	}
@@ -188,9 +355,19 @@ func (vg *VolumeGroup) CreateLogicalVolume(name string, sizeInBytes uint64, tags
 	args = append(args, fmt.Sprintf("--size=%db", sizeInBytes))
 	args = append(args, "--name="+name)
 	args = append(args, vg.name)
+	opts := new(LVOpts)
+	for _, fn := range optFns {
+		if fn != nil {
+			fn(opts)
+		}
+	}
+	args = append(args, opts.Flags()...)
 	if err := run("lvcreate", nil, args...); err != nil {
 		if isInsufficientSpace(err) {
 			return nil, ErrNoSpace
+		}
+		if isInsufficientDevices(err) {
+			return nil, ErrTooFewDisks
 		}
 		return nil, err
 	}
