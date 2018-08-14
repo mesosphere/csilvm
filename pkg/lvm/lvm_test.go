@@ -373,7 +373,7 @@ func TestVolumeGroupBytesFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestCreateLogicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestCreateLogicalVolume_Tagged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestCreateLogicalVolume_BadTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -483,7 +483,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg1.BytesFree()
+	size, err := vg1.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err = vg2.BytesFree()
+	size, err = vg2.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -546,7 +546,7 @@ func TestCreateLogicalVolumeTooLarge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,6 +561,218 @@ func TestCreateLogicalVolumeTooLarge(t *testing.T) {
 	}
 }
 
+func TestCreateLogicalVolume_RAIDConfig_Empty(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size, []string{tag}, RAIDOpt(raid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	tags, err := lv.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]string{tag}, tags) {
+		t.Fatalf("Expected tags %v but got %v", []string{tag}, tags)
+	}
+}
+
+func TestCreateLogicalVolume_RAIDConfig_Linear(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{Type: VolumeTypeLinear}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size, []string{tag}, RAIDOpt(raid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	tags, err := lv.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]string{tag}, tags) {
+		t.Fatalf("Expected tags %v but got %v", []string{tag}, tags)
+	}
+}
+
+func TestCreateLogicalVolume_RAIDConfig_RAID1(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop1, loop2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{Type: VolumeTypeRAID1}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size/2, []string{tag}, RAIDOpt(raid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	tags, err := lv.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]string{tag}, tags) {
+		t.Fatalf("Expected tags %v but got %v", []string{tag}, tags)
+	}
+}
+
+func TestCreateLogicalVolume_RAIDConfig_RAID1_Mirrors2(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	loop3, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop3.Close()
+	loop4, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop4.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop1, loop2, loop3, loop4}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{Type: VolumeTypeRAID1, Mirrors: 2}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size/4, []string{tag}, RAIDOpt(raid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lv.Remove()
+	tags, err := lv.Tags()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual([]string{tag}, tags) {
+		t.Fatalf("Expected tags %v but got %v", []string{tag}, tags)
+	}
+}
+
+func TestCreateLogicalVolume_RAIDConfig_RAID1_NotEnoughSpace(t *testing.T) {
+	loop1, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop1, loop2}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{Type: VolumeTypeRAID1, Mirrors: 1}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size*2, []string{tag}, RAIDOpt(raid))
+	if err == nil {
+		defer lv.Remove()
+		t.Fatalf("Expected error due to too few disks")
+	}
+	if err != ErrNoSpace {
+		t.Fatalf("Expected ErrNoSpace but got %v", err)
+	}
+}
+
+func TestCreateLogicalVolume_RAIDConfig_RAID1_TooFewDisks(t *testing.T) {
+	loop, err := CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop.Close()
+	vg, cleanup, err := createVolumeGroup([]*LoopDevice{loop}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	raid := RAIDConfig{Type: VolumeTypeRAID1, Mirrors: 1}
+	size, err := vg.BytesFree(raid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Make sure there's enough space so we are sure we hit the issue with too
+	// few underlying disks, instead.
+	size = size / 2
+	name := "test-lv-" + uuid.New().String()
+	tag := "dcos-tag"
+	lv, err := vg.CreateLogicalVolume(name, size, []string{tag}, RAIDOpt(raid))
+	if err == nil {
+		defer lv.Remove()
+		t.Fatalf("Expected error due to too few disks")
+	}
+	if err != ErrTooFewDisks {
+		t.Fatalf("Expected ErrTooFewDisks but got %v", err)
+	}
+}
+
 func TestLookupLogicalVolume(t *testing.T) {
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
@@ -572,7 +784,7 @@ func TestLookupLogicalVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +814,7 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,7 +844,7 @@ func TestLogicalVolumeName(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +870,7 @@ func TestLogicalVolumeSizeInBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +903,7 @@ func TestLogicalVolumePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,7 +934,7 @@ func TestVolumeGroupListLogicalVolumeNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	size, err := vg.BytesFree()
+	size, err := vg.BytesFree(RAIDConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
