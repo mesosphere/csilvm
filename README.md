@@ -136,6 +136,30 @@ This binary should be copied to the node.
 It is expected that the CO will launch the binary using the appropriate command-line flags.
 
 
+### Usage
+
+```
+$ ./csilvm --help
+Usage of ./csilvm:
+  -default-fs string
+    	The default filesystem to format new volumes with (default "xfs")
+  -default-volume-size uint
+    	The default volume size in bytes (default 10737418240)
+  -devices string
+    	A comma-seperated list of devices in the volume group
+  -remove-volume-group
+    	If set, the volume group will be removed when ProbeNode is called.
+  -tag value
+    	Value to tag the volume group with (can be given multiple times)
+  -unix-addr string
+    	The path to the listening unix socket file
+  -unix-addr-env string
+    	An optional environment variable from which to read the unix-addr
+  -volume-group string
+    	The name of the volume group to manage
+```
+
+
 ### Listening socket
 
 The plugin listens on a unix socket.
