@@ -4,7 +4,7 @@
 
 ansiColor('xterm') {
 
-  node {
+  node("mesos-ubuntu") {
     properties([
       parameters([
         string(name: "SLACK_CREDENTIAL_ID", defaultValue: "25fe61e8-597e-430f-94bf-e58df726f9eb"),
