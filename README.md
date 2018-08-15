@@ -62,7 +62,7 @@ In order to run the tests you need
 * a modern Linux distribution. (Fedora 27)
 * sudo rights. This is necessary to create loop devices and (un)mount volumes.
 * docker installed. (docker-ce-18.03.1.ce-1.fc27.x86_64.rpm package)
-* the `raid1` kernel modules must be loaded. If it isn't, run `modprobe raid1` as root.
+* the `raid1` and `dm_raid` kernel modules must be loaded. If it isn't, run `modprobe raid1 dm_raid` as root.
 
 Then run
 
