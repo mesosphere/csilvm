@@ -247,9 +247,9 @@ You may also create a new [bug](https://jira.mesosphere.com/secure/CreateIssueDe
 
 # Authors
 
-* Gustav Paul - Mesosphere, inc.
-* James DeFelice - Mesosphere, inc.
-* Jie Yu - Mesosphere, inc.
+* @gpaul
+* @jdef
+* @jieyi
 
 
 # License
