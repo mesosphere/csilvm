@@ -115,11 +115,17 @@ For the the exact command-line invocations read the source code, starting at htt
 ## Project structure
 
 This project is split into `./pkg` and `./cmd` directories.
+
 The `./pkg` directory contains logic that may be used from unit tests.
+
 The `./cmd` directory contains commands that interface between the environment (e.g., parsing command-line options, reading environment variables, etc.) and the logic contained in the `./pkg` directory.
+
 The `./pkg` directory is split into the `./pkg/lvm` and `./pkg/csilvm` packages.
+
 The `./pkg/lvm` package provides a Go wrapper around LVM2 command-line utilities and actions.
+
 The `./pkg/csilvm` package includes all the CSI-related logic and translates CSI RPCs to `./pkg/lvm` function calls.
+
 The `./pkg/csilvm/server.go` file should serve as your entrypoint when reading the code as it includes all the CSI RPC endpoints.
 
 
