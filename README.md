@@ -200,16 +200,16 @@ Note that, as with all software, the source of truth is the code.
 The initialization logic lives in the `(*Server).Setup()` function in `./pkg/csilvm/server.go`.
 
 If the `-remove-volume-group` flag is provided the volume group will be removed during `Setup`.
-If at that point the volume group is not found, we assume it was successfully removed so we are idempotent.
+If at that point the volume group is not found, it is assumed that it was successfully removed and `Setup` succeeds.
 The PVs are not removed or cleared.
 
 If the `-remove-volume-group` flag is NOT provided the volume group is looked up.
 If the volume group already exists, the plugin checks whether the PVs that constitute that VG matches the list of devices provided on the command-line in the `-devices=<dev1,dev2,...>` flag.
-Next it checks whether the volume group tags match the `-tags` provided on the command-line.
+Next it checks whether the volume group tags match the `-tag` list provided on the command-line.
 
 If the volume group does not already exist, the plugin looks up the provided list of PVs corresponding to the `-devices=<dev1,dev2,...>` provided on the command-line.
 For each, if it isn't already a LVM2 PV, it zeroes the partition table and runs `pvcreate` to initialize it.
-Once all the PVs exist, the new volume group is created consisting of those PVs and tagged with the provided `-tags`.
+Once all the PVs exist, the new volume group is created consisting of those PVs and tagged with the provided `-tag` list.
 
 
 ### Notes
