@@ -19,7 +19,7 @@ ansiColor('xterm') {
     }
   }
 
-  node("ubuntu") {
+  node("mesos-ec2-ubuntu-16.04") {
     properties([
       parameters([
         string(name: "GITHUB_CREDENTIAL_ID", defaultValue: "d146870f-03b0-4f6a-ab70-1d09757a51fc"),
