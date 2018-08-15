@@ -753,16 +753,12 @@ func TestCreateLogicalVolume_RAIDConfig_RAID1_TooFewDisks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cleanup()
-	raid := RAIDConfig{Type: VolumeTypeRAID1, Mirrors: 1}
-	size, err := vg.BytesFree(raid)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// Make sure there's enough space so we are sure we hit the issue with too
 	// few underlying disks, instead.
-	size = size / 2
+	size := uint64(10 << 20)
 	name := "test-lv-" + uuid.New().String()
 	tag := "dcos-tag"
+	raid := RAIDConfig{Type: VolumeTypeRAID1, Mirrors: 1}
 	lv, err := vg.CreateLogicalVolume(name, size, []string{tag}, RAIDOpt(raid))
 	if err == nil {
 		defer lv.Remove()
