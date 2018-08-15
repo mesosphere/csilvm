@@ -587,7 +587,9 @@ func TestCreateVolume_RAIDConfig_TooFewDisks(t *testing.T) {
 		"type": "raid1",
 	}
 	_, err := client.CreateVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrTooFewDisks) {
+	if !grpcErrorEqual(err, ErrInsufficientCapacity) {
+		// We expect ErrInsufficientCapacity as CreateVolume checks
+		// whether there is sufficient capacity to create the volume.
 		t.Fatal(err)
 	}
 }
