@@ -2623,9 +2623,9 @@ func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 	SetLogger(stdlog.New(os.Stderr, logprefix, logflags))
 	// Start a grpc server listening on the socket.
 	grpcServer := grpc.NewServer(opts...)
-	csi.RegisterIdentityServer(grpcServer, s)
-	csi.RegisterControllerServer(grpcServer, s)
-	csi.RegisterNodeServer(grpcServer, s)
+	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
+	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
+	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
 	go grpcServer.Serve(lis)
 
 	// Start a grpc client connected to the server.

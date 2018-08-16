@@ -87,8 +87,8 @@ func main() {
 	if err := s.Setup(); err != nil {
 		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
 	}
-	csi.RegisterIdentityServer(grpcServer, s)
-	csi.RegisterControllerServer(grpcServer, s)
-	csi.RegisterNodeServer(grpcServer, s)
+	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
+	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
+	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
 	grpcServer.Serve(lis)
 }
