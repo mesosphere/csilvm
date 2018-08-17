@@ -249,9 +249,9 @@ You may also create a new [bug](https://jira.mesosphere.com/secure/CreateIssueDe
 
 * @gpaul
 * @jdef
-* @jieyi
+* @jieyu
 
 
 # License
 
-This project is licensed under the Apache 2.0 License - see the LICENSE fail for details.
+This project is licensed under the Apache 2.0 License - see the LICENSE file for details.
