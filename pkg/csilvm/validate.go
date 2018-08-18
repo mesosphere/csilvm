@@ -61,7 +61,7 @@ func (v *identityServerValidator) Probe(
 	if err := validateProbeRequest(request); err != nil {
 		return nil, err
 	}
-	return v.Probe(ctx, request)
+	return v.inner.Probe(ctx, request)
 }
 
 func validateProbeRequest(request *csi.ProbeRequest) error {
@@ -306,7 +306,7 @@ func (v *controllerServerValidator) ControllerGetCapabilities(
 	if err := validateControllerGetCapabilitiesRequest(request); err != nil {
 		return nil, err
 	}
-	return v.ControllerGetCapabilities(ctx, request)
+	return v.inner.ControllerGetCapabilities(ctx, request)
 }
 
 func validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabilitiesRequest) error {
@@ -407,7 +407,7 @@ func validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest)
 func (v *nodeServerValidator) NodeGetId(
 	ctx context.Context,
 	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	return v.NodeGetId(ctx, request)
+	return v.inner.NodeGetId(ctx, request)
 }
 
 func (v *nodeServerValidator) NodeStageVolume(
