@@ -133,7 +133,7 @@ The `./pkg/csilvm/server.go` file should serve as your entrypoint when reading t
 
 The plugin builds to a single executable binary called `csilvm`.
 This binary should be copied to the node.
-It is expected that the CO will launch the binary using the appropriate command-line flags.
+It is expected that the Plugin Supervisor will launch the binary using the appropriate command-line flags.
 
 
 ### Usage
