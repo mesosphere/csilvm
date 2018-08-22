@@ -135,7 +135,7 @@ var ErrUnsupportedFilesystem = status.Error(codes.FailedPrecondition, "The reque
 
 var ErrCapacityRangeUnspecified = status.Error(
 	codes.InvalidArgument,
-	"One of required_bytes or limit_bytes must"+
+	"One of required_bytes or limit_bytes must "+
 		"be specified if capacity_range is specified.")
 
 var ErrCapacityRangeInvalidSize = status.Error(
