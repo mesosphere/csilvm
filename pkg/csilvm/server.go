@@ -62,6 +62,18 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 	return s
 }
 
+func (s *Server) SupportedFilesystems() map[string]string {
+	m := make(map[string]string)
+	for k, v := range s.supportedFilesystems {
+		m[k] = v
+	}
+	return m
+}
+
+func (s *Server) RemovingVolumeGroup() bool {
+	return s.removingVolumeGroup
+}
+
 type ServerOpt func(*Server)
 
 // DefaultVolumeSize sets the default size in bytes of new volumes if
@@ -236,9 +248,6 @@ func (s *Server) Setup() error {
 func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	if err := s.validateGetPluginInfoRequest(request); err != nil {
-		return nil, err
-	}
 	response := &csi.GetPluginInfoResponse{PluginName, PluginVersion, nil}
 	return response, nil
 }
@@ -246,9 +255,6 @@ func (s *Server) GetPluginInfo(
 func (s *Server) GetPluginCapabilities(
 	ctx context.Context,
 	request *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	if err := s.validateGetPluginCapabilitiesRequest(request); err != nil {
-		return nil, err
-	}
 	response := &csi.GetPluginCapabilitiesResponse{
 		Capabilities: []*csi.PluginCapability{
 			{
@@ -267,9 +273,6 @@ func (s *Server) GetPluginCapabilities(
 func (s *Server) Probe(
 	ctx context.Context,
 	request *csi.ProbeRequest) (*csi.ProbeResponse, error) {
-	if err := s.validateProbeRequest(request); err != nil {
-		return nil, err
-	}
 	if s.removingVolumeGroup {
 		// We're busy removing the volume-group so no need to perform health checks.
 		response := &csi.ProbeResponse{}
@@ -302,7 +305,6 @@ func (s *Server) Probe(
 			codes.FailedPrecondition,
 			"Cannot find volume group %v",
 			s.vgname)
-
 	}
 	log.Printf("Checking volume group %v", s.vgname)
 	if err := volumeGroup.Check(); err != nil {
@@ -324,9 +326,6 @@ var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free sp
 func (s *Server) CreateVolume(
 	ctx context.Context,
 	request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	if err := s.validateCreateVolumeRequest(request); err != nil {
-		return nil, err
-	}
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
 	volumeId := s.volumeNameToId(request.GetName())
@@ -483,9 +482,6 @@ var ErrVolumeNotFound = status.Error(codes.NotFound, "The volume does not exist.
 func (s *Server) DeleteVolume(
 	ctx context.Context,
 	request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
-	if err := s.validateDeleteVolumeRequest(request); err != nil {
-		return nil, err
-	}
 	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
@@ -566,9 +562,6 @@ var ErrMismatchedFilesystemType = status.Error(
 func (s *Server) ValidateVolumeCapabilities(
 	ctx context.Context,
 	request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
-	if err := s.validateValidateVolumeCapabilitiesRequest(request); err != nil {
-		return nil, err
-	}
 	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
@@ -617,9 +610,6 @@ func (s *Server) volumeNameToId(volname string) string {
 func (s *Server) ListVolumes(
 	ctx context.Context,
 	request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
-	if err := s.validateListVolumesRequest(request); err != nil {
-		return nil, err
-	}
 	if s.removingVolumeGroup {
 		log.Printf("Running with '-remove-volume-group', reporting no volumes")
 		response := &csi.ListVolumesResponse{}
@@ -658,9 +648,6 @@ func (s *Server) ListVolumes(
 func (s *Server) GetCapacity(
 	ctx context.Context,
 	request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
-	if err := s.validateGetCapacityRequest(request); err != nil {
-		return nil, err
-	}
 	if s.removingVolumeGroup {
 		log.Printf("Running with '-remove-volume-group', reporting 0 capacity")
 		// We report 0 capacity if configured to remove the volume group.
@@ -695,9 +682,6 @@ func (s *Server) GetCapacity(
 func (s *Server) ControllerGetCapabilities(
 	ctx context.Context,
 	request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
-	if err := s.validateControllerGetCapabilitiesRequest(request); err != nil {
-		return nil, err
-	}
 	capabilities := []*csi.ControllerServiceCapability{
 		// CREATE_DELETE_VOLUME
 		{
@@ -765,9 +749,6 @@ var ErrTargetPathRW = status.Error(
 func (s *Server) NodePublishVolume(
 	ctx context.Context,
 	request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	if err := s.validateNodePublishVolumeRequest(request); err != nil {
-		return nil, err
-	}
 	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	lv, err := s.volumeGroup.LookupLogicalVolume(id)
@@ -1009,9 +990,6 @@ func formatDevice(devicePath, fstype string) error {
 func (s *Server) NodeUnpublishVolume(
 	ctx context.Context,
 	request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	if err := s.validateNodeUnpublishVolumeRequest(request); err != nil {
-		return nil, err
-	}
 	id := request.GetVolumeId()
 	log.Printf("Looking up volume with id=%v", id)
 	_, err := s.volumeGroup.LookupLogicalVolume(id)
@@ -1130,9 +1108,6 @@ func (s *Server) checkVolumeGroupTags(tags []string) error {
 func (s *Server) NodeGetCapabilities(
 	ctx context.Context,
 	request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
-	if err := s.validateNodeGetCapabilitiesRequest(request); err != nil {
-		return nil, err
-	}
 	response := &csi.NodeGetCapabilitiesResponse{}
 	return response, nil
 }
