@@ -489,7 +489,7 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	}
 }
 
-func TestCreateVolume_RAIDConfig_Linear(t *testing.T) {
+func TestCreateVolume_VolumeLayout_Linear(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
 	defer pvclean()
@@ -510,12 +510,9 @@ func TestCreateVolume_RAIDConfig_Linear(t *testing.T) {
 	if !strings.HasSuffix(info.GetId(), req.GetName()) {
 		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
 	}
-	if !reflect.DeepEqual(req.GetParameters(), resp.GetVolume().GetAttributes()) {
-		t.Fatalf("Expected volume attributes to match parameters")
-	}
 }
 
-func TestCreateVolume_RAIDConfig_RAID1(t *testing.T) {
+func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
 	vgname := testvgname()
 	pvname1, pvclean1 := testpv()
 	defer pvclean1()
@@ -538,12 +535,9 @@ func TestCreateVolume_RAIDConfig_RAID1(t *testing.T) {
 	if !strings.HasSuffix(info.GetId(), req.GetName()) {
 		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
 	}
-	if !reflect.DeepEqual(req.GetParameters(), resp.GetVolume().GetAttributes()) {
-		t.Fatalf("Expected volume attributes to match parameters")
-	}
 }
 
-func TestCreateVolume_RAIDConfig_RAID1_Mirror2(t *testing.T) {
+func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
 	vgname := testvgname()
 	pvname1, pvclean1 := testpv()
 	defer pvclean1()
@@ -571,12 +565,9 @@ func TestCreateVolume_RAIDConfig_RAID1_Mirror2(t *testing.T) {
 	if !strings.HasSuffix(info.GetId(), req.GetName()) {
 		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
 	}
-	if !reflect.DeepEqual(req.GetParameters(), resp.GetVolume().GetAttributes()) {
-		t.Fatalf("Expected volume attributes to match parameters")
-	}
 }
 
-func TestCreateVolume_RAIDConfig_TooFewDisks(t *testing.T) {
+func TestCreateVolume_VolumeLayout_TooFewDisks(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
 	defer pvclean()
@@ -1127,11 +1118,11 @@ func (tc testGetCapacity) test(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raid, err := takeRAIDConfigFromParameters(dupParams(req.GetParameters()))
+	layout, err := takeVolumeLayoutFromParameters(dupParams(req.GetParameters()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raid.NumberOfDevices() > tc.numberOfPVs {
+	if layout.MinNumberOfDevices() > tc.numberOfPVs {
 		if resp.GetAvailableCapacity() != 0 {
 			t.Fatalf("Expected 0 bytes free.")
 		}
@@ -1165,7 +1156,7 @@ func TestGetCapacity_NoVolumes(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_NoVolumes_OneDisk_RAIDConfig_Linear(t *testing.T) {
+func TestGetCapacity_NoVolumes_OneDisk_VolumeLayout_Linear(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  1,
 		params:       map[string]string{"type": "linear"},
@@ -1173,7 +1164,7 @@ func TestGetCapacity_NoVolumes_OneDisk_RAIDConfig_Linear(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_NoVolumes_OneDisk_RAIDConfig_RAID1(t *testing.T) {
+func TestGetCapacity_NoVolumes_OneDisk_VolumeLayout_RAID1(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  1,
 		params:       map[string]string{"type": "raid1"},
@@ -1181,7 +1172,7 @@ func TestGetCapacity_NoVolumes_OneDisk_RAIDConfig_RAID1(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_NoVolumes_TwoDisks_RAIDConfig_RAID1(t *testing.T) {
+func TestGetCapacity_NoVolumes_TwoDisks_VolumeLayout_RAID1(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  2,
 		params:       map[string]string{"type": "raid1"},
@@ -1189,7 +1180,7 @@ func TestGetCapacity_NoVolumes_TwoDisks_RAIDConfig_RAID1(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_NoVolumes_FourDisks_RAIDConfig_RAID1_Mirrors2(t *testing.T) {
+func TestGetCapacity_NoVolumes_FourDisks_VolumeLayout_RAID1_Mirrors2(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  4,
 		params:       map[string]string{"type": "raid1", "mirrors": "2"},
@@ -1205,7 +1196,7 @@ func TestGetCapacity_OneVolume(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_OneVolume_RAIDConfig_Linear(t *testing.T) {
+func TestGetCapacity_OneVolume_VolumeLayout_Linear(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  1,
 		params:       map[string]string{"type": "linear"},
@@ -1213,7 +1204,7 @@ func TestGetCapacity_OneVolume_RAIDConfig_Linear(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_OneVolume_TwoDisks_RAIDConfig_RAID1(t *testing.T) {
+func TestGetCapacity_OneVolume_TwoDisks_VolumeLayout_RAID1(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  2,
 		params:       map[string]string{"type": "linear"},
@@ -1221,7 +1212,7 @@ func TestGetCapacity_OneVolume_TwoDisks_RAIDConfig_RAID1(t *testing.T) {
 	}.test(t)
 }
 
-func TestGetCapacity_OneVolume_FourDisks_RAIDConfig_Mirror2(t *testing.T) {
+func TestGetCapacity_OneVolume_FourDisks_VolumeLayout_Mirror2(t *testing.T) {
 	testGetCapacity{
 		numberOfPVs:  2,
 		params:       map[string]string{"type": "raid1", "mirrors": "2"},

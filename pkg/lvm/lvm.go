@@ -103,23 +103,23 @@ func (vg *VolumeGroup) BytesTotal() (uint64, error) {
 }
 
 // BytesFree returns the unallocated space in bytes of the volume group.
-func (vg *VolumeGroup) BytesFree(raid RAIDConfig) (uint64, error) {
+func (vg *VolumeGroup) BytesFree(raid VolumeLayout) (uint64, error) {
+	pvnames, err := vg.ListPhysicalVolumeNames()
+	if err != nil {
+		return 0, err
+	}
+	if len(pvnames) < int(raid.MinNumberOfDevices()) {
+		// There aren't any bytes free given that the number of
+		// underlying devices is too few to create logical volumes with
+		// this VolumeLayout.
+		return 0, nil
+	}
 	result := new(vgsOutput)
 	if err := run("vgs", result, "--options=vg_free,vg_free_count,vg_extent_size", vg.name); err != nil {
 		if IsVolumeGroupNotFound(err) {
 			return 0, ErrVolumeGroupNotFound
 		}
 		return 0, err
-	}
-	pvnames, err := vg.ListPhysicalVolumeNames()
-	if err != nil {
-		return 0, err
-	}
-	if len(pvnames) < int(raid.NumberOfDevices()) {
-		// There aren't any bytes free given that the number of
-		// underlying devices is too few to create logical volumes with
-		// this RAIDConfig.
-		return 0, nil
 	}
 	for _, report := range result.Report {
 		for _, vg := range report.Vg {
@@ -129,7 +129,7 @@ func (vg *VolumeGroup) BytesFree(raid RAIDConfig) (uint64, error) {
 	return 0, ErrVolumeGroupNotFound
 }
 
-func (r RAIDConfig) extentsFree(count uint64) uint64 {
+func (r VolumeLayout) extentsFree(count uint64) uint64 {
 	switch r.Type {
 	case VolumeTypeDefault, VolumeTypeLinear:
 		return count
@@ -158,8 +158,9 @@ func (r RAIDConfig) extentsFree(count uint64) uint64 {
 		// Divide the remaining extents by the number of copies.
 		count /= copies
 		return count
+	default:
+		panic(fmt.Sprintf("unsupported volume type: %v", r.Type))
 	}
-	panic("unreachable")
 }
 
 // ExtentSize returns the size in bytes of a single extent.
@@ -197,23 +198,23 @@ func (vg *VolumeGroup) ExtentCount() (uint64, error) {
 }
 
 // ExtentFreeCount returns the number of free extents.
-func (vg *VolumeGroup) ExtentFreeCount(raid RAIDConfig) (uint64, error) {
+func (vg *VolumeGroup) ExtentFreeCount(raid VolumeLayout) (uint64, error) {
+	pvnames, err := vg.ListPhysicalVolumeNames()
+	if err != nil {
+		return 0, err
+	}
+	if len(pvnames) < int(raid.MinNumberOfDevices()) {
+		// There aren't any extents free given that the number of
+		// underlying devices is too few to create logical volumes with
+		// this VolumeLayout.
+		return 0, nil
+	}
 	result := new(vgsOutput)
 	if err := run("vgs", result, "--options=vg_free_count,vg_extent_size", vg.name); err != nil {
 		if IsVolumeGroupNotFound(err) {
 			return 0, ErrVolumeGroupNotFound
 		}
 		return 0, err
-	}
-	pvnames, err := vg.ListPhysicalVolumeNames()
-	if err != nil {
-		return 0, err
-	}
-	if len(pvnames) < int(raid.NumberOfDevices()) {
-		// There aren't any extents free given that the number of
-		// underlying devices is too few to create logical volumes with
-		// this RAIDConfig.
-		return 0, nil
 	}
 	for _, report := range result.Report {
 		for _, vg := range report.Vg {
@@ -237,16 +238,16 @@ type VolumeType struct{ name string }
 
 var (
 	// VolumeTypeDefault is the zero-value of VolumeType and is used to
-	// specify no --type= flag if an empty RAIDConfig is provided.
+	// specify no --type= flag if an empty VolumeLayout is provided.
 	VolumeTypeDefault VolumeType
 	VolumeTypeLinear  = VolumeType{"linear"}
 	VolumeTypeRAID1   = VolumeType{"raid1"}
 )
 
-// RAIDConfig controls the RAID-related CLI options passed to lvcreate. See the
+// VolumeLayout controls the RAID-related CLI options passed to lvcreate. See the
 // lvmraid or lvcreate man pages for more details on what these options mean
 // and how they may be used.
-type RAIDConfig struct {
+type VolumeLayout struct {
 	// Type corresponds to the --type= option to lvcreate.
 	Type VolumeType
 	// Type corresponds to the --mirrors= option to lvcreate.
@@ -257,7 +258,7 @@ type RAIDConfig struct {
 	StripeSize uint64
 }
 
-func (c RAIDConfig) NumberOfDevices() uint64 {
+func (c VolumeLayout) MinNumberOfDevices() uint64 {
 	switch c.Type {
 	case VolumeTypeDefault, VolumeTypeLinear:
 		// Linear volumes require no extra metadata extent.
@@ -270,11 +271,12 @@ func (c RAIDConfig) NumberOfDevices() uint64 {
 			mirrors = 1
 		}
 		return 2 * mirrors
+	default:
+		panic(fmt.Sprintf("unsupported volume type: %v", c.Type))
 	}
-	panic("unreachable")
 }
 
-func (c RAIDConfig) Flags() (fs []string) {
+func (c VolumeLayout) Flags() (fs []string) {
 	switch c.Type {
 	case VolumeTypeDefault:
 		// We return no --type flag if no config was specified.
@@ -312,20 +314,20 @@ func (c RAIDConfig) Flags() (fs []string) {
 	return fs
 }
 
-func RAIDOpt(r RAIDConfig) CreateLogicalVolumeOpt {
+func VolumeLayoutOpt(r VolumeLayout) CreateLogicalVolumeOpt {
 	return func(o *LVOpts) {
-		o.raidconfig = r
+		o.volumeLayout = r
 	}
 }
 
 type CreateLogicalVolumeOpt func(opts *LVOpts)
 
 type LVOpts struct {
-	raidconfig RAIDConfig
+	volumeLayout VolumeLayout
 }
 
 func (o LVOpts) Flags() (opts []string) {
-	opts = append(opts, o.raidconfig.Flags()...)
+	opts = append(opts, o.volumeLayout.Flags()...)
 	return opts
 }
 

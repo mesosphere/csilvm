@@ -351,14 +351,14 @@ func (s *Server) CreateVolume(
 		return response, nil
 	}
 	log.Printf("Volume with id=%v does not already exist", volumeId)
-	raid, err := takeRAIDConfigFromParameters(dupParams(request.GetParameters()))
+	layout, err := takeVolumeLayoutFromParameters(dupParams(request.GetParameters()))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Invalid RAID configuration: err=%v", err)
+		return nil, status.Errorf(codes.Internal, "Invalid volume layout: err=%v", err)
 	}
 	// Determine the capacity, default to maximum size.
 	size := s.defaultVolumeSize
 	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
-		bytesFree, err := s.volumeGroup.BytesFree(raid)
+		bytesFree, err := s.volumeGroup.BytesFree(layout)
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
@@ -399,13 +399,11 @@ func (s *Server) CreateVolume(
 			"Error in CreateLogicalVolume: err=%v",
 			err)
 	}
-	// Return CreateVolume parameters as volume attributes.
-	attributes := dupParams(request.GetParameters())
 	response := &csi.CreateVolumeResponse{
 		&csi.Volume{
 			int64(lv.SizeInBytes()),
 			volumeId,
-			attributes,
+			nil,
 		},
 	}
 	return response, nil
@@ -695,11 +693,11 @@ func (s *Server) GetCapacity(
 			}
 		}
 	}
-	raid, err := takeRAIDConfigFromParameters(dupParams(request.GetParameters()))
+	layout, err := takeVolumeLayoutFromParameters(dupParams(request.GetParameters()))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "Invalid RAID configuration: err=%v", err)
+		return nil, status.Errorf(codes.Internal, "Invalid volume layout: err=%v", err)
 	}
-	bytesFree, err := s.volumeGroup.BytesFree(raid)
+	bytesFree, err := s.volumeGroup.BytesFree(layout)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -1156,9 +1154,8 @@ func (s *Server) NodeGetCapabilities(
 	return response, nil
 }
 
-// takeRAIDConfigFromParameters removes raid-related parameters from the input
-// and returns a lvm.RAIDCoinfig or error.
-func takeRAIDConfigFromParameters(params map[string]string) (raid lvm.RAIDConfig, err error) {
+// takeVolumeLayoutFromParameters removes and returns RAID-related parameters from the input.
+func takeVolumeLayoutFromParameters(params map[string]string) (layout lvm.VolumeLayout, err error) {
 	voltype, ok := params["type"]
 	if ok {
 		// Consume the 'type' key from the parameters.
@@ -1166,23 +1163,23 @@ func takeRAIDConfigFromParameters(params map[string]string) (raid lvm.RAIDConfig
 		// We only support 'linear' and 'raid1' volume types at the moment.
 		switch voltype {
 		case "linear":
-			raid.Type = lvm.VolumeTypeLinear
+			layout.Type = lvm.VolumeTypeLinear
 		case "raid1":
-			raid.Type = lvm.VolumeTypeRAID1
+			layout.Type = lvm.VolumeTypeRAID1
 			smirrors, ok := params["mirrors"]
 			if ok {
 				delete(params, "mirrors")
 				mirrors, err := strconv.ParseUint(smirrors, 10, 64)
 				if err != nil || mirrors < 1 {
-					return raid, fmt.Errorf("The 'mirrors' parameter must be a positive integer: err=%v", err)
+					return layout, fmt.Errorf("The 'mirrors' parameter must be a positive integer: err=%v", err)
 				}
-				raid.Mirrors = mirrors
+				layout.Mirrors = mirrors
 			}
 		default:
-			return raid, errors.New("The 'type' parameter must be one of 'linear' or 'raid1'.")
+			return layout, errors.New("The 'type' parameter must be one of 'linear' or 'raid1'.")
 		}
 	}
-	return raid, nil
+	return layout, nil
 }
 
 func dupParams(in map[string]string) map[string]string {
@@ -1203,11 +1200,11 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 	// Create a duplicate map so we don't mutate the input.
 	params := dupParams(in)
 	// Transform any 'type' parameter into an opt.
-	raid, err := takeRAIDConfigFromParameters(params)
+	layout, err := takeVolumeLayoutFromParameters(params)
 	if err != nil {
 		return nil, err
 	}
-	opts = append(opts, lvm.RAIDOpt(raid))
+	opts = append(opts, lvm.VolumeLayoutOpt(layout))
 
 	if len(params) > 0 {
 		var keys []string
