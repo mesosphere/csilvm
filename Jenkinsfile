@@ -38,7 +38,8 @@ ansiColor('xterm') {
     stage("Build and Test") {
       withEnv(["DOCKER=yes"]) {
         // Install dependencies necessary to load raid-related kernel modules.
-        sh("sudo yum install -y lvm2 kmod")
+        sh("sudo apt-get update")
+        sh("sudo apt-get install -y lvm2 kmod")
 	// Load the raid1 module on the host.
         sh("sudo /usr/sbin/modprobe raid1")
 	// Load the dm_raid module on the host.
