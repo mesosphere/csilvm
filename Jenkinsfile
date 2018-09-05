@@ -41,9 +41,9 @@ ansiColor('xterm') {
         sh("sudo apt-get update")
         sh("sudo apt-get install -y lvm2 kmod")
 	// Load the raid1 module on the host.
-        sh("sudo /usr/sbin/modprobe raid1")
+        sh("sudo /sbin/modprobe raid1")
 	// Load the dm_raid module on the host.
-        sh("sudo /usr/sbin/modprobe dm_raid")
+        sh("sudo /sbin/modprobe dm_raid")
         sh("make check")
         sh("make")
 
