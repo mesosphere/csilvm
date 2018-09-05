@@ -4,7 +4,7 @@
 
 ansiColor('xterm') {
 
-  node("mesos-ec2-centos-7") {
+  node("mesos-ec2-ubuntu-16.04-raidmod") {
     properties([
       parameters([
         string(name: "SLACK_CREDENTIAL_ID", defaultValue: "25fe61e8-597e-430f-94bf-e58df726f9eb"),
@@ -19,7 +19,7 @@ ansiColor('xterm') {
     }
   }
 
-  node("mesos-ec2-centos-7") {
+  node("mesos-ec2-ubuntu-16.04-raidmod") {
     properties([
       parameters([
         string(name: "GITHUB_CREDENTIAL_ID", defaultValue: "d146870f-03b0-4f6a-ab70-1d09757a51fc"),
