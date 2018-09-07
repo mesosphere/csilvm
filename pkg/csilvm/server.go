@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -322,6 +323,7 @@ func (s *Server) Probe(
 
 var ErrVolumeAlreadyExists = status.Error(codes.AlreadyExists, "The volume already exists")
 var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free space")
+var ErrTooFewDisks = status.Error(codes.OutOfRange, "The volume group does not have enough underlying physical devices to support the requested RAID configuration")
 
 func (s *Server) CreateVolume(
 	ctx context.Context,
@@ -348,10 +350,14 @@ func (s *Server) CreateVolume(
 		return response, nil
 	}
 	log.Printf("Volume with id=%v does not already exist", volumeId)
+	layout, err := takeVolumeLayoutFromParameters(dupParams(request.GetParameters()))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Invalid volume layout: err=%v", err)
+	}
 	// Determine the capacity, default to maximum size.
 	size := s.defaultVolumeSize
 	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
-		bytesFree, err := s.volumeGroup.BytesFree()
+		bytesFree, err := s.volumeGroup.BytesFree(layout)
 		if err != nil {
 			return nil, status.Errorf(
 				codes.Internal,
@@ -366,8 +372,12 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = uint64(capacityRange.GetRequiredBytes())
 	}
-	log.Printf("Creating logical volume id=%v, size=%v, tags=%v", volumeId, size, s.tags)
-	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags)
+	lvopts, err := volumeOptsFromParameters(request.GetParameters())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid parameters: %v", err)
+	}
+	log.Printf("Creating logical volume id=%v, size=%v, tags=%v, params=%v", volumeId, size, s.tags, request.GetParameters())
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags, lvopts...)
 	if err != nil {
 		if err == lvm.ErrInvalidLVName {
 			return nil, status.Errorf(
@@ -379,6 +389,9 @@ func (s *Server) CreateVolume(
 			// Somehow, despite checking for sufficient space
 			// above, we still have insuffient free space.
 			return nil, ErrInsufficientCapacity
+		}
+		if err == lvm.ErrTooFewDisks {
+			return nil, ErrTooFewDisks
 		}
 		return nil, status.Errorf(
 			codes.Internal,
@@ -667,7 +680,11 @@ func (s *Server) GetCapacity(
 			}
 		}
 	}
-	bytesFree, err := s.volumeGroup.BytesFree()
+	layout, err := takeVolumeLayoutFromParameters(dupParams(request.GetParameters()))
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Invalid volume layout: err=%v", err)
+	}
+	bytesFree, err := s.volumeGroup.BytesFree(layout)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.Internal,
@@ -1110,4 +1127,66 @@ func (s *Server) NodeGetCapabilities(
 	request *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	response := &csi.NodeGetCapabilitiesResponse{}
 	return response, nil
+}
+
+// takeVolumeLayoutFromParameters removes and returns RAID-related parameters from the input.
+func takeVolumeLayoutFromParameters(params map[string]string) (layout lvm.VolumeLayout, err error) {
+	voltype, ok := params["type"]
+	if ok {
+		// Consume the 'type' key from the parameters.
+		delete(params, "type")
+		// We only support 'linear' and 'raid1' volume types at the moment.
+		switch voltype {
+		case "linear":
+			layout.Type = lvm.VolumeTypeLinear
+		case "raid1":
+			layout.Type = lvm.VolumeTypeRAID1
+			smirrors, ok := params["mirrors"]
+			if ok {
+				delete(params, "mirrors")
+				mirrors, err := strconv.ParseUint(smirrors, 10, 64)
+				if err != nil || mirrors < 1 {
+					return layout, fmt.Errorf("The 'mirrors' parameter must be a positive integer: err=%v", err)
+				}
+				layout.Mirrors = mirrors
+			}
+		default:
+			return layout, errors.New("The 'type' parameter must be one of 'linear' or 'raid1'.")
+		}
+	}
+	return layout, nil
+}
+
+func dupParams(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	params := make(map[string]string, len(in))
+	for k, v := range in {
+		params[k] = v
+	}
+	return params
+}
+
+// volumeOptsFromParameters parses volume create parameters into
+// lvm.CreateLogicalVolumeOpt funcs.  If returns an error if there are
+// unconsumed parameters or if validation fails.
+func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVolumeOpt, err error) {
+	// Create a duplicate map so we don't mutate the input.
+	params := dupParams(in)
+	// Transform any 'type' parameter into an opt.
+	layout, err := takeVolumeLayoutFromParameters(params)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, lvm.VolumeLayoutOpt(layout))
+
+	if len(params) > 0 {
+		var keys []string
+		for k := range params {
+			keys = append(keys, k)
+		}
+		return nil, fmt.Errorf("Unexpected parameters: %v", keys)
+	}
+	return opts, nil
 }

@@ -489,6 +489,102 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	}
 }
 
+func TestCreateVolume_VolumeLayout_Linear(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	req := testCreateVolumeRequest()
+	req.Parameters = map[string]string{
+		"type": "linear",
+	}
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := resp.GetVolume()
+	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
+		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
+	}
+	if !strings.HasSuffix(info.GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
+	}
+}
+
+func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2, pvclean2 := testpv()
+	defer pvclean2()
+	client, clean := startTest(vgname, []string{pvname1, pvname2})
+	defer clean()
+	req := testCreateVolumeRequest()
+	req.Parameters = map[string]string{
+		"type": "raid1",
+	}
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := resp.GetVolume()
+	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
+		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
+	}
+	if !strings.HasSuffix(info.GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
+	}
+}
+
+func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2, pvclean2 := testpv()
+	defer pvclean2()
+	pvname3, pvclean3 := testpv()
+	defer pvclean3()
+	pvname4, pvclean4 := testpv()
+	defer pvclean4()
+	client, clean := startTest(vgname, []string{pvname1, pvname2, pvname3, pvname4})
+	defer clean()
+	req := testCreateVolumeRequest()
+	req.Parameters = map[string]string{
+		"type":    "raid1",
+		"mirrors": "2",
+	}
+	resp, err := client.CreateVolume(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := resp.GetVolume()
+	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
+		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
+	}
+	if !strings.HasSuffix(info.GetId(), req.GetName()) {
+		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
+	}
+}
+
+func TestCreateVolume_VolumeLayout_TooFewDisks(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	req := testCreateVolumeRequest()
+	req.Parameters = map[string]string{
+		"type": "raid1",
+	}
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrInsufficientCapacity) {
+		// We expect ErrInsufficientCapacity as CreateVolume checks
+		// whether there is sufficient capacity to create the volume.
+		t.Fatal(err)
+	}
+}
+
 func testDeleteVolumeRequest(volumeId string) *csi.DeleteVolumeRequest {
 	req := &csi.DeleteVolumeRequest{
 		volumeId,
@@ -979,51 +1075,149 @@ func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 	return req
 }
 
-func TestGetCapacity_NoVolumes(t *testing.T) {
+type testGetCapacity struct {
+	numberOfPVs  uint64
+	params       map[string]string
+	createVolume bool
+	err          error
+}
+
+func (tc testGetCapacity) test(t *testing.T) {
 	vgname := testvgname()
-	pvname, pvclean := testpv()
-	defer pvclean()
-	client, clean := startTest(vgname, []string{pvname})
+	var pvnames []string
+	for ii := uint64(0); ii < tc.numberOfPVs; ii++ {
+		pvname, pvclean := testpv()
+		defer pvclean()
+		pvnames = append(pvnames, pvname)
+	}
+	client, clean := startTest(vgname, pvnames)
 	defer clean()
+	volumesize := int64(0)
+	if tc.createVolume {
+		volumesize = 40 << 20
+		createReq := testCreateVolumeRequest()
+		createReq.Name = "test-volume-1"
+		createReq.CapacityRange.RequiredBytes = volumesize
+		_, err := client.CreateVolume(context.Background(), createReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	req := testGetCapacityRequest("xfs")
+	req.Parameters = map[string]string{
+		"type":    "raid1",
+		"mirrors": "2",
+	}
 	resp, err := client.GetCapacity(context.Background(), req)
+	if tc.err != nil {
+		if !grpcErrorEqual(err, tc.err) {
+			t.Fatal(err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Two extents are reserved for metadata.
-	const extentSize = uint64(2 << 20)
-	const metadataExtents = 2
-	exp := pvsize - extentSize*metadataExtents
-	if got := resp.GetAvailableCapacity(); got != int64(exp) {
-		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
+	layout, err := takeVolumeLayoutFromParameters(dupParams(req.GetParameters()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.MinNumberOfDevices() > tc.numberOfPVs {
+		if resp.GetAvailableCapacity() != 0 {
+			t.Fatalf("Expected 0 bytes free.")
+		}
+		return
+	}
+	const extentsize = uint64(4 << 20)
+	// One extent per PV is reserved for metadata.
+	metadataExtents := tc.numberOfPVs
+	// Calculate the linear available capacity.
+	totalExtents := tc.numberOfPVs * pvsize / extentsize
+	// Subtract the per-PV metadata extents from the total expected number of extents.
+	totalAvailableExtents := totalExtents - metadataExtents
+	// Reduce the capacity by the required_bytes of the created volume (if any).
+	linearAvailableExtents := totalAvailableExtents - uint64(volumesize)/extentsize
+	// Reduce the capacity by one more extent per data copy as each needs
+	// to store metadata in a single extent. Then divide the remaining extents
+	// by the number of data copies.
+	expextents := (linearAvailableExtents - 3) / 3
+	// The remaining bytes we get by multiplying by the extentsize again.
+	expbytes := expextents * extentsize
+	if got := resp.GetAvailableCapacity(); uint64(got) != expbytes {
+		t.Fatalf("Expected %d bytes free but got %v.", expbytes, got)
 	}
 }
 
+func TestGetCapacity_NoVolumes(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  1,
+		params:       nil,
+		createVolume: false,
+	}.test(t)
+}
+
+func TestGetCapacity_NoVolumes_OneDisk_VolumeLayout_Linear(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  1,
+		params:       map[string]string{"type": "linear"},
+		createVolume: false,
+	}.test(t)
+}
+
+func TestGetCapacity_NoVolumes_OneDisk_VolumeLayout_RAID1(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  1,
+		params:       map[string]string{"type": "raid1"},
+		createVolume: false,
+	}.test(t)
+}
+
+func TestGetCapacity_NoVolumes_TwoDisks_VolumeLayout_RAID1(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  2,
+		params:       map[string]string{"type": "raid1"},
+		createVolume: false,
+	}.test(t)
+}
+
+func TestGetCapacity_NoVolumes_FourDisks_VolumeLayout_RAID1_Mirrors2(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  4,
+		params:       map[string]string{"type": "raid1", "mirrors": "2"},
+		createVolume: false,
+	}.test(t)
+}
+
 func TestGetCapacity_OneVolume(t *testing.T) {
-	vgname := testvgname()
-	pvname, pvclean := testpv()
-	defer pvclean()
-	client, clean := startTest(vgname, []string{pvname})
-	defer clean()
-	createReq := testCreateVolumeRequest()
-	createReq.Name = "test-volume-1"
-	createReq.CapacityRange.RequiredBytes /= 2
-	_, err := client.CreateVolume(context.Background(), createReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req := testGetCapacityRequest("xfs")
-	resp, err := client.GetCapacity(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Two extents are reserved for metadata.
-	const extentSize = int64(2 << 20)
-	const metadataExtents = 2
-	exp := int64(pvsize) - extentSize*metadataExtents - createReq.CapacityRange.RequiredBytes
-	if got := resp.GetAvailableCapacity(); got != exp {
-		t.Fatalf("Expected %d bytes free but got %v.", exp, got)
-	}
+	testGetCapacity{
+		numberOfPVs:  1,
+		params:       nil,
+		createVolume: true,
+	}.test(t)
+}
+
+func TestGetCapacity_OneVolume_VolumeLayout_Linear(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  1,
+		params:       map[string]string{"type": "linear"},
+		createVolume: true,
+	}.test(t)
+}
+
+func TestGetCapacity_OneVolume_TwoDisks_VolumeLayout_RAID1(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  2,
+		params:       map[string]string{"type": "linear"},
+		createVolume: true,
+	}.test(t)
+}
+
+func TestGetCapacity_OneVolume_FourDisks_VolumeLayout_Mirror2(t *testing.T) {
+	testGetCapacity{
+		numberOfPVs:  2,
+		params:       map[string]string{"type": "raid1", "mirrors": "2"},
+		createVolume: true,
+	}.test(t)
 }
 
 func TestGetCapacity_RemoveVolumeGroup(t *testing.T) {

@@ -441,7 +441,5 @@ func grpcErrorEqual(gotErr, expErr error) bool {
 
 func startTestValidate(serverOpts ...ServerOpt) (client *Client, cleanupFn func()) {
 	vgname := testvgname()
-	pvname, pvclean := testpv()
-	defer pvclean()
-	return startTest(vgname, []string{pvname}, serverOpts...)
+	return startTest(vgname, nil, serverOpts...)
 }
