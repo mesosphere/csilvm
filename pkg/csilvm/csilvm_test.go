@@ -2751,55 +2751,60 @@ func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 		panic(err)
 	}
 	clean.Add(lis.Close)
-	clean.Add(func() error {
+	clean.Do(func() {
 		for _, pvname := range pvnames {
 			pv, err := lvm.LookupPhysicalVolume(pvname)
 			if err != nil {
 				if err == lvm.ErrPhysicalVolumeNotFound {
 					continue
 				}
-				panic(err)
+				log.Printf("Test cleanup: failed to lookup PV %q: err=%v", pvname, err)
 			}
 			if err := pv.Remove(); err != nil {
-				panic(err)
+				log.Printf("Test cleanup: failed to remove PV %q: err=%v", pvname, err)
 			}
 		}
-		return nil
+		return
 	})
-	clean.Add(func() error {
+	clean.Do(func() {
 		vg, err := lvm.LookupVolumeGroup(vgname)
 		if err == lvm.ErrVolumeGroupNotFound {
 			// Already removed this volume group in the test.
-			return nil
+			return
 		}
 		if err != nil {
-			panic(err)
+			log.Printf("Test cleanup: failed to lookup VG %q: err=%v", vgname, err)
 		}
-		return vg.Remove()
+		if err := vg.Remove(); err != nil {
+			log.Printf("Test cleanup: failed to remove VG %q: err=%v", vgname, err)
+			return
+		}
 	})
-	clean.Add(func() error {
+	clean.Do(func() {
 		vg, err := lvm.LookupVolumeGroup(vgname)
 		if err == lvm.ErrVolumeGroupNotFound {
 			// Already removed this volume group in the test.
-			return nil
+			return
 		}
 		if err != nil {
-			panic(err)
+			log.Printf("Test cleanup: failed to lookup VG %q: err=%v", vgname, err)
+			return
 		}
 		lvnames, err := vg.ListLogicalVolumeNames()
 		if err != nil {
-			panic(err)
+			log.Printf("Test cleanup: failed to list LVs (skipping cleanup): err=%v", err)
+			return
 		}
 		for _, lvname := range lvnames {
 			lv, err := vg.LookupLogicalVolume(lvname)
 			if err != nil {
-				panic(err)
+				log.Printf("Test cleanup: failed to lookup LV %q (skipping): err=%v", lvname, err)
 			}
 			if err := lv.Remove(); err != nil {
-				panic(err)
+				log.Printf("Test cleanup: failed to remove LV (skipping): err=%v", err)
 			}
 		}
-		return nil
+		return
 	})
 
 	s := NewServer(vgname, pvnames, "xfs", serverOpts...)
@@ -2868,10 +2873,12 @@ func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client
 	if len(pvnames) == 0 {
 		pvname, pvclean := testpv()
 		pvnames = append(pvnames, pvname)
-		clean.Add(pvclean)
+		// Cleanup of PVs is best effort. The PV may have been removed
+		// by tests that check for behaviour under failure conditions.
+		clean.Do(func() { pvclean() })
 	}
 	client, server, cleanup2 := prepareSetupTest(vgname, pvnames, serverOpts...)
-	clean.Add(func() error { cleanup2(); return nil })
+	clean.Do(func() { cleanup2() })
 	// Perform the actual volume group create/remove.
 	if err := server.Setup(); err != nil {
 		panic(err)
