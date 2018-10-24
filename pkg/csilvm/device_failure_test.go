@@ -14,7 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func TestFailure1Of1DeviceLVLinear(t *testing.T) {
+func TestProbeFailureMissing1Of1Devices(t *testing.T) {
 	prepareSCSIDebug()
 	defer clearSCSIDebug()
 	scsivols := listSCSIDebugDevices()
