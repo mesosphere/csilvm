@@ -282,36 +282,36 @@ func (s *Server) Probe(
 	log.Printf("Checking LVM2 physical volumes")
 	for _, pvname := range s.pvnames {
 		// Check that the LVM2 metadata written to the start of the PV parses.
-		log.Printf("Looking up LVM2 physical volume %v", pvname)
+		log.Printf("Looking up LVM2 physical volume %q", pvname)
 		pv, err := lvm.LookupPhysicalVolume(pvname)
 		if err != nil {
 			return nil, status.Errorf(
 				codes.FailedPrecondition,
-				"Cannot lookup physical volume %v: err=%v",
+				"Cannot lookup physical volume %q: err=%v",
 				pvname, err)
 		}
-		log.Printf("Checking physical volume %v", pvname)
+		log.Printf("Checking physical volume %q", pvname)
 		if err := pv.Check(); err != nil {
 			return nil, status.Errorf(
 				codes.FailedPrecondition,
-				"Physical volume %v failed check: err=%v",
+				"Physical volume %q failed check: err=%v",
 				pvname,
 				err)
 		}
 	}
-	log.Printf("Looking up volume group %v", s.vgname)
+	log.Printf("Looking up volume group %q", s.vgname)
 	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.FailedPrecondition,
-			"Cannot find volume group %v",
+			"Cannot find volume group %q",
 			s.vgname)
 	}
-	log.Printf("Checking volume group %v", s.vgname)
+	log.Printf("Checking volume group %q", s.vgname)
 	if err := volumeGroup.Check(); err != nil {
 		return nil, status.Errorf(
 			codes.FailedPrecondition,
-			"Volume group %v failed check: err=%v",
+			"Volume group %q failed check: err=%v",
 			s.vgname,
 			err)
 	}
