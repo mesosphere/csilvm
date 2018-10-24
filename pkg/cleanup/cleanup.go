@@ -12,6 +12,12 @@ func (fns *Steps) Add(fn func() error) {
 	*fns = append(*fns, fn)
 }
 
+// Do appends the given cleanup function to those that will be called if an
+// error occurs - it does not return an error.
+func (fns *Steps) Do(fn func()) {
+	fns.Add(func() error { fn(); return nil })
+}
+
 // Unwind calls the cleanup funcions in LIFO order. It panics
 // if any of them return an error as failure during recovery is
 // itself unrecoverable.
