@@ -8,13 +8,65 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func TestProbeFailureMissing1Of1Devices(t *testing.T) {
+func TestProbeFailureMissing1Of1DevicesNoLV(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err := client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+}
+
+func TestProbeFailureMissing1Of1DevicesLinearLV(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer forceRemoveVolume("", vgname, createResp.GetVolume().GetId())
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err = client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+}
+
+func TestProbeFailureMissing1Of1DevicesLinearLVMounted(t *testing.T) {
 	prepareSCSIDebug()
 	defer clearSCSIDebug()
 	scsivols := listSCSIDebugDevices()
@@ -48,8 +100,7 @@ func TestProbeFailureMissing1Of1Devices(t *testing.T) {
 	}
 	// Remove the underlying devmapper mapping when the test is completed.
 	defer forceRemoveVolume(targetPath, vgname, volumeId)
-
-	// Remove the loop device underlying the PV.
+	// Remove the device underlying the PV.
 	log.Printf("Removing SCSI device")
 	removeSCSIDevice(pvname)
 	log.Printf("Removed SCSI device")
@@ -59,7 +110,298 @@ func TestProbeFailureMissing1Of1Devices(t *testing.T) {
 		codes.FailedPrecondition,
 		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname))
 	if !grpcErrorEqual(err, exp) {
-		t.Error(err.Error())
+		t.Fatal(err.Error())
+	}
+}
+
+func TestProbeFailureMissing1Of1DevicesLinearLVMountedWriteError(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolume().GetId()
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeId)
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	// Publish the volume to /the/tmp/dir/volume-id
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err = client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remove the underlying devmapper mapping when the test is completed.
+	defer forceRemoveVolume(targetPath, vgname, volumeId)
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err = client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+	// Assert that writing to the mounted partition returns an error.
+	file, err := os.Create(filepath.Join(targetPath, "testfile"))
+	if err == nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	perr := err.(*os.PathError)
+	if perr.Err != syscall.EIO {
+		log.Printf("unexpected error: %#v", perr)
+	}
+}
+
+func TestProbeFailureMissing1Of2DevicesNoLV(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2 := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname1, pvname2})
+	defer clean()
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname2)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err := client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname2))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+}
+
+func TestProbeFailureMissing1Of2DevicesLinearLVOnLostPV(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2 := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname1, pvname2})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createReq.Parameters = map[string]string{
+		"pvs": pvname2,
+	}
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolume().GetId()
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname2)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err = client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname2))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+	// Assert that the volume cannot be published.
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeId)
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err = client.NodePublishVolume(context.Background(), publishReq)
+	if err == nil {
+		forceRemoveVolume(targetPath, vgname, volumeId)
+		t.Fatal("Expected an error")
+	}
+	exp = status.Errorf(
+		codes.Internal,
+		fmt.Sprintf("Cannot determine filesystem type: err=exit status 1"),
+	)
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+	// Ensure that the volume is still present
+	listResp, err := client.ListVolumes(context.Background(), testListVolumesRequest())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if len(listResp.GetEntries()) != 1 {
+		t.Fatalf("Expected no volumes but got %v", listResp)
+	}
+	// Remove the volume
+	_, err = client.DeleteVolume(context.Background(), testDeleteVolumeRequest(volumeId))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	// Ensure that the volume is gone
+	listResp, err = client.ListVolumes(context.Background(), testListVolumesRequest())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if len(listResp.GetEntries()) != 0 {
+		t.Fatalf("Expected no volumes but got %v", listResp)
+	}
+}
+
+func TestProbeFailureMissing1Of2DevicesLinearLVOnRemainingPV(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2 := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname1, pvname2})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createReq.Parameters = map[string]string{
+		"pvs": pvname1,
+	}
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolume().GetId()
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname2)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err = client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname2))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+	// Assert that the volume can be published.
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeId)
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err = client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProbeFailureMissing1Of2DevicesLinearLVOnLostPVMounted(t *testing.T) {
+	prepareSCSIDebug()
+	defer clearSCSIDebug()
+	scsivols := listSCSIDebugDevices()
+	vgname := testvgname()
+	pvname1, pvclean1 := testpv()
+	defer pvclean1()
+	pvname2 := scsivols[0]
+	client, clean := startTest(vgname, []string{pvname1, pvname2})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createReq.Parameters = map[string]string{
+		"pvs": pvname2,
+	}
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolume().GetId()
+	// Prepare a temporary mount directory.
+	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpdirPath)
+	targetPath := filepath.Join(tmpdirPath, volumeId)
+	if err := os.Mkdir(targetPath, 0755); err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(targetPath)
+	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
+	_, err = client.NodePublishVolume(context.Background(), publishReq)
+	if err != nil {
+		forceRemoveVolume(targetPath, vgname, volumeId)
+		t.Fatalf("Unexpected error %v", err)
+	}
+	// Remove the device underlying the PV.
+	log.Printf("Removing SCSI device")
+	removeSCSIDevice(pvname2)
+	log.Printf("Removed SCSI device")
+	// Assert that Probe fails.
+	_, err = client.Probe(context.Background(), testProbeRequest())
+	exp := status.Errorf(
+		codes.FailedPrecondition,
+		fmt.Sprintf("Cannot lookup physical volume %q: err=lvm: physical volume not found", pvname2))
+	if !grpcErrorEqual(err, exp) {
+		t.Fatal(err.Error())
+	}
+	// Ensure that the volume is still present
+	listResp, err := client.ListVolumes(context.Background(), testListVolumesRequest())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if len(listResp.GetEntries()) != 1 {
+		t.Fatalf("Expected no volumes but got %v", listResp)
+	}
+	// Unmount the LV.
+	_, err = client.NodeUnpublishVolume(context.Background(), testNodeUnpublishVolumeRequest(volumeId, targetPath))
+	if err != nil {
+		forceRemoveVolume(targetPath, vgname, volumeId)
+		t.Fatalf("Unexpected error %v", err)
+	}
+	// Remove the volume
+	_, err = client.DeleteVolume(context.Background(), testDeleteVolumeRequest(volumeId))
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	// Ensure that the volume is gone
+	listResp, err = client.ListVolumes(context.Background(), testListVolumesRequest())
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if len(listResp.GetEntries()) != 0 {
+		t.Fatalf("Expected no volumes but got %v", listResp)
 	}
 }
 
@@ -72,7 +414,9 @@ func prepareSCSIDebug() {
 	moduleLoaded := bytes.Contains(out, []byte("scsi_debug"))
 	// If the module is loaded, unload it.
 	if moduleLoaded {
-		if err := exec.Command("rmmod", "scsi_debug").Run(); err != nil {
+		out, err := exec.Command("rmmod", "scsi_debug").CombinedOutput()
+		if err != nil {
+			log.Print(string(out))
 			panic(err)
 		}
 	}
@@ -163,20 +507,26 @@ func removeSCSIDevice(name string) {
 }
 
 func forceRemoveVolume(mountpoint, vgname, lvname string) {
-	log.Printf("unmounting %q", mountpoint)
-	cmd := exec.Command("umount", mountpoint)
-	log.Print(cmd)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Print(string(out))
-		log.Print(err)
-	} else {
-		log.Print("unmount succeeded")
+	// Check whether the volume has already been removed.
+	if _, err := os.Stat(filepath.Join("/dev", vgname, lvname)); os.IsNotExist(err) {
+		return
+	}
+	if mountpoint != "" {
+		log.Printf("unmounting %q", mountpoint)
+		cmd := exec.Command("umount", mountpoint)
+		log.Print(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Print(string(out))
+			log.Print(err)
+		} else {
+			log.Print("unmount succeeded")
+		}
 	}
 	log.Print("forcefully removing logical volume")
-	cmd = exec.Command("dmsetup", "remove", fmt.Sprintf("/dev/%s/%s", vgname, lvname))
+	cmd := exec.Command("dmsetup", "remove", fmt.Sprintf("/dev/%s/%s", vgname, lvname))
 	log.Print(cmd)
-	out, err = cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Print(string(out))
 		log.Print(err)
