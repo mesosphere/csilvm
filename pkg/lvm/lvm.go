@@ -314,9 +314,17 @@ func (c VolumeLayout) Flags() (fs []string) {
 	return fs
 }
 
+// VolumeLayoutOpt specifies the VolumeLayout to use when creating a volume.
 func VolumeLayoutOpt(r VolumeLayout) CreateLogicalVolumeOpt {
 	return func(o *LVOpts) {
 		o.volumeLayout = r
+	}
+}
+
+// PVsOpt specifies the PVs on which the volume's extents should be placed.
+func PVsOpt(pvs []string) CreateLogicalVolumeOpt {
+	return func(o *LVOpts) {
+		o.pvs = pvs
 	}
 }
 
@@ -324,10 +332,12 @@ type CreateLogicalVolumeOpt func(opts *LVOpts)
 
 type LVOpts struct {
 	volumeLayout VolumeLayout
+	pvs          []string
 }
 
 func (o LVOpts) Flags() (opts []string) {
 	opts = append(opts, o.volumeLayout.Flags()...)
+	opts = append(opts, o.pvs...)
 	return opts
 }
 

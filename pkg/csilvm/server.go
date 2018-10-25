@@ -372,7 +372,7 @@ func (s *Server) CreateVolume(
 		// Set the volume size to the minimum requested  size.
 		size = uint64(capacityRange.GetRequiredBytes())
 	}
-	lvopts, err := volumeOptsFromParameters(request.GetParameters())
+	lvopts, err := s.volumeOptsFromParameters(request.GetParameters())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid parameters: %v", err)
 	}
@@ -1157,6 +1157,27 @@ func takeVolumeLayoutFromParameters(params map[string]string) (layout lvm.Volume
 	return layout, nil
 }
 
+// takePVsFromParameters removes and returns RAID-related parameters from the input.
+func takePVsFromParameters(params map[string]string, vgpvs []string) ([]string, error) {
+	known := make(map[string]bool)
+	for _, pv := range vgpvs {
+		known[pv] = true
+	}
+	pvstr, ok := params["pvs"]
+	if ok {
+		// Consume the 'pvs' key from the parameters.
+		delete(params, "pvs")
+		pvs := strings.Fields(pvstr)
+		for _, pv := range pvs {
+			if !known[pv] {
+				return nil, fmt.Errorf("Unknown phyiscal device '%s'", pv)
+			}
+		}
+		return pvs, nil
+	}
+	return nil, nil
+}
+
 func dupParams(in map[string]string) map[string]string {
 	if in == nil {
 		return nil
@@ -1171,7 +1192,7 @@ func dupParams(in map[string]string) map[string]string {
 // volumeOptsFromParameters parses volume create parameters into
 // lvm.CreateLogicalVolumeOpt funcs.  If returns an error if there are
 // unconsumed parameters or if validation fails.
-func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVolumeOpt, err error) {
+func (s *Server) volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVolumeOpt, err error) {
 	// Create a duplicate map so we don't mutate the input.
 	params := dupParams(in)
 	// Transform any 'type' parameter into an opt.
@@ -1180,7 +1201,13 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 		return nil, err
 	}
 	opts = append(opts, lvm.VolumeLayoutOpt(layout))
-
+	// Transform 'pvs' parameter into an opt.
+	// TODO(gpaul): sanitize the list of pvs.
+	pvs, err := takePVsFromParameters(params, s.pvnames)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, lvm.PVsOpt(pvs))
 	if len(params) > 0 {
 		var keys []string
 		for k := range params {
