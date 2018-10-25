@@ -238,6 +238,175 @@ As such, this plugin does not support the `SINGLE_NODE_READER_ONLY` access mode 
 volume of access type `BLOCK_DEVICE`.
 
 
+# Disk errors
+
+## Device disappears
+
+It can happen that one or all devices underlying a LVM2 volume group
+disappears. This typically happens when hardware fails or is removed from the
+running machine. We distinguish between two different cases based on whether
+some or all devices underlying the volume group has disappeared.
+
+
+### All devices underlying the VG disappear
+
+LVM2 writes its metadata to the physical devices. If all physical devices
+underlying a given volume group disappear, it has no way of knowing that the
+volume group ever existed.
+
+
+### Symptoms
+
+The `Probe` call will fail:
+
+```
+/csi.v0.Identity/Probe failed: err=rpc error: code = FailedPrecondition desc = Cannot lookup physical volume "/dev/sda": err=lvm: physical volume not found
+```
+
+Additionally, if the volume group has logical volumes created you'll see I/O
+errors show up in the logs whenever an LVM2 command is performed. This happens
+when the LVM2 CLI utils try to read LVM labels from the logical volumes:
+
+```
+logging.go:24: Serving /csi.v0.Identity/Probe: req=
+server.go:282: Checking LVM2 physical volumes
+server.go:285: Looking up LVM2 physical volume "/dev/sda"
+2018/10/25 14:40:26 lvm.go:831: Executing: &{/sbin/pvs [pvs --reportformat=json --units=b --nosuffix --options=pv_name /dev/sda] []  <nil> <nil> <nil> [] <nil> <nil> <nil> <nil> <nil> false [] [] [] [] <nil> <nil>}
+2018/10/25 14:40:26 lvm.go:837: stdout:   {
+      "report": [
+          {
+              "pv": [
+              ]
+          }
+      ]
+  }
+lvm.go:838: stderr: /dev/testvg/testvg_testvol: read failed after 0 of 4096 at 0: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 83820544: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 83877888: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 4096: Input/output error
+Failed to find device "/dev/sda".
+logging.go:27: /csi.v0.Identity/Probe failed: err=rpc error: code = FailedPrecondition desc = Cannot lookup physical volume "/dev/sda": err=lvm: physical volume not found
+```
+
+If the logical volume is mounted your applications will receive I/O errors when accessing the mounted data.
+
+
+### Recovering
+
+All devices underlying the volume group have failed. If they've simply been
+removed, put them back. If they've really failed then the data is lost.
+
+The only task remaining is to remove the stale logical volumes by unmounting
+them and cleaning up the stale device mappings:
+
+```
+# Assuming logical volume '/dev/testvg/testvg_testvol was mounted on /mnt
+umount /mnt
+dmsetup remove /dev/testvg/testvg_testvol
+```
+
+The I/O errors should stop showing up in the plugin logs once you do this for
+every stale logical volume they complain about.
+
+
+### Some of the devices underlying the VG disappear
+
+LVM2 writes its metadata to the physical devices. If some of the physical
+devices underlying a volume group disappear, but enough of them remain, then
+LVM2 can figure out which PVs and LVs are supposed to be present.
+
+If you set the `type` to `raid1` when creating your logical volumes they may be
+intact. Still, `linear` logical volumes may still be intact if they were
+allocated on physical volumes that did not disappear.
+
+
+### Symptoms
+
+The `Probe` call will fail:
+
+```
+/csi.v0.Identity/Probe failed: err=rpc error: code = FailedPrecondition desc = Cannot lookup physical volume "/dev/sda": err=lvm: physical volume not found
+```
+
+You will see mention of the missing device(s) in the logs:
+
+```
+Couldn't find device with uuid lqJCOS-qpIq-7P7s-JLdB-Z5fY-lWHf-8ad7m3.
+```
+
+Additionally, if the volume group has logical volumes that are allocated from
+the missing devices you'll see I/O errors show up in the logs whenever an LVM2
+command is performed. This happens when the LVM2 CLI utils try to read LVM
+labels from the logical volumes:
+
+```
+logging.go:24: Serving /csi.v0.Identity/Probe: req=
+server.go:282: Checking LVM2 physical volumes
+server.go:285: Looking up LVM2 physical volume "/dev/sda"
+2018/10/25 14:40:26 lvm.go:831: Executing: &{/sbin/pvs [pvs --reportformat=json --units=b --nosuffix --options=pv_name /dev/sda] []  <nil> <nil> <nil> [] <nil> <nil> <nil> <nil> <nil> false [] [] [] [] <nil> <nil>}
+2018/10/25 14:40:26 lvm.go:837: stdout:   {
+      "report": [
+          {
+              "pv": [
+              ]
+          }
+      ]
+  }
+lvm.go:838: stderr: /dev/testvg/testvg_testvol: read failed after 0 of 4096 at 0: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 83820544: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 83877888: Input/output error
+/dev/testvg/testvg_testvol: read failed after 0 of 4096 at 4096: Input/output error
+Failed to find device "/dev/sda".
+logging.go:27: /csi.v0.Identity/Probe failed: err=rpc error: code = FailedPrecondition desc = Cannot lookup physical volume "/dev/sda": err=lvm: physical volume not found
+```
+
+In the event of data loss, if the logical volume is mounted your applications
+will receive I/O errors when accessing the mounted data.
+
+
+### Recovering
+
+If you're seeing `Input/output error` messages in the logs it means that the
+logical volume being complained about is broken. You need to unmount it (if it
+was mounted) and remove the LV.
+
+To unmount the LV you can call `NodeUnpublishVolume` or call `umount
+/your/mount/point` by hand.
+
+Once the LV has been unmounted you need to remove the LV.
+
+If enough of the volume group metadata survived on the remaining physical
+devices you should see the LV listed when you call the `ListVolumes` RPC or
+manually run `lvs` on the node. In that case, you can call the `DeleteVolume`
+RPC or run `lvremove` manually to remove the LV.
+
+If the LV is missing from the volume group metadata you need to manually remove
+the device mapper mapping:
+
+```
+dmsetup remove /dev/testvg/testvg_testvol
+```
+
+The I/O errors should stop showing up in the plugin logs once you do this for
+every stale logical volume they complain about.
+
+If your LVs were mirrored across multiple devices and at least one of the
+replicas remains you can keep using your data. In this case, refer to this
+README's section on replication.
+
+# Create Parameters
+
+The `CreateVolume` call supports the following key/value pairs in its `parameters` field:
+
+- `type` may be one of `linear` or `raid1`. See the `lvmraid` man pages.
+- `mirrors` an integer number corresponding to the number of copies of the
+  data. See the `lvmraid` man pages.
+- `pvs` may be a space-seperated list of PVs underlying the volume
+  group. Extents for the volume will only be allocated from these physical
+  volumes. The flag will be passed as the last argument to `lvcreate`. See the
+  `lvcreate` man page for more details.
+
+
 # Issues
 
 This project uses JIRA instead of GitHub issues to track bugs and feature requests.
