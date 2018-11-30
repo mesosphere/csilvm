@@ -14,13 +14,11 @@ import (
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+	"github.com/mesosphere/csilvm/pkg/version"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
-
-const PluginName = "io.mesosphere.dcos.storage.csilvm"
-const PluginVersion = "0.2.0"
 
 type Server struct {
 	vgname               string
@@ -246,10 +244,25 @@ func (s *Server) Setup() error {
 
 // IdentityService RPCs
 
+const (
+	manifestBuildSHA  = "buildSHA"
+	manifestBuildTime = "buildTime"
+)
+
 func (s *Server) GetPluginInfo(
 	ctx context.Context,
 	request *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	response := &csi.GetPluginInfoResponse{PluginName, PluginVersion, nil}
+
+	v := version.Get()
+	m := make(map[string]string)
+	if v.BuildSHA != "" {
+		m[manifestBuildSHA] = v.BuildSHA
+	}
+	if v.BuildTime != "" {
+		m[manifestBuildTime] = v.BuildTime
+	}
+
+	response := &csi.GetPluginInfoResponse{v.Product, v.Version, m}
 	return response, nil
 }
 
