@@ -31,12 +31,15 @@ ansiColor('xterm') {
 
     checkout scm
 
+    def packageSHA = getPackageSHA()
+    def packageVersion = getPackageVersion()
+
     stage("Prepare") {
       sh("make rebuild-dev-image")
     }
 
     stage("Build and Test") {
-      withEnv(["DOCKER=yes"]) {
+      withEnv(["DOCKER=yes","PACKAGE_SHA=${packageSHA}","PLUGIN_VERSION=${packageVersion}"]) {
         // Install dependencies necessary to load raid-related kernel modules.
         sh("sudo apt-get update")
         sh("sudo apt-get install -y lvm2 kmod")
@@ -56,9 +59,6 @@ ansiColor('xterm') {
     }
 
     stage("Publish") {
-      def packageSHA = getPackageSHA()
-      def packageVersion = getPackageVersion()
-
       def isPullRequest = (env.CHANGE_ID != null)
       def isRelease = (packageSHA != packageVersion)
 
