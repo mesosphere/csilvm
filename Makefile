@@ -5,6 +5,19 @@ OS := $(shell uname)
 DOCKERFILE_MD5SUM=$(shell md5sum ./Dockerfile | cut -d" " -f1)
 DEV_DOCKER_IMAGE := csilvm_dev:$(DOCKERFILE_MD5SUM)
 
+PLUGIN_NAME ?= io.mesosphere.csi.lvm
+PLUGIN_VERSION ?= v0.3-dev
+BUILD_TIME ?= $(shell date +"%Y%m%dT%H%M%S.%N%z")
+PACKAGE_SHA ?= nosha
+
+PKG_ROOT := github.com/mesosphere/csilvm
+
+LDFLAGS ?= \
+       -X $(PKG_ROOT)/pkg/version/internal/versiondata.Product=$(PLUGIN_NAME) \
+       -X $(PKG_ROOT)/pkg/version/internal/versiondata.Version=$(PLUGIN_VERSION) \
+       -X $(PKG_ROOT)/pkg/version/internal/versiondata.BuildTime=$(BUILD_TIME) \
+       -X $(PKG_ROOT)/pkg/version/internal/versiondata.BuildSHA=$(PACKAGE_SHA)
+
 ifeq ($(OS), Linux)
 DOCKER ?= yes
 else ifeq ($(OS), Darwin)
@@ -28,22 +41,27 @@ dev-image:
 	docker inspect $(DEV_DOCKER_IMAGE) > /dev/null || docker build --rm -t $(DEV_DOCKER_IMAGE) .
 
 ifeq ($(DOCKER), yes)
-TEST_PREFIX := docker run -t --rm --privileged --tmpfs /run --tmpfs /tmp -v /var/lock/lvm:/var/lock/lvm -v `pwd`:/go/src/github.com/mesosphere/csilvm --ipc=host --pid=host --net=host $(DEV_DOCKER_IMAGE)
-BUILD_PREFIX := docker run -t --rm -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE)
+TEST_PREFIX := \
+	docker run -t --rm --privileged --tmpfs /run --tmpfs /tmp \
+	-v /var/lock/lvm:/var/lock/lvm -v `pwd`:/go/src/$(PKG_ROOT) --ipc=host \
+	--pid=host --net=host $(DEV_DOCKER_IMAGE)
+
+BUILD_PREFIX := \
+	docker run -t --rm -v `pwd`:/go/src/$(PKG_ROOT) $(DEV_DOCKER_IMAGE)
 
 build: dev-image
 check: dev-image
 gofmt: dev-image
 
 shell: dev-image
-	docker run --rm -ti -v `pwd`:/go/src/github.com/mesosphere/csilvm $(DEV_DOCKER_IMAGE) /bin/bash
+	docker run --rm -ti -v `pwd`:/go/src/$(PKG_ROOT) $(DEV_DOCKER_IMAGE) /bin/bash
 endif
 
 check:
 	$(BUILD_PREFIX) sh -c "go build -v ./... && gometalinter --config=gometalinter.conf --vendor ./..."
 
 build:
-	$(BUILD_PREFIX) go build ./cmd/csilvm
+	$(BUILD_PREFIX) go build -ldflags "$(LDFLAGS)" ./cmd/csilvm
 
 gofmt:
 	$(BUILD_PREFIX) sh -c "find pkg -name '*.go' | xargs gofmt -s -w"
