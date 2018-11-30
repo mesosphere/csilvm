@@ -53,6 +53,8 @@ func testGetPluginInfoRequest() *csi.GetPluginInfoRequest {
 	return req
 }
 
+const pluginName = "io.mesosphere.csi.lvm"
+
 func TestGetPluginInfo(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
@@ -64,15 +66,12 @@ func TestGetPluginInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetName() != PluginName {
-		t.Fatalf("Expected plugin name %s but got %s", PluginName, resp.GetName())
+	// This shouldn't really change, ever, unless someone is doing a specialized build. In which case
+	// this test isn't very useful anyway.
+	if resp.GetName() != pluginName {
+		t.Fatalf("Expected plugin name %s but got %s", pluginName, resp.GetName())
 	}
-	if resp.GetVendorVersion() != PluginVersion {
-		t.Fatalf("Expected plugin version %s but got %s", PluginVersion, resp.GetVendorVersion())
-	}
-	if resp.GetManifest() != nil {
-		t.Fatalf("Expected a nil manifest but got %s", resp.GetManifest())
-	}
+	// Plugin version and manifest metadata are volatile (build-time dependent).
 }
 
 func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
@@ -86,15 +85,12 @@ func TestGetPluginInfoRemoveVolumeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetName() != PluginName {
-		t.Fatalf("Expected plugin name %s but got %s", PluginName, resp.GetName())
+	// This shouldn't really change, ever, unless someone is doing a specialized build. In which case
+	// this test isn't very useful anyway.
+	if resp.GetName() != pluginName {
+		t.Fatalf("Expected plugin name %s but got %s", pluginName, resp.GetName())
 	}
-	if resp.GetVendorVersion() != PluginVersion {
-		t.Fatalf("Expected plugin version %s but got %s", PluginVersion, resp.GetVendorVersion())
-	}
-	if resp.GetManifest() != nil {
-		t.Fatalf("Expected a nil manifest but got %s", resp.GetManifest())
-	}
+	// Plugin version and manifest metadata are volatile (build-time dependent).
 }
 
 func testGetPluginCapabilitiesRequest() *csi.GetPluginCapabilitiesRequest {
