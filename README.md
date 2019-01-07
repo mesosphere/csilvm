@@ -187,7 +187,7 @@ The following command-line utilties must be present in the `PATH`:
 
 For RAID1 support the `raid1` and `dm_raid` kernel modules must be available.
 
-This plugin's tests are run in a centos 7.3.1611 container with lvm2-2.02.177 installed from source.
+This plugin's tests are run in a centos 7.3.1611 container with lvm2-2.02.183 installed from source.
 It should work with newer versions of lvm2 that are backwards-compatible in their command-line interface.
 It may work with older versions.
 
