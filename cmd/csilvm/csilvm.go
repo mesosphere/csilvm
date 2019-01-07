@@ -71,6 +71,7 @@ func main() {
 		grpc.UnaryInterceptor(
 			csilvm.ChainUnaryServer(
 				csilvm.LoggingInterceptor(),
+				csilvm.SerializingInterceptor(),
 			),
 		),
 	)
