@@ -3,17 +3,25 @@ FROM centos:7.3.1611
 
 RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git util-linux xfsprogs file
 
-ENV LVM2_DOWNLOAD_URL http://mirrors.kernel.org/sourceware/lvm2/LVM2.2.02.177.tgz
+RUN curl -O http://releases.pagure.org/libaio/libaio-0.3.110.tar.gz && \
+    curl http://releases.pagure.org/libaio/libaio-0.3.110.tar.gz.sha256sum | sha256sum --check && \
+    tar -xzvf libaio-0.3.110.tar.gz && \
+    cd libaio-0.3.110 && \
+    make install
 
-RUN curl -fsSL "$LVM2_DOWNLOAD_URL" -o LVM2.2.02.177.tgz && \
-      tar -xzvf LVM2.2.02.177.tgz && \
-      cd LVM2.2.02.177 && \
+ARG LVM_VERSION=LVM2.2.02.183
+
+ENV LVM2_DOWNLOAD_URL https://www.sourceware.org/pub/lvm2/$LVM_VERSION.tgz
+
+RUN curl -fsSL "$LVM2_DOWNLOAD_URL" -o $LVM_VERSION.tgz && \
+      tar -xzvf $LVM_VERSION.tgz && \
+      cd $LVM_VERSION && \
       ./configure && \
       make && \
       make install && \
       ldconfig && \
       cd .. && \
-      rm -f LVM2.2.02.177.tgz
+      rm -f $LVM_VERSION.tgz
 
 ENV GOLANG_VERSION 1.9.2
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
