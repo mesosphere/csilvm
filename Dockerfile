@@ -3,8 +3,8 @@ FROM centos:7.3.1611
 
 RUN yum install -y gcc-4.8.5 gcc-c++-4.8.5 make git util-linux xfsprogs file
 
-RUN curl -O http://releases.pagure.org/libaio/libaio-0.3.110.tar.gz && \
-    curl http://releases.pagure.org/libaio/libaio-0.3.110.tar.gz.sha256sum | sha256sum --check && \
+RUN curl -O https://releases.pagure.org/libaio/libaio-0.3.110.tar.gz && \
+    curl https://releases.pagure.org/libaio/libaio-0.3.110.tar.gz.sha256sum | sha256sum --check && \
     tar -xzvf libaio-0.3.110.tar.gz && \
     cd libaio-0.3.110 && \
     make install
