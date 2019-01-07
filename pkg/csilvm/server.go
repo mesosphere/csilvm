@@ -1191,6 +1191,8 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 
 // Serialize all requests. This avoids issues observed when deleting 80 logical
 // volumes in parallel where calls to `lvs` appear to hang.
+//
+// See https://jira.mesosphere.com/browse/DCOS_OSS-4642
 func SerializingInterceptor() grpc.UnaryServerInterceptor {
 	var lk sync.Mutex
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
