@@ -2295,7 +2295,10 @@ func TestSetup_NewVolumeGroup_BusyPhysicalVolume(t *testing.T) {
 		pv1name,
 	)
 	err = server.Setup()
-	if err.Error() != experr {
+	// TODO(gpaul): Contains instead of '==' as LVM2.02.180-183 has a bug
+	// where the error is printed twice.
+	// See https://jira.mesosphere.com/browse/DCOS_OSS-4650
+	if !strings.Contains(err.Error(), experr) {
 		t.Fatal(err)
 	}
 }
