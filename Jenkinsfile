@@ -40,13 +40,6 @@ ansiColor('xterm') {
 
     stage("Build and Test") {
       withEnv(["DOCKER=yes","PACKAGE_SHA=${packageSHA}","PLUGIN_VERSION=${packageVersion}"]) {
-        // Install dependencies necessary to load raid-related kernel modules.
-        sh("sudo apt-get update")
-        sh("sudo apt-get install -y lvm2 kmod")
-	// Load the raid1 module on the host.
-        sh("sudo /sbin/modprobe raid1")
-	// Load the dm_raid module on the host.
-        sh("sudo /sbin/modprobe dm_raid")
         sh("make check")
         sh("make")
 
