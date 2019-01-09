@@ -70,6 +70,7 @@ func main() {
 	grpcOpts = append(grpcOpts,
 		grpc.UnaryInterceptor(
 			csilvm.ChainUnaryServer(
+				csilvm.SerializingInterceptor(),
 				csilvm.LoggingInterceptor(),
 			),
 		),

@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 	"github.com/mesosphere/csilvm/pkg/version"
 	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -1186,4 +1188,17 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 		return nil, fmt.Errorf("Unexpected parameters: %v", keys)
 	}
 	return opts, nil
+}
+
+// Serialize all requests. This avoids issues observed when deleting 80 logical
+// volumes in parallel where calls to `lvs` appear to hang.
+//
+// See https://jira.mesosphere.com/browse/DCOS_OSS-4642
+func SerializingInterceptor() grpc.UnaryServerInterceptor {
+	var lk sync.Mutex
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		lk.Lock()
+		defer lk.Unlock()
+		return handler(ctx, req)
+	}
 }
