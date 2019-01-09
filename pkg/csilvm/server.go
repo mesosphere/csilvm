@@ -296,37 +296,21 @@ func (s *Server) Probe(
 	for _, pvname := range s.pvnames {
 		// Check that the LVM2 metadata written to the start of the PV parses.
 		log.Printf("Looking up LVM2 physical volume %v", pvname)
-		pv, err := lvm.LookupPhysicalVolume(pvname)
+		_, err := lvm.LookupPhysicalVolume(pvname)
 		if err != nil {
 			return nil, status.Errorf(
 				codes.FailedPrecondition,
 				"Cannot lookup physical volume %v: err=%v",
 				pvname, err)
 		}
-		log.Printf("Checking physical volume %v", pvname)
-		if err := pv.Check(); err != nil {
-			return nil, status.Errorf(
-				codes.FailedPrecondition,
-				"Physical volume %v failed check: err=%v",
-				pvname,
-				err)
-		}
 	}
 	log.Printf("Looking up volume group %v", s.vgname)
-	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
+	_, err := lvm.LookupVolumeGroup(s.vgname)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.FailedPrecondition,
 			"Cannot find volume group %v",
 			s.vgname)
-	}
-	log.Printf("Checking volume group %v", s.vgname)
-	if err := volumeGroup.Check(); err != nil {
-		return nil, status.Errorf(
-			codes.FailedPrecondition,
-			"Volume group %v failed check: err=%v",
-			s.vgname,
-			err)
 	}
 	response := &csi.ProbeResponse{}
 	return response, nil
