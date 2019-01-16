@@ -23,9 +23,9 @@ RUN curl -fsSL "$LVM2_DOWNLOAD_URL" -o $LVM_VERSION.tgz && \
       cd .. && \
       rm -f $LVM_VERSION.tgz
 
-ENV GOLANG_VERSION 1.9.2
+ENV GOLANG_VERSION 1.11.4
 ENV GOLANG_DOWNLOAD_URL https://golang.org/dl/go$GOLANG_VERSION.linux-amd64.tar.gz
-ENV GOLANG_DOWNLOAD_SHA256 de874549d9a8d8d8062be05808509c09a88a248e77ec14eb77453530829ac02b
+ENV GOLANG_DOWNLOAD_SHA256 fb26c30e6a04ad937bbc657a1b5bba92f80096af1e8ee6da6430c045a8db3a5b
 
 RUN rm -rf /usr/local/go && \
       curl -fsSL "$GOLANG_DOWNLOAD_URL" -o golang.tar.gz && \
