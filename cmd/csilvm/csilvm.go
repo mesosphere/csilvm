@@ -18,6 +18,7 @@ import (
 const (
 	defaultDefaultFs         = "xfs"
 	defaultDefaultVolumeSize = 10 << 30
+	defaultRequestLimit      = 10
 )
 
 type stringsFlag []string
@@ -33,6 +34,7 @@ func (f *stringsFlag) Set(tag string) error {
 
 func main() {
 	// Configure flags
+	requestLimitF := flag.Int("request-limit", defaultRequestLimit, "Limits backlog of pending requests.")
 	vgnameF := flag.String("volume-group", "", "The name of the volume group to manage")
 	pvnamesF := flag.String("devices", "", "A comma-seperated list of devices in the volume group")
 	defaultFsF := flag.String("default-fs", defaultDefaultFs, "The default filesystem to format new volumes with")
@@ -66,10 +68,14 @@ func main() {
 		log.Fatalf("[%s] Failed to listen: %v", *vgnameF, err)
 	}
 	// Setup server
+	if *requestLimitF < 1 {
+		log.Fatalf("request-limit requires a positive, integer value instead of %d", *requestLimitF)
+	}
 	var grpcOpts []grpc.ServerOption
 	grpcOpts = append(grpcOpts,
 		grpc.UnaryInterceptor(
 			csilvm.ChainUnaryServer(
+				csilvm.RequestLimitInterceptor(*requestLimitF),
 				csilvm.SerializingInterceptor(),
 				csilvm.LoggingInterceptor(),
 			),
