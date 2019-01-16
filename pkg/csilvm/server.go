@@ -17,6 +17,7 @@ import (
 	"github.com/mesosphere/csilvm/pkg/lvm"
 	"github.com/mesosphere/csilvm/pkg/version"
 	"golang.org/x/net/context"
+	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -1199,6 +1200,19 @@ func SerializingInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		lk.Lock()
 		defer lk.Unlock()
+		return handler(ctx, req)
+	}
+}
+
+// RequestLimitInterceptor limits the number of pending requests in flight at any given time. If an incoming request
+// would exceed the specified requestLimit then an Unavailable gRPC error is returned.
+func RequestLimitInterceptor(requestLimit int) grpc.UnaryServerInterceptor {
+	sem := semaphore.NewWeighted(int64(requestLimit))
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		if !sem.TryAcquire(1) {
+			return nil, status.Error(codes.Unavailable, "Too many pending requests. Please retry later.")
+		}
+		defer sem.Release(1)
 		return handler(ctx, req)
 	}
 }
