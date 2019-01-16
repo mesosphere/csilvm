@@ -44,3 +44,7 @@ required = [
 [[constraint]]
   branch = "v1"
   name = "gopkg.in/freddierice/go-losetup.v1"
+
+[[constraint]]
+  branch = "master"
+  name = "golang.org/x/sync"
