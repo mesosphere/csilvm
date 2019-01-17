@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"google.golang.org/grpc"
 
@@ -94,8 +95,26 @@ func main() {
 	if err := s.Setup(); err != nil {
 		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
 	}
-	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
-	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
-	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
+	csi.RegisterIdentityServer(
+		grpcServer,
+		csilvm.IdentityServerValidator(csilvm.IdentityArbiter(s)),
+	)
+	var sharedLock sync.Locker
+	csi.RegisterControllerServer(
+		grpcServer,
+		func() (cs csi.ControllerServer) {
+			cs, sharedLock = csilvm.ControllerArbiter(s)
+			cs = csilvm.ControllerServerValidator(
+				cs, s.RemovingVolumeGroup(), s.SupportedFilesystems())
+			return
+		}(),
+	)
+	csi.RegisterNodeServer(
+		grpcServer,
+		csilvm.NodeServerValidator(
+			csilvm.NodeArbiter(s, sharedLock),
+			s.RemovingVolumeGroup(),
+			s.SupportedFilesystems()),
+	)
 	grpcServer.Serve(lis)
 }
