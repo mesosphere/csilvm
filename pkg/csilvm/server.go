@@ -1195,11 +1195,13 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 // volumes in parallel where calls to `lvs` appear to hang.
 //
 // See https://jira.mesosphere.com/browse/DCOS_OSS-4642
-func SerializingInterceptor() grpc.UnaryServerInterceptor {
+func SerializingInterceptor(enabled bool) grpc.UnaryServerInterceptor {
 	var lk sync.Mutex
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		lk.Lock()
-		defer lk.Unlock()
+		if enabled {
+			lk.Lock()
+			defer lk.Unlock()
+		}
 		return handler(ctx, req)
 	}
 }
