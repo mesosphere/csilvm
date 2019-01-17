@@ -43,6 +43,7 @@ func main() {
 	socketFileF := flag.String("unix-addr", "", "The path to the listening unix socket file")
 	socketFileEnvF := flag.String("unix-addr-env", "", "An optional environment variable from which to read the unix-addr")
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
+	exclusiveF := flag.Bool("exclusive-rpcs", false, "If set, all RPCs are executed in a non-overlapping manner.")
 	var tagsF stringsFlag
 	flag.Var(&tagsF, "tag", "Value to tag the volume group with (can be given multiple times)")
 	flag.Parse()
@@ -77,7 +78,7 @@ func main() {
 		grpc.UnaryInterceptor(
 			csilvm.ChainUnaryServer(
 				csilvm.RequestLimitInterceptor(*requestLimitF),
-				csilvm.SerializingInterceptor(),
+				csilvm.SerializingInterceptor(*exclusiveF),
 				csilvm.LoggingInterceptor(),
 			),
 		),
