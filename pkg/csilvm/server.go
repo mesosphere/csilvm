@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -1196,10 +1195,23 @@ func volumeOptsFromParameters(in map[string]string) (opts []lvm.CreateLogicalVol
 //
 // See https://jira.mesosphere.com/browse/DCOS_OSS-4642
 func SerializingInterceptor() grpc.UnaryServerInterceptor {
-	var lk sync.Mutex
+	// Instead of a mutex, use a weighted semaphore because it's sensitive to context cancellation and/or deadline
+	// expiration, which is important for maintaining a healthy request queue, and also helps prevent execution of
+	// operations that the calling CO is no longer interested in.
+	sem := semaphore.NewWeighted(1)
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		lk.Lock()
-		defer lk.Unlock()
+		err := sem.Acquire(ctx, 1)
+		if err != nil {
+			return nil, err
+		}
+		// Acquire can still succeed if the context is canceled, double-check it.
+		select {
+		case <-ctx.Done():
+			sem.Release(1)
+			return nil, ctx.Err()
+		default:
+		}
+		defer sem.Release(1)
 		return handler(ctx, req)
 	}
 }
