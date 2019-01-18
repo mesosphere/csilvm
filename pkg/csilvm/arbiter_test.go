@@ -479,3 +479,31 @@ func testNodeArbiter(t *testing.T, conf func(*fakeNodeServer, func() (interface{
 	default:
 	}
 }
+
+func TestCtxValues(t *testing.T) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(100*time.Second))
+	ctx = context.WithValue(ctx, "key", "value")
+	cancel()
+
+	ctx2 := ctxValues(ctx)
+	select {
+	case <-ctx2.Done():
+		t.Fatal("ctx2 unexpectedly completed")
+	default:
+	}
+
+	if d, ok := ctx2.Deadline(); ok {
+		t.Fatalf("ctx2 has an unexpected deadline: %v", d)
+	}
+
+	v := ctx2.Value("key")
+	if v.(string) != "value" {
+		t.Fatalf("unexpected value %v", v)
+	}
+
+	ctx2 = context.WithValue(ctx2, "key", "value2")
+	v = ctx2.Value("key")
+	if v.(string) != "value2" {
+		t.Fatalf("unexpected value %v", v)
+	}
+}

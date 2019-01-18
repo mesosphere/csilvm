@@ -50,6 +50,19 @@ type identityArbiter struct {
 
 type ArbiterOption func(*GenericArbiter)
 
+type preserveValuesCtx struct {
+	context.Context
+	inherited context.Context
+}
+
+func (p *preserveValuesCtx) Value(key interface{}) (val interface{}) {
+	val = p.Context.Value(key)
+	if val == nil {
+		val = p.inherited.Value(key)
+	}
+	return
+}
+
 func IdentityArbiter(server csi.IdentityServer, opt ...ArbiterOption) csi.IdentityServer {
 	var generic GenericArbiter
 	for _, f := range opt {
@@ -61,13 +74,24 @@ func IdentityArbiter(server csi.IdentityServer, opt ...ArbiterOption) csi.Identi
 	}
 }
 
+// ctxValues returns a Context that reflects the values from `ctx` without any of the
+// deadlines/cancellation associated with it.
+func ctxValues(ctx context.Context) context.Context {
+	return &preserveValuesCtx{
+		Context:   context.Background(),
+		inherited: ctx,
+	}
+}
+
 // Probe can take some time to execute: merge all in-flight Probe requests.
 func (v *identityArbiter) Probe(
 	ctx context.Context,
 	request *csi.ProbeRequest) (*csi.ProbeResponse, error) {
 
 	const key = "prb" // all probe requests are identical, merge all concurrent req's
-	worker := func() (interface{}, error) { return v.IdentityServer.Probe(ctx, request) }
+	worker := func() (interface{}, error) {
+		return v.IdentityServer.Probe(ctxValues(ctx), request)
+	}
 	res, err := v.Do(ctx, key, nil, worker)
 	if err != nil {
 		return nil, err
@@ -107,7 +131,7 @@ func (v *controllerArbiter) CreateVolume(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.CreateVolume(ctx, request)
+		return v.ControllerServer.CreateVolume(ctxValues(ctx), request)
 	}
 
 	type Nonce struct { // json encoding has predictable key order
@@ -142,7 +166,7 @@ func (v *controllerArbiter) DeleteVolume(
 	worker := func() (interface{}, error) {
 		v.removeLock.Lock()
 		defer v.removeLock.Unlock()
-		return v.ControllerServer.DeleteVolume(ctx, request)
+		return v.ControllerServer.DeleteVolume(ctxValues(ctx), request)
 	}
 
 	const ns = "del/"
@@ -160,7 +184,7 @@ func (v *controllerArbiter) ControllerPublishVolume(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.ControllerPublishVolume(ctx, request)
+		return v.ControllerServer.ControllerPublishVolume(ctxValues(ctx), request)
 	}
 	type Nonce struct { // json encoding has predictable key order
 		VolID    string   `json:"id,omitempty"`
@@ -192,7 +216,7 @@ func (v *controllerArbiter) ControllerUnpublishVolume(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.ControllerUnpublishVolume(ctx, request)
+		return v.ControllerServer.ControllerUnpublishVolume(ctxValues(ctx), request)
 	}
 	type Nonce struct { // json encoding has predictable key order
 		VolID  string `json:"id,omitempty"`
@@ -220,7 +244,7 @@ func (v *controllerArbiter) ValidateVolumeCapabilities(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.ValidateVolumeCapabilities(ctx, request)
+		return v.ControllerServer.ValidateVolumeCapabilities(ctxValues(ctx), request)
 	}
 	type Nonce struct { // json encoding has predictable key order
 		VolID   string   `json:"id,omitempty"`
@@ -248,7 +272,7 @@ func (v *controllerArbiter) ListVolumes(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.ListVolumes(ctx, request)
+		return v.ControllerServer.ListVolumes(ctxValues(ctx), request)
 	}
 	const ns = "list/"
 	res, err := v.Do(ctx, ns+request.StartingToken, nil, worker)
@@ -295,7 +319,7 @@ func (v *controllerArbiter) GetCapacity(
 	worker := func() (interface{}, error) {
 		v.removeLock.RLock()
 		defer v.removeLock.RUnlock()
-		return v.ControllerServer.GetCapacity(ctx, request)
+		return v.ControllerServer.GetCapacity(ctxValues(ctx), request)
 	}
 	const ns = "cap/"
 	res, err := v.Do(ctx, ns+string(buf), nil, worker)
@@ -333,7 +357,7 @@ func (v *nodeArbiter) NodePublishVolume(
 	worker := func() (interface{}, error) {
 		v.lock.Lock()
 		defer v.lock.Unlock()
-		return v.NodeServer.NodePublishVolume(ctx, request)
+		return v.NodeServer.NodePublishVolume(ctxValues(ctx), request)
 	}
 	const ns = "pub/"
 	type Key struct {
@@ -375,7 +399,7 @@ func (v *nodeArbiter) NodeUnpublishVolume(
 	worker := func() (interface{}, error) {
 		v.lock.Lock()
 		defer v.lock.Unlock()
-		return v.NodeServer.NodeUnpublishVolume(ctx, request)
+		return v.NodeServer.NodeUnpublishVolume(ctxValues(ctx), request)
 	}
 	const ns = "unpub/"
 	type Key struct {
