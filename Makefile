@@ -72,5 +72,5 @@ all: build
 .PHONY: sudo-test
 sudo-test: MKNOD=$(shell for i in 0 1 2 3 4 5 6 7 8; do echo "(test -e /dev/loop$$i || mknod -m 0660 /dev/loop$$i b 7 $$i) &&"; done)
 sudo-test: dev-image
-	$(TEST_PREFIX) sh -c "$(MKNOD) go test -c -i ./pkg/lvm && ./lvm.test -test.v -test.run=${FILTER}"
-	$(TEST_PREFIX) sh -c "$(MKNOD) go test -c -i ./pkg/csilvm && ./csilvm.test -test.v -test.run=${FILTER}"
+	$(TEST_PREFIX) sh -c "$(MKNOD) go test -race -c -i ./pkg/lvm && ./lvm.test -test.v -test.run=${FILTER}"
+	$(TEST_PREFIX) sh -c "$(MKNOD) go test -race -c -i ./pkg/csilvm && ./csilvm.test -test.v -test.run=${FILTER}"
