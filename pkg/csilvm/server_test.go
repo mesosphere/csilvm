@@ -62,3 +62,49 @@ func TestRequestLimitInterceptor(t *testing.T) {
 		t.Fatalf("expected 5 requests to be handled instead of %d", handled)
 	}
 }
+
+func TestSerializingInterceptor(t *testing.T) {
+	const workers = 100
+	var g sync.WaitGroup
+	g.Add(workers)
+	calls := 0
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		defer g.Done()
+		// this should be safe to do without additional synchronization since
+		// invocations of this handler should be serialized by interceptor.
+		// requires testing with the -race flag.
+		calls++
+		return nil, nil
+	}
+	si := SerializingInterceptor()
+	for i := 0; i < workers; i++ {
+		go si(context.Background(), nil, nil, handler)
+	}
+	g.Wait()
+	if calls != 100 {
+		t.Fatalf("expected %d calls instead of %d", workers, calls)
+	}
+}
+
+func TestSerializingInterceptorCanceled(t *testing.T) {
+	const workers = 100
+	calls := 0
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		// this should be safe to do without additional synchronization since
+		// invocations of this handler should be serialized by interceptor.
+		// requires testing with the -race flag.
+		calls++
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	si := SerializingInterceptor()
+	for i := 0; i < workers; i++ {
+		go si(ctx, nil, nil, handler)
+	}
+	if calls != 0 {
+		t.Fatalf("expected %d calls instead of %d", 0, calls)
+	}
+}
