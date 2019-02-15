@@ -30,6 +30,7 @@ type Server struct {
 	supportedFilesystems map[string]string
 	removingVolumeGroup  bool
 	tags                 []string
+	probeModules         map[string]struct{}
 }
 
 // NewServer returns a new Server that will manage the given LVM volume
@@ -55,8 +56,12 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 		},
 		false,
 		nil,
+		nil,
 	}
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		opt(s)
 	}
 	log.Printf("NewServer: %v", s)
@@ -110,6 +115,27 @@ func RemoveVolumeGroup() ServerOpt {
 func Tag(tag string) ServerOpt {
 	return func(s *Server) {
 		s.tags = append(s.tags, tag)
+	}
+}
+
+// ProbeModules configures the server to query the loaded kernel modules to ensure
+// that prerequisite modules are loaded before any operations are executed.
+// This option may be specified multiple times to append additional module requirements.
+func ProbeModules(required []string) ServerOpt {
+	if len(required) == 0 {
+		return nil
+	}
+	m := make(map[string]struct{})
+	for _, r := range required {
+		m[r] = struct{}{}
+	}
+	return func(s *Server) {
+		if s.probeModules == nil {
+			s.probeModules = make(map[string]struct{}, len(m))
+		}
+		for k := range m {
+			s.probeModules[k] = struct{}{}
+		}
 	}
 }
 
@@ -289,6 +315,32 @@ func (s *Server) GetPluginCapabilities(
 func (s *Server) Probe(
 	ctx context.Context,
 	request *csi.ProbeRequest) (*csi.ProbeResponse, error) {
+	if len(s.probeModules) > 0 {
+		mods := make(map[string]struct{})
+		listed, err := listModules()
+		if err != nil {
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"Cannot resolve kernel modules: err=%v",
+				err)
+		}
+		for _, m := range listed {
+			mods[m] = struct{}{}
+		}
+		var missing []string
+		for m := range s.probeModules {
+			if _, found := mods[m]; found {
+				continue
+			}
+			missing = append(missing, m)
+		}
+		if len(missing) > 0 {
+			return nil, status.Errorf(
+				codes.FailedPrecondition,
+				"One or more kernel modules are missing: %v",
+				missing)
+		}
+	}
 	if s.removingVolumeGroup {
 		// We're busy removing the volume-group so no need to perform health checks.
 		response := &csi.ProbeResponse{}
