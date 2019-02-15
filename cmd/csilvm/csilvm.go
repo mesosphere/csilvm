@@ -44,6 +44,8 @@ func main() {
 	removeF := flag.Bool("remove-volume-group", false, "If set, the volume group will be removed when ProbeNode is called.")
 	var tagsF stringsFlag
 	flag.Var(&tagsF, "tag", "Value to tag the volume group with (can be given multiple times)")
+	var probeModulesF stringsFlag
+	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -83,7 +85,10 @@ func main() {
 	)
 	grpcServer := grpc.NewServer(grpcOpts...)
 	var opts []csilvm.ServerOpt
-	opts = append(opts, csilvm.DefaultVolumeSize(*defaultVolumeSizeF))
+	opts = append(opts,
+		csilvm.DefaultVolumeSize(*defaultVolumeSizeF),
+		csilvm.ProbeModules(probeModulesF),
+	)
 	if *removeF {
 		opts = append(opts, csilvm.RemoveVolumeGroup())
 	}
