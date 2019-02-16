@@ -2193,6 +2193,24 @@ func TestProbe(t *testing.T) {
 	}
 }
 
+func TestProbe_MissingRequiredModule(t *testing.T) {
+	// Same as TestProbe() except that it attempts to verify that a ficticious
+	// module is loaded.
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, ProbeModules([]string{
+		"no_such_module",
+	}))
+	defer clean()
+	req := testProbeRequest()
+	_, err := client.Probe(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected probe failure due to missing module")
+	}
+	t.Log(err)
+}
+
 func TestSetup_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	vgname := testvgname()
 	pv1name, pv1clean := testpv()
@@ -2860,6 +2878,11 @@ func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client
 			panic(x)
 		}
 	}()
+
+	serverOpts = append(serverOpts, ProbeModules([]string{
+		"dm_raid",
+		"raid1",
+	}))
 
 	// Create a volume group for the server to manage.
 	// Create a volume group containing the physical volume.
