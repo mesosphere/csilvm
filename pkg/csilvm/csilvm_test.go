@@ -6,6 +6,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -999,7 +1001,8 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
 	defer pvclean()
-	client, clean := startTest(vgname, []string{pvname})
+	tag := "vg_asset_123"
+	client, clean := startTest(vgname, []string{pvname}, Tag(tag))
 	defer clean()
 	var infos []*csi.Volume
 	// Add the first volume.
@@ -1040,6 +1043,25 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 		}
 		if !had {
 			t.Fatalf("Cannot find volume info %+v in %+v.", entry.GetVolume(), infos)
+		}
+
+		// This validates that create and list both properly return the tags attribute.
+		attr := entry.GetVolume().GetAttributes()
+		etags, ok := attr[attrTags]
+		if !ok {
+			t.Fatalf("volume attributes missing tags")
+		}
+		buf, err := base64.StdEncoding.DecodeString(etags)
+		if err != nil {
+			t.Fatal("failed to decode tags:", err)
+		}
+		var tags []interface{}
+		err = json.Unmarshal(buf, &tags)
+		if err != nil {
+			t.Fatal("failed to unmarshal tags:", err)
+		}
+		if !reflect.DeepEqual(tags, []interface{}{tag}) {
+			t.Fatalf("unexpected tags: %v", tags)
 		}
 	}
 }
