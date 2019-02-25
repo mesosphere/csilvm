@@ -2,6 +2,8 @@ package csilvm
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -376,6 +378,25 @@ var ErrVolumeAlreadyExists = status.Error(codes.AlreadyExists, "The volume alrea
 var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free space")
 var ErrTooFewDisks = status.Error(codes.OutOfRange, "The volume group does not have enough underlying physical devices to support the requested RAID configuration")
 
+const attrTags = "tags"
+
+func (s *Server) volumeAttributes(lv *lvm.LogicalVolume) (map[string]string, error) {
+	t, err := lv.Tags()
+	if err != nil {
+		return nil, err
+	}
+	if len(t) == 0 {
+		return nil, nil
+	}
+	buf, err := json.Marshal(t)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		attrTags: base64.StdEncoding.EncodeToString(buf),
+	}, nil
+}
+
 func (s *Server) CreateVolume(
 	ctx context.Context,
 	request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
@@ -391,11 +412,15 @@ func (s *Server) CreateVolume(
 		if err := s.validateExistingVolume(lv, request); err != nil {
 			return nil, err
 		}
+		attr, err := s.volumeAttributes(lv)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
+		}
 		response := &csi.CreateVolumeResponse{
 			&csi.Volume{
 				int64(lv.SizeInBytes()),
 				lv.Name(),
-				nil,
+				attr,
 			},
 		}
 		return response, nil
@@ -449,11 +474,15 @@ func (s *Server) CreateVolume(
 			"Error in CreateLogicalVolume: err=%v",
 			err)
 	}
+	attr, err := s.volumeAttributes(lv)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
+	}
 	response := &csi.CreateVolumeResponse{
 		&csi.Volume{
 			int64(lv.SizeInBytes()),
 			volumeId,
-			nil,
+			attr,
 		},
 	}
 	return response, nil
@@ -693,10 +722,14 @@ func (s *Server) ListVolumes(
 		if err != nil {
 			return nil, ErrVolumeNotFound
 		}
+		attr, err := s.volumeAttributes(lv)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
+		}
 		info := &csi.Volume{
 			int64(lv.SizeInBytes()),
 			volname,
-			nil,
+			attr,
 		}
 		log.Printf("Found volume %v (%v bytes)", volname, lv.SizeInBytes())
 		entry := &csi.ListVolumesResponse_Entry{info}
