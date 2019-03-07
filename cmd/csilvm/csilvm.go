@@ -46,6 +46,7 @@ func main() {
 	flag.Var(&tagsF, "tag", "Value to tag the volume group with (can be given multiple times)")
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
+	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -73,6 +74,12 @@ func main() {
 	if *requestLimitF < 1 {
 		log.Fatalf("request-limit requires a positive, integer value instead of %d", *requestLimitF)
 	}
+	// TODO(jdef) at some point we should require the node-id flag since it's
+	// a required part of the CSI spec.
+	const defaultMaxStringLen = 128
+	if len(*nodeIDF) > defaultMaxStringLen {
+		log.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
+	}
 	var grpcOpts []grpc.ServerOption
 	grpcOpts = append(grpcOpts,
 		grpc.UnaryInterceptor(
@@ -84,7 +91,9 @@ func main() {
 		),
 	)
 	grpcServer := grpc.NewServer(grpcOpts...)
-	var opts []csilvm.ServerOpt
+	opts := []csilvm.ServerOpt{
+		csilvm.NodeID(*nodeIDF),
+	}
 	opts = append(opts,
 		csilvm.DefaultVolumeSize(*defaultVolumeSizeF),
 		csilvm.ProbeModules(probeModulesF),
