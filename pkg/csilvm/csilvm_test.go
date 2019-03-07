@@ -2197,6 +2197,22 @@ func TestNodeGetIdNotSupported(t *testing.T) {
 	}
 }
 
+func TestNodeGetId(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, NodeID("foo"))
+	defer clean()
+	req := &csi.NodeGetIdRequest{}
+	resp, err := client.NodeGetId(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetNodeId() != "foo" {
+		t.Fatal("unexpected response", resp)
+	}
+}
+
 func testProbeRequest() *csi.ProbeRequest {
 	req := &csi.ProbeRequest{}
 	return req
