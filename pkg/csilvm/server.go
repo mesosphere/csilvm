@@ -33,6 +33,7 @@ type Server struct {
 	removingVolumeGroup  bool
 	tags                 []string
 	probeModules         map[string]struct{}
+	nodeID               string
 }
 
 // NewServer returns a new Server that will manage the given LVM volume
@@ -48,17 +49,13 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 		defaultVolumeSize = 10 << 30
 	)
 	s := &Server{
-		vgname,
-		pvnames,
-		nil,
-		defaultVolumeSize,
-		map[string]string{
+		vgname:            vgname,
+		pvnames:           pvnames,
+		defaultVolumeSize: defaultVolumeSize,
+		supportedFilesystems: map[string]string{
 			"":        defaultFs,
 			defaultFs: defaultFs,
 		},
-		false,
-		nil,
-		nil,
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -83,6 +80,12 @@ func (s *Server) RemovingVolumeGroup() bool {
 }
 
 type ServerOpt func(*Server)
+
+func NodeID(nid string) ServerOpt {
+	return func(s *Server) {
+		s.nodeID = nid
+	}
+}
 
 // DefaultVolumeSize sets the default size in bytes of new volumes if
 // no volume capacity is specified. To specify that a new volume
@@ -1136,8 +1139,13 @@ func (s *Server) NodeUnpublishVolume(
 func (s *Server) NodeGetId(
 	ctx context.Context,
 	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	log.Printf("NodeGetId not supported")
-	return nil, ErrCallNotImplemented
+	if s.nodeID == "" {
+		// TODO(jdef) remove this once the node-id flag is mandatory.
+		return nil, ErrCallNotImplemented
+	}
+	return &csi.NodeGetIdResponse{
+		NodeId: s.nodeID,
+	}, nil
 }
 
 func zeroPartitionTable(devicePath string) error {
