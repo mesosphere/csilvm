@@ -396,7 +396,7 @@ func (s *Server) volumeAttributes(lv *lvm.LogicalVolume) (map[string]string, err
 		return nil, err
 	}
 	return map[string]string{
-		attrTags: base64.StdEncoding.EncodeToString(buf),
+		attrTags: base64.RawURLEncoding.EncodeToString(buf),
 	}, nil
 }
 

@@ -1051,7 +1051,7 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 		if !ok {
 			t.Fatalf("volume attributes missing tags")
 		}
-		buf, err := base64.StdEncoding.DecodeString(etags)
+		buf, err := base64.RawURLEncoding.DecodeString(etags)
 		if err != nil {
 			t.Fatal("failed to decode tags:", err)
 		}
