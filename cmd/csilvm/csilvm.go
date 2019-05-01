@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -33,6 +35,8 @@ func (f *stringsFlag) Set(tag string) error {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
+
 	// Configure flags
 	requestLimitF := flag.Int("request-limit", defaultRequestLimit, "Limits backlog of pending requests.")
 	vgnameF := flag.String("volume-group", "", "The name of the volume group to manage")

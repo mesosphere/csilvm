@@ -388,15 +388,38 @@ func ValidateLogicalVolumeName(name string) error {
 
 const ErrLogicalVolumeNotFound = simpleError("lvm: logical volume not found")
 
+type lvsItem struct {
+	Name   string `json:"lv_name"`
+	VgName string `json:"vg_name"`
+	LvPath string `json:"lv_path"`
+	LvSize uint64 `json:"lv_size,string"`
+	LvTags string `json:"lv_tags"`
+}
+
+func (lv lvsItem) tagList() (tags []string) {
+	for _, tag := range strings.Split(lv.LvTags, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return
+}
+
+func (lv lvsItem) tagSet() (tags map[string]struct{}) {
+	tags = make(map[string]struct{})
+	for _, tag := range strings.Split(lv.LvTags, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			tags[tag] = struct{}{}
+		}
+	}
+	return
+}
+
 type lvsOutput struct {
 	Report []struct {
-		Lv []struct {
-			Name   string `json:"lv_name"`
-			VgName string `json:"vg_name"`
-			LvPath string `json:"lv_path"`
-			LvSize uint64 `json:"lv_size,string"`
-			LvTags string `json:"lv_tags"`
-		} `json:"lv"`
+		Lv []lvsItem `json:"lv"`
 	} `json:"report"`
 }
 
@@ -417,8 +440,22 @@ func IsLogicalVolumeNotFound(err error) bool {
 // LookupLogicalVolume looks up the logical volume in the volume group
 // with the given name.
 func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) {
+	return vg.FindLogicalVolume(func(lv lvsItem) bool { return lv.Name == name })
+}
+
+func LVMatchTag(tag string) func(lvsItem) bool {
+	return func(lv lvsItem) (matches bool) {
+		tags := lv.tagSet()
+		_, matches = tags[tag]
+		return
+	}
+}
+
+// FindLogicalVolume looks up the logical volume in the volume group
+// with the given name.
+func (vg *VolumeGroup) FindLogicalVolume(matchFirst func(lvsItem) bool) (*LogicalVolume, error) {
 	result := new(lvsOutput)
-	if err := run("lvs", result, "--options=lv_name,lv_size,vg_name", vg.Name()); err != nil {
+	if err := run("lvs", result, "--options=lv_name,lv_size,vg_name,lv_tags", vg.Name()); err != nil {
 		if IsLogicalVolumeNotFound(err) {
 			return nil, ErrLogicalVolumeNotFound
 		}
@@ -429,7 +466,7 @@ func (vg *VolumeGroup) LookupLogicalVolume(name string) (*LogicalVolume, error) 
 			if lv.VgName != vg.Name() {
 				continue
 			}
-			if lv.Name != name {
+			if matchFirst != nil && !matchFirst(lv) {
 				continue
 			}
 			return &LogicalVolume{lv.Name, lv.LvSize, vg}, nil
@@ -595,14 +632,7 @@ func (lv *LogicalVolume) Tags() ([]string, error) {
 	}
 	for _, report := range result.Report {
 		for _, lv := range report.Lv {
-			var tags []string
-			for _, tag := range strings.Split(lv.LvTags, ",") {
-				tag = strings.TrimSpace(tag)
-				if tag != "" {
-					tags = append(tags, tag)
-				}
-			}
-			return tags, nil
+			return lv.tagList(), nil
 		}
 	}
 	return nil, ErrLogicalVolumeNotFound
