@@ -223,12 +223,18 @@ Instead, it relies on LVM2 to lock around operations that are not reentrant.
 
 #### Logical volume naming
 
-The volume group name is specified at startup through the
-`-volume-group` argument.
+The volume group name is specified at startup through the `-volume-group` argument.
 
-Logical volumes are named according to the following pattern
-`<volume-group-name>_<logical-volume-name>`.
+Logical volumes names are chosen from randomly-generated, base36-encoded numbers.
+The CO-specified volume name is captured in a LV tag: `<prefix>_<fn(CO-specified-name)>`, where `<prefix>` is either of:
 
+* `VN.` - used when the CO-specified name contains *only* characters safe for LVM tags; `fn` is the identity func here.
+* `VN+` - used when the CO-specified name contains 1 or more characters unsafe for LVM tags; `fn` is base64-rawurl-encoding here.
+
+Examples:
+
+* If the CO-specified volume name is `test-volume`, then the generated LV tag is `VN.test-volume`.
+* If the CO-specified volume name is `hello volume`, then the generated LV tag is `VN+aGVsbG8gdm9sdW1l`.
 
 #### SINGLE_NODE_READER_ONLY
 
