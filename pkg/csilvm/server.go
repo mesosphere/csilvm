@@ -455,8 +455,14 @@ func (s *Server) CreateVolume(
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid parameters: %v", err)
 	}
-	log.Printf("Creating logical volume id=%v, size=%v, tags=%v, params=%v", volumeId, size, s.tags, request.GetParameters())
-	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags, lvopts...)
+
+	// record the original volume name as a tag
+	tags := make([]string, len(s.tags), len(s.tags)+1)
+	copy(tags, s.tags)
+	tags = append(tags, s.volumeNameToTag(request.GetName()))
+
+	log.Printf("Creating logical volume id=%v, size=%v, tags=%v, params=%v", volumeId, size, tags, request.GetParameters())
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, tags, lvopts...)
 	if err != nil {
 		if err == lvm.ErrInvalidLVName {
 			return nil, status.Errorf(
@@ -701,6 +707,10 @@ func (s *Server) ValidateVolumeCapabilities(
 
 func (s *Server) volumeNameToId(volname string) string {
 	return s.volumeGroup.Name() + "_" + volname
+}
+
+func (s *Server) volumeNameToTag(volname string) string {
+	return "VN+" + base64.RawURLEncoding.EncodeToString([]byte(volname))
 }
 
 func (s *Server) ListVolumes(
