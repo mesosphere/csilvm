@@ -438,7 +438,8 @@ func (s *Server) CreateVolume(
 	// Generate a random volume name and ensure that it doesn't already exist.
 	var volumeID string
 	for i := 0; i < 10 && volumeID == ""; i++ {
-		tryID := strconv.FormatUint(rand.Uint64(), 36)
+		// prefix a random number with "v" to avoid stomping on reserved names.
+		tryID := "v" + strconv.FormatUint(rand.Uint64(), 36)
 		log.Printf("Attempting to allocate id=%v for requested volume %q", tryID, request.GetName())
 		if _, err := s.volumeGroup.LookupLogicalVolume(tryID); err == nil {
 			log.Printf("Volume id %s already exists, trying again..", tryID)
