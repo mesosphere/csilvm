@@ -225,11 +225,12 @@ Instead, it relies on LVM2 to lock around operations that are not reentrant.
 
 The volume group name is specified at startup through the `-volume-group` argument.
 
-Logical volumes names are chosen from randomly-generated, base36-encoded numbers.
-The CO-specified volume name is captured in a LV tag: `<prefix>_<fn(CO-specified-name)>`, where `<prefix>` is either of:
+Logical volume names are derived from randomly generated, base36-encoded numbers and are prefixed with `csilv`, for example: `csilv9T8s7d3`.
 
-* `VN.` - used when the CO-specified name contains *only* characters safe for LVM tags; `fn` is the identity func here.
-* `VN+` - used when the CO-specified name contains 1 or more characters unsafe for LVM tags; `fn` is base64-rawurl-encoding here.
+The CO-specified volume name is captured in a LV tag conforming to one of the following formats:
+
+* `VN.<CO-specified-name>`, if the CO-specified name contains *only* characters safe for LVM tags (`A-Z a-z 0-9 + _ . -`).
+* `VN+<base64-rawurlencode(CO-specified-name)>`, otherwise. Encoding is performed without padding.
 
 Examples:
 
