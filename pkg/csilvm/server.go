@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -403,12 +404,18 @@ func (s *Server) volumeAttributes(lv *lvm.LogicalVolume) (map[string]string, err
 func (s *Server) CreateVolume(
 	ctx context.Context,
 	request *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+
+	// Record the original volume name as a tag.
+	encodedName := s.volumeNameToTag(request.GetName())
+	tags := make([]string, len(s.tags), len(s.tags)+1)
+	copy(tags, s.tags)
+	tags = append(tags, encodedName)
+
 	// Check whether a logical volume with the given name already
 	// exists in this volume group.
-	volumeId := s.volumeNameToId(request.GetName())
-	log.Printf("Determining whether volume with id=%v already exists", volumeId)
-	if lv, err := s.volumeGroup.LookupLogicalVolume(volumeId); err == nil {
-		log.Printf("Volume %s already exists.", request.GetName())
+	log.Printf("Determining whether volume %q with encoded name %v already exists", request.GetName(), encodedName)
+	if lv, err := s.volumeGroup.FindLogicalVolume(lvm.LVMatchTag(encodedName)); err == nil {
+		log.Printf("Volume %s already exists.", encodedName)
 		// The volume already exists. Determine whether or not the
 		// existing volume satisfies the request. If so, return a
 		// successful response. If not, return ErrVolumeAlreadyExists.
@@ -428,7 +435,23 @@ func (s *Server) CreateVolume(
 		}
 		return response, nil
 	}
-	log.Printf("Volume with id=%v does not already exist", volumeId)
+	// Generate a random volume name and ensure that it doesn't already exist.
+	var volumeID string
+	const lvPrefix = "csilv"
+	for i := 0; i < 10 && volumeID == ""; i++ {
+		// prefix a random number to avoid stomping on reserved names.
+		tryID := lvPrefix + strconv.FormatUint(rand.Uint64(), 36)
+		log.Printf("Attempting to allocate id=%v for requested volume %q", tryID, request.GetName())
+		if _, err := s.volumeGroup.LookupLogicalVolume(tryID); err == nil {
+			log.Printf("Volume id %s already exists, trying again..", tryID)
+			continue
+		}
+		volumeID = tryID
+	}
+	if volumeID == "" {
+		return nil, status.Error(codes.Internal, "Failed to allocate volume ID")
+	}
+	log.Printf("Volume with id=%v does not already exist", volumeID)
 	layout, err := takeVolumeLayoutFromParameters(dupParams(request.GetParameters()))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Invalid volume layout: err=%v", err)
@@ -455,8 +478,9 @@ func (s *Server) CreateVolume(
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid parameters: %v", err)
 	}
-	log.Printf("Creating logical volume id=%v, size=%v, tags=%v, params=%v", volumeId, size, s.tags, request.GetParameters())
-	lv, err := s.volumeGroup.CreateLogicalVolume(volumeId, size, s.tags, lvopts...)
+
+	log.Printf("Creating logical volume id=%v, size=%v, tags=%v, params=%v", volumeID, size, tags, request.GetParameters())
+	lv, err := s.volumeGroup.CreateLogicalVolume(volumeID, size, tags, lvopts...)
 	if err != nil {
 		if err == lvm.ErrInvalidLVName {
 			return nil, status.Errorf(
@@ -484,7 +508,7 @@ func (s *Server) CreateVolume(
 	response := &csi.CreateVolumeResponse{
 		&csi.Volume{
 			int64(lv.SizeInBytes()),
-			volumeId,
+			volumeID,
 			attr,
 		},
 	}
@@ -701,6 +725,33 @@ func (s *Server) ValidateVolumeCapabilities(
 
 func (s *Server) volumeNameToId(volname string) string {
 	return s.volumeGroup.Name() + "_" + volname
+}
+
+const (
+	tagVolumeNameEncodedPrefix = "VN+" // used when volume name is not tag-safe
+	tagVolumeNamePlainPrefix   = "VN." // used when volume name is tag-safe
+)
+
+var tagSafeChars map[rune]struct{} = func() map[rune]struct{} {
+	const safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_+.-1234567890"
+	m := make(map[rune]struct{})
+	for _, r := range safe {
+		m[r] = struct{}{}
+	}
+	return m
+}()
+
+// volumeNameToTag attempts to preserve the suggested volume name as a suffix of the
+// returned string, unless it contains unsafe chars in which case it is encoded.
+func (s *Server) volumeNameToTag(volname string) string {
+	for _, r := range volname {
+		if _, ok := tagSafeChars[r]; ok {
+			continue
+		}
+		return tagVolumeNameEncodedPrefix +
+			base64.RawURLEncoding.EncodeToString([]byte(volname))
+	}
+	return tagVolumeNamePlainPrefix + volname
 }
 
 func (s *Server) ListVolumes(

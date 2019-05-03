@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -29,8 +30,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm/pkg/cleanup"
 	"github.com/mesosphere/csilvm/pkg/lvm"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // The size of the physical volumes we create in our tests.
@@ -200,13 +199,26 @@ func TestCreateVolume(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+}
+
+func checkAttributesIncludeVolumeTag(t *testing.T, info *csi.Volume, name string) {
+	attr := info.GetAttributes()
+	tags := tagsFromAttributes(t, attr)
+	var found bool
+	for _, tag := range tags {
+		found = (tag == (tagVolumeNamePlainPrefix + "test-volume"))
+		if found {
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Expected volume ID (%v) to have a tag with the suffix (%v).", info.GetId(), name)
 	}
 }
 
 func TestCreateVolume_WithTag(t *testing.T) {
-	expected := []string{"some-tag"}
+	expected := []string{"some-tag", tagVolumeNamePlainPrefix + "test-volume"}
 	vgname := testvgname()
 	pvname, pvclean := testpv()
 	defer pvclean()
@@ -221,13 +233,12 @@ func TestCreateVolume_WithTag(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
-	}
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 	vgnames, err := lvm.ListVolumeGroupNames()
 	if err != nil {
 		panic(err)
 	}
+	sort.Strings(expected)
 	found := false
 	for _, vgname := range vgnames {
 		vg, err := lvm.LookupVolumeGroup(vgname)
@@ -246,6 +257,7 @@ func TestCreateVolume_WithTag(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		sort.Strings(tags)
 		if !reflect.DeepEqual(tags, expected) {
 			t.Fatalf("Expected tags not found %v != %v", expected, tags)
 		}
@@ -274,9 +286,7 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	if uint64(info.GetCapacityBytes()) != defaultVolumeSize {
 		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
-	}
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_Idempotent(t *testing.T) {
@@ -384,7 +394,7 @@ func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
 	req.VolumeCapabilities[1].GetMount().FsType = "ext4"
 	_, err = client.CreateVolume(context.Background(), req)
 	if !grpcErrorEqual(err, ErrVolumeAlreadyExists) {
-		t.Fatal(err)
+		t.Fatal("expected 'already exists' error instead of ", err)
 	}
 }
 
@@ -471,6 +481,8 @@ func TestCreateVolumeCapacityRangeNotSatisfied(t *testing.T) {
 	}
 }
 
+/* TODO(jdef) re-enable this test once we add length validation
+
 func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
@@ -485,9 +497,10 @@ func TestCreateVolumeInvalidVolumeName(t *testing.T) {
 	expdesc := "The volume name is invalid: err=lvm: Name contains invalid character, valid set includes: [A-Za-z0-9_+.-]"
 	experr := status.Error(codes.InvalidArgument, expdesc)
 	if !grpcErrorEqual(err, experr) {
-		t.Fatal(err)
+		t.Fatal("expected 'invalid argument' error instead of ", err)
 	}
 }
+*/
 
 func TestCreateVolume_VolumeLayout_Linear(t *testing.T) {
 	vgname := testvgname()
@@ -507,9 +520,7 @@ func TestCreateVolume_VolumeLayout_Linear(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
-	}
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
@@ -532,9 +543,7 @@ func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
-	}
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
@@ -562,9 +571,7 @@ func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	if !strings.HasSuffix(info.GetId(), req.GetName()) {
-		t.Fatalf("Expected volume ID (%v) to name as a suffix (%v).", info.GetId(), req.GetName())
-	}
+	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_TooFewDisks(t *testing.T) {
@@ -1033,7 +1040,9 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	if len(entries) != len(infos) {
 		t.Fatalf("ListVolumes returned %v entries, expected %d.", len(entries), len(infos))
 	}
-	for _, entry := range entries {
+	nameTags := []string{"VN.test-volume-1", "VN.test-volume-2"}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].GetVolume().GetId() < entries[j].GetVolume().GetId() })
+	for i, entry := range entries {
 		had := false
 		for _, info := range infos {
 			if reflect.DeepEqual(info, entry.GetVolume()) {
@@ -1047,23 +1056,35 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 
 		// This validates that create and list both properly return the tags attribute.
 		attr := entry.GetVolume().GetAttributes()
-		etags, ok := attr[attrTags]
-		if !ok {
-			t.Fatalf("volume attributes missing tags")
-		}
-		buf, err := base64.RawURLEncoding.DecodeString(etags)
-		if err != nil {
-			t.Fatal("failed to decode tags:", err)
-		}
-		var tags []interface{}
-		err = json.Unmarshal(buf, &tags)
-		if err != nil {
-			t.Fatal("failed to unmarshal tags:", err)
-		}
-		if !reflect.DeepEqual(tags, []interface{}{tag}) {
+		tags := tagsFromAttributes(t, attr)
+		expected := []string{tag, nameTags[i]}
+		sort.Strings(expected)
+		sort.Strings(tags)
+		if !reflect.DeepEqual(tags, expected) {
 			t.Fatalf("unexpected tags: %v", tags)
 		}
 	}
+}
+
+func tagsFromAttributes(t *testing.T, attr map[string]string) []string {
+	etags, ok := attr[attrTags]
+	if !ok {
+		t.Fatalf("volume attributes missing tags")
+	}
+	buf, err := base64.RawURLEncoding.DecodeString(etags)
+	if err != nil {
+		t.Fatal("failed to decode tags:", err)
+	}
+	var itags []interface{}
+	err = json.Unmarshal(buf, &itags)
+	if err != nil {
+		t.Fatal("failed to unmarshal tags:", err)
+	}
+	tags := make([]string, len(itags))
+	for i := range itags {
+		tags[i] = itags[i].(string)
+	}
+	return tags
 }
 
 func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
