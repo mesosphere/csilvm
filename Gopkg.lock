@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:47fe89a242ccbae03d31b4c665d3d983786acd316c0d7c51bcfa0d019b205004"
+  name = "github.com/cactus/go-statsd-client"
+  packages = ["statsd"]
+  pruneopts = ""
+  revision = "138b925ccdf617776955904ba7759fce64406cec"
+  version = "v3.1.1"
+
+[[projects]]
   digest = "1:1ac4fce81586ed200df14dc9669be0d659b84bbdc2b57e32268c0cd4c5d5d1ed"
   name = "github.com/container-storage-interface/spec"
   packages = [
@@ -42,7 +50,10 @@
 [[projects]]
   digest = "1:7ebd2ed0996b640ecc36fb9a4015c50d47a6e743b34faab0250d94d7ffb07805"
   name = "github.com/uber-go/tally"
-  packages = ["."]
+  packages = [
+    ".",
+    "statsd",
+  ]
   pruneopts = ""
   revision = "e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2"
   version = "v3.3.8"
@@ -141,11 +152,13 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/cactus/go-statsd-client/statsd",
     "github.com/container-storage-interface/spec/lib/go",
     "github.com/container-storage-interface/spec/lib/go/csi/v0",
     "github.com/golang/protobuf/protoc-gen-go",
     "github.com/google/uuid",
     "github.com/uber-go/tally",
+    "github.com/uber-go/tally/statsd",
     "golang.org/x/net/context",
     "golang.org/x/sync/semaphore",
     "google.golang.org/grpc",
