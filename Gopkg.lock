@@ -2,16 +2,19 @@
 
 
 [[projects]]
+  digest = "1:1ac4fce81586ed200df14dc9669be0d659b84bbdc2b57e32268c0cd4c5d5d1ed"
   name = "github.com/container-storage-interface/spec"
   packages = [
     "lib/go",
-    "lib/go/csi/v0"
+    "lib/go/csi/v0",
   ]
+  pruneopts = ""
   revision = "35d9f9d77954980e449e52c3f3e43c21bd8171f5"
   version = "v0.2.0"
 
 [[projects]]
   branch = "master"
+  digest = "1:5baa2c02dc99e7e19da7e5f78f5df65649f0c45ffc2bfd695faa712a4d6ac779"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
@@ -23,18 +26,30 @@
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
-    "ptypes/timestamp"
+    "ptypes/timestamp",
   ]
+  pruneopts = ""
   revision = "17ce1425424ab154092bbb43af630bd647f3bb0d"
 
 [[projects]]
+  digest = "1:c1d7e883c50a26ea34019320d8ae40fad86c9e5d56e63a1ba2cb618cef43e986"
   name = "github.com/google/uuid"
   packages = ["."]
+  pruneopts = ""
   revision = "064e2069ce9c359c118179501254f67d7d37ba24"
   version = "0.2"
 
 [[projects]]
+  digest = "1:7ebd2ed0996b640ecc36fb9a4015c50d47a6e743b34faab0250d94d7ffb07805"
+  name = "github.com/uber-go/tally"
+  packages = ["."]
+  pruneopts = ""
+  revision = "e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2"
+  version = "v3.3.8"
+
+[[projects]]
   branch = "master"
+  digest = "1:ac3ee562ea184c7b47276d00d7bec2a0ac19fd87451125d57a432a934e65a6e4"
   name = "golang.org/x/net"
   packages = [
     "context",
@@ -43,24 +58,30 @@
     "idna",
     "internal/timeseries",
     "lex/httplex",
-    "trace"
+    "trace",
   ]
+  pruneopts = ""
   revision = "66aacef3dd8a676686c7ae3716979581e8b03c47"
 
 [[projects]]
   branch = "master"
+  digest = "1:814474ab808c5e04b9334d046f8a0060fc1724c2c02acfd00a7cc0008d675455"
   name = "golang.org/x/sync"
   packages = ["semaphore"]
+  pruneopts = ""
   revision = "37e7f081c4d4c64e13b10787722085407fe5d15f"
 
 [[projects]]
   branch = "master"
+  digest = "1:5b10d2a0d1d7103d88617b2fc877b5aefb22b4fca0cbd6a600ff816f2fb511d3"
   name = "golang.org/x/sys"
   packages = ["unix"]
+  pruneopts = ""
   revision = "9aade4d3a3b7e6d876cd3823ad20ec45fc035402"
 
 [[projects]]
   branch = "master"
+  digest = "1:653926785eac385fd1d61dc16360a5194c68d4bf2541234363a9375d2e88a039"
   name = "golang.org/x/text"
   packages = [
     "internal/gen",
@@ -71,17 +92,21 @@
     "unicode/bidi",
     "unicode/cldr",
     "unicode/norm",
-    "unicode/rangetable"
+    "unicode/rangetable",
   ]
+  pruneopts = ""
   revision = "bd91bbf73e9a4a801adbfb97133c992678533126"
 
 [[projects]]
   branch = "master"
+  digest = "1:6f35d1c2e4ad16fb2668d65d9e8ce5564b1fdb200fcae98633ecb4cc7176fb81"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
+  pruneopts = ""
   revision = "595979c8a7bf586b2d293fb42246bf91a0b893d9"
 
 [[projects]]
+  digest = "1:b3c989821c14a572c49a8091fd1e832a5e53d3ae2fbf90ed3ea46cef4863aad9"
   name = "google.golang.org/grpc"
   packages = [
     ".",
@@ -98,20 +123,35 @@
     "stats",
     "status",
     "tap",
-    "transport"
+    "transport",
   ]
+  pruneopts = ""
   revision = "f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3"
   version = "v1.6.0"
 
 [[projects]]
   branch = "v1"
+  digest = "1:9dc754a93c1ffd8b01ee3a757a4ea9b29ec5317ac04568fab5f0ef12e1911503"
   name = "gopkg.in/freddierice/go-losetup.v1"
   packages = ["."]
+  pruneopts = ""
   revision = "fc9adea44124401d8bfef3a97eaf61b5d44cc2c6"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9740bbe189bf0cc2a62768afb68af5c174a34edb7c4e41f15f85441eaad81e1d"
+  input-imports = [
+    "github.com/container-storage-interface/spec/lib/go",
+    "github.com/container-storage-interface/spec/lib/go/csi/v0",
+    "github.com/golang/protobuf/protoc-gen-go",
+    "github.com/google/uuid",
+    "github.com/uber-go/tally",
+    "golang.org/x/net/context",
+    "golang.org/x/sync/semaphore",
+    "google.golang.org/grpc",
+    "google.golang.org/grpc/codes",
+    "google.golang.org/grpc/status",
+    "gopkg.in/freddierice/go-losetup.v1",
+  ]
   solver-name = "gps-cdcl"
   solver-version = 1
