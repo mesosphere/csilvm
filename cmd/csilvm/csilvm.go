@@ -12,7 +12,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/cactus/go-statsd-client/statsd"
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
@@ -136,7 +135,7 @@ func main() {
 		scope, closer := tally.NewRootScope(tally.ScopeOptions{
 			Prefix:   "csilvm",
 			Tags:     map[string]string{},
-			Reporter: r,
+			Reporter: reporter,
 		}, time.Second)
 		defer closer.Close()
 		opts = append(opts, csilvm.Metrics(scope))
