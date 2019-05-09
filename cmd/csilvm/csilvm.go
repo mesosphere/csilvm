@@ -12,9 +12,14 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/cactus/go-statsd-client/statsd"
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/uber-go/tally"
+	tallystatsd "github.com/uber-go/tally/statsd"
 )
 
 const (
@@ -51,6 +56,9 @@ func main() {
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
+	// Metrics-related flags
+	statsdUDPHostF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
+	statsdUDPPortF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -107,6 +115,31 @@ func main() {
 	}
 	for _, tag := range tagsF {
 		opts = append(opts, csilvm.Tag(tag))
+	}
+	if *statsdUDPHostF != "" && *statsdUDPPortF != "" {
+		statsdServerAddr := fmt.Sprintf("%s:%s", *statsdUDPHostF, *statsdUDPPortF)
+		// Set no statsd prefix, tags are already prefixed using 'csilvm'.
+		const (
+			statsdPrefix     = ""
+			maxFlushInterval = time.Second
+			maxUDPPacketSize = 1440
+		)
+		statter, _ := statsd.NewBufferedClient(
+			statsdServerAddr,
+			statsdPrefix,
+			maxFlushInterval,
+			maxUDPPacketSize,
+		)
+		reporter := tallystatsd.NewReporter(statter, tallystatsd.Options{
+			SampleRate: 1.0,
+		})
+		scope, closer := tally.NewRootScope(tally.ScopeOptions{
+			Prefix:   "csilvm",
+			Tags:     map[string]string{},
+			Reporter: r,
+		}, time.Second)
+		defer closer.Close()
+		opts = append(opts, csilvm.Metrics(scope))
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	if err := s.Setup(); err != nil {
