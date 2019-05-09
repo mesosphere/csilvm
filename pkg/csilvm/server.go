@@ -18,6 +18,7 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 	"github.com/mesosphere/csilvm/pkg/version"
+	"github.com/uber-go/tally"
 	"golang.org/x/net/context"
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
@@ -35,6 +36,7 @@ type Server struct {
 	tags                 []string
 	probeModules         map[string]struct{}
 	nodeID               string
+	metrics              tally.Scope
 }
 
 // NewServer returns a new Server that will manage the given LVM volume
@@ -57,6 +59,7 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 			"":        defaultFs,
 			defaultFs: defaultFs,
 		},
+		metrics: tally.NoopScope,
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -64,6 +67,15 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 		}
 		opt(s)
 	}
+
+	// Set default tags on metrics.
+	s.metrics = s.metrics.Tagged(map[string]string{
+		"volume-group": s.vgname,
+	})
+
+	// Configure the server uptime.
+	s.metrics.Timer("uptime").Start()
+
 	log.Printf("NewServer: %v", s)
 	return s
 }
@@ -121,6 +133,13 @@ func RemoveVolumeGroup() ServerOpt {
 func Tag(tag string) ServerOpt {
 	return func(s *Server) {
 		s.tags = append(s.tags, tag)
+	}
+}
+
+// Metrics sets the Server's tally.Scope, used for reporting metrics.
+func Metrics(scope tally.Scope) ServerOpt {
+	return func(s *Server) {
+		s.metrics = scope
 	}
 }
 
