@@ -30,10 +30,6 @@ required = [
   version = "v0.2.0"
 
 [[constraint]]
-  name = "github.com/gogo/protobuf"
-  version = "0.4.0"
-
-[[constraint]]
   branch = "master"
   name = "golang.org/x/net"
 
@@ -48,3 +44,7 @@ required = [
 [[constraint]]
   branch = "master"
   name = "golang.org/x/sync"
+
+[[constraint]]
+  name = "github.com/uber-go/tally"
+  version = "v3.3.8"
