@@ -49,7 +49,12 @@ func (s *Server) ReportUptime() context.CancelFunc {
 	}
 }
 
-func (s *Server) reportMetrics() {
+// reportStorageMetrics sets various metrics gauges. It performs LVM2 CLI commands and
+// is considered a somewhat costly operation. To avoid concurrent LVM2
+// operations (specifically lvs concurrent with lvcreate) triggering latent
+// issues we've run into this should probably not be called concurrently with
+// other RPCs.
+func (s *Server) reportStorageMetrics() {
 	// Report the number of volumes
 	volNames, err := s.volumeGroup.ListLogicalVolumeNames()
 	if err != nil {

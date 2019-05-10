@@ -289,7 +289,7 @@ func (s *Server) Setup() error {
 		return nil
 	}
 	s.volumeGroup = volumeGroup
-	s.reportMetrics()
+	s.reportStorageMetrics()
 	return nil
 }
 
@@ -522,6 +522,7 @@ func (s *Server) CreateVolume(
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
 	}
+	defer s.reportStorageMetrics()
 	response := &csi.CreateVolumeResponse{
 		&csi.Volume{
 			int64(lv.SizeInBytes()),
@@ -529,7 +530,6 @@ func (s *Server) CreateVolume(
 			attr,
 		},
 	}
-	s.reportMetrics()
 	return response, nil
 }
 
@@ -650,8 +650,8 @@ func (s *Server) DeleteVolume(
 			"Failed to remove volume: err=%v",
 			err)
 	}
+	defer s.reportStorageMetrics()
 	response := &csi.DeleteVolumeResponse{}
-	s.reportMetrics()
 	return response, nil
 }
 
@@ -808,6 +808,7 @@ func (s *Server) ListVolumes(
 		entry := &csi.ListVolumesResponse_Entry{info}
 		entries = append(entries, entry)
 	}
+	defer s.reportStorageMetrics()
 	response := &csi.ListVolumesResponse{
 		entries,
 		"",
@@ -849,6 +850,7 @@ func (s *Server) GetCapacity(
 			err)
 	}
 	log.Printf("BytesFree: %v", bytesFree)
+	defer s.reportStorageMetrics()
 	response := &csi.GetCapacityResponse{int64(bytesFree)}
 	return response, nil
 }

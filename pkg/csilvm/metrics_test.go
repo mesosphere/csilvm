@@ -2,6 +2,7 @@ package csilvm
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/uber-go/tally"
@@ -31,10 +32,7 @@ func TestMetricsUptime(t *testing.T) {
 	snap := scope.Snapshot()
 	gauges := gaugeMap(snap.Gauges())
 
-	uptimeGauge, ok := gauges.get("uptime")
-	if !ok {
-		t.Fatalf("The uptime gauge could not be found")
-	}
+	uptimeGauge := gauges.mustGet("uptime")
 	vgnameTag, ok := uptimeGauge.Tags()["volume-group"]
 	if !ok {
 		t.Fatalf("The volume-group tag could not be found")
@@ -81,7 +79,7 @@ func TestMetricsInterceptor(t *testing.T) {
 		}
 	}()
 
-	// Check that the requests metric is reported.
+	// Check that requests metrics are reported.
 	snap := scope.Snapshot()
 	counters := counterMap(snap.Counters())
 	timers := timerMap(snap.Timers())
@@ -90,28 +88,19 @@ func TestMetricsInterceptor(t *testing.T) {
 	getPluginInfoFilter := filterMetricsTags(map[string]string{
 		"method": "/csi.v0.Identity/GetPluginInfo",
 	})
-	served, ok := counters.get("requests.served", getPluginInfoFilter)
-	if !ok {
-		t.Fatalf("The requests.served counter could not be found")
-	}
+	served := counters.mustGet("requests.served", getPluginInfoFilter)
 	if served.Value() != 2 {
 		t.Fatalf("expected 2 but got %d", served.Value())
 	}
-	success, ok := counters.get("requests.success", getPluginInfoFilter)
-	if !ok {
-		t.Fatalf("The requests.success counter could not be found")
-	}
+	success := counters.mustGet("requests.success", getPluginInfoFilter)
 	if success.Value() != 2 {
 		t.Fatalf("expected 2 but got %d", served.Value())
 	}
-	_, ok = counters.get("requests.failure", getPluginInfoFilter)
+	_, ok := counters.get("requests.failure", getPluginInfoFilter)
 	if ok {
 		t.Fatalf("The requests.failure counter was not expected")
 	}
-	duration, ok := timers.get("requests.duration", getPluginInfoFilter)
-	if !ok {
-		t.Fatalf("The requests.duration timer could not be found")
-	}
+	duration := timers.mustGet("requests.duration", getPluginInfoFilter)
 	if int64(len(duration.Values())) != served.Value() {
 		t.Fatalf("expected %d but got %d", served.Value(), len(duration.Values()))
 	}
@@ -123,10 +112,7 @@ func TestMetricsInterceptor(t *testing.T) {
 	createVolumeFilter := filterMetricsTags(map[string]string{
 		"method": "/csi.v0.Controller/CreateVolume",
 	})
-	served, ok = counters.get("requests.served", createVolumeFilter)
-	if !ok {
-		t.Fatalf("The requests.served counter could not be found")
-	}
+	served = counters.mustGet("requests.served", createVolumeFilter)
 	if served.Value() != 1 {
 		t.Fatalf("expected 1 but got %d", served.Value())
 	}
@@ -134,23 +120,81 @@ func TestMetricsInterceptor(t *testing.T) {
 	if ok {
 		t.Fatalf("The requests.success counter was not expected")
 	}
-	failure, ok := counters.get("requests.failure", createVolumeFilter)
-	if !ok {
-		t.Fatalf("The requests.failure counter could not be found")
-	}
+	failure := counters.mustGet("requests.failure", createVolumeFilter)
 	if failure.Value() != 1 {
 		t.Fatalf("expected 1 but got %d", failure.Value())
 	}
-	duration, ok = timers.get("requests.duration", createVolumeFilter)
-	if !ok {
-		t.Fatalf("The requests.duration timer could not be found")
-	}
+	duration = timers.mustGet("requests.duration", createVolumeFilter)
 	if int64(len(duration.Values())) != served.Value() {
 		t.Fatalf("expected %d but got %d", served.Value(), len(duration.Values()))
 	}
 	if duration.Values()[0] <= 0 {
 		t.Fatalf("The requests.duration timer did not report a duration: %v", duration)
 	}
+}
+
+func TestReportStorageMetrics(t *testing.T) {
+	// We set an empty prefix as it adds noise to the metric names.
+	const prefix = ""
+	scope := tally.NewTestScope(prefix, nil)
+
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname}, Metrics(scope))
+	defer clean()
+
+	type expect struct {
+		volumes int
+		total   int
+		free    int
+		used    int
+	}
+	check := func(snap tally.Snapshot, exp expect) {
+		gauges := gaugeMap(snap.Gauges())
+		volumes := int(gauges.mustGet("volumes").Value())
+		if volumes != exp.volumes {
+			t.Fatalf("expected %d but got %d", exp.volumes, volumes)
+		}
+		total := int(gauges.mustGet("bytes-total").Value())
+		if total != exp.total {
+			t.Fatalf("expected %d but got %d", exp.total, total)
+		}
+		free := int(gauges.mustGet("bytes-free").Value())
+		if free != exp.free {
+			t.Fatalf("expected %d but got %d", exp.free, free)
+		}
+		used := int(gauges.mustGet("bytes-used").Value())
+		if used != exp.used {
+			t.Fatalf("expected %d but got %d", exp.used, used)
+		}
+		if exp.free+exp.used != exp.total {
+			t.Fatalf("expected %d but got %d", exp.free+exp.used, exp.total)
+		}
+	}
+
+	// Check storage metrics before a volume was created.
+	check(scope.Snapshot(), expect{
+		volumes: 0,
+		total:   100663296,
+		free:    100663296,
+		used:    0,
+	})
+
+	// A single request that fails
+	createVolumeReq := testCreateVolumeRequest()
+	_, err := client.CreateVolume(context.Background(), createVolumeReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check storage metrics after a volume was created.
+	check(scope.Snapshot(), expect{
+		volumes: 1,
+		total:   100663296,
+		free:    16777216,
+		used:    83886080,
+	})
 }
 
 type getOpts struct {
@@ -198,6 +242,14 @@ timersLoop:
 	return nil, false
 }
 
+func (m timerMap) mustGet(name string, opts ...getOpt) tally.TimerSnapshot {
+	timer, ok := m.get(name, opts...)
+	if !ok {
+		panic(fmt.Sprintf("cannot find timer %q", name))
+	}
+	return timer
+}
+
 type counterMap map[string]tally.CounterSnapshot
 
 // get finds the CounterSnapshot by name as the default map's key encodes
@@ -228,6 +280,14 @@ countersLoop:
 	return nil, false
 }
 
+func (m counterMap) mustGet(name string, opts ...getOpt) tally.CounterSnapshot {
+	counter, ok := m.get(name, opts...)
+	if !ok {
+		panic(fmt.Sprintf("cannot find counter %q", name))
+	}
+	return counter
+}
+
 type gaugeMap map[string]tally.GaugeSnapshot
 
 // get finds the GaugeSnapshot by name as the default map's key encodes
@@ -256,4 +316,12 @@ gaugesLoop:
 		}
 	}
 	return nil, false
+}
+
+func (m gaugeMap) mustGet(name string, opts ...getOpt) tally.GaugeSnapshot {
+	gauge, ok := m.get(name, opts...)
+	if !ok {
+		panic(fmt.Sprintf("cannot find gauge %q", name))
+	}
+	return gauge
 }
