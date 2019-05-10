@@ -17,7 +17,9 @@ import (
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 
+	datadogstatsd "github.com/DataDog/datadog-go/statsd"
 	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/mesosphere/csilvm/pkg/ddstatsd"
 	"github.com/uber-go/tally"
 	tallystatsd "github.com/uber-go/tally/statsd"
 )
@@ -59,6 +61,7 @@ func main() {
 	// Metrics-related flags
 	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
 	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
+	statsdFormatF := flag.String("statsd-format", "datadog", "The statsd format to use (one of: classic, datadog)")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -103,15 +106,39 @@ func main() {
 			maxFlushInterval = time.Second
 			maxUDPPacketSize = 1440
 		)
-		statter, _ := statsd.NewBufferedClient(
-			statsdServerAddr,
-			statsdPrefix,
-			maxFlushInterval,
-			maxUDPPacketSize,
-		)
-		reporter := tallystatsd.NewReporter(statter, tallystatsd.Options{
-			SampleRate: 1.0,
-		})
+		var reporter tally.StatsReporter
+		switch *statsdFormatF {
+		case "datadog":
+			// The datadog statsd client does not support setting a
+			// custom flush interval. It defaults to 100ms:
+			// https://github.com/DataDog/datadog-go/blob/40bafcb5f6c1d49df36deaf4ab019e44961d5e36/statsd/statsd.go#L150
+			client, err := datadogstatsd.NewBuffered(
+				statsdServerAddr,
+				maxUDPPacketSize,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			client.Namespace = statsdPrefix
+			reporter = ddstatsd.NewReporter(client, ddstatsd.Options{
+				SampleRate: 1.0,
+			})
+		case "classic":
+			client, err := statsd.NewBufferedClient(
+				statsdServerAddr,
+				statsdPrefix,
+				maxFlushInterval,
+				maxUDPPacketSize,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reporter = tallystatsd.NewReporter(client, tallystatsd.Options{
+				SampleRate: 1.0,
+			})
+		default:
+			log.Fatalf("unknown -statsd-format value: %q", *statsdFormatF)
+		}
 		var closer io.Closer
 		scope, closer = tally.NewRootScope(tally.ScopeOptions{
 			Prefix:   "csilvm",
