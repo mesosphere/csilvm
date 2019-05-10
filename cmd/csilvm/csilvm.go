@@ -62,6 +62,7 @@ func main() {
 	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
 	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
 	statsdFormatF := flag.String("statsd-format", "datadog", "The statsd format to use (one of: classic, datadog)")
+	statsdMaxUDPSizeF := flag.Int("statsd-max-udp-size", 1432, "The size to buffer before transmitting a statsd UDP packet")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -104,7 +105,6 @@ func main() {
 		const (
 			statsdPrefix     = ""
 			maxFlushInterval = time.Second
-			maxUDPPacketSize = 1440
 		)
 		var reporter tally.StatsReporter
 		switch *statsdFormatF {
@@ -114,7 +114,7 @@ func main() {
 			// https://github.com/DataDog/datadog-go/blob/40bafcb5f6c1d49df36deaf4ab019e44961d5e36/statsd/statsd.go#L150
 			client, err := datadogstatsd.NewBuffered(
 				statsdServerAddr,
-				maxUDPPacketSize,
+				*statsdMaxUDPSizeF,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -128,7 +128,7 @@ func main() {
 				statsdServerAddr,
 				statsdPrefix,
 				maxFlushInterval,
-				maxUDPPacketSize,
+				*statsdMaxUDPSizeF,
 			)
 			if err != nil {
 				log.Fatal(err)

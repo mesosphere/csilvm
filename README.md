@@ -142,33 +142,35 @@ It is expected that the Plugin Supervisor will launch the binary using the appro
 $ ./csilvm --help
 Usage of ./csilvm:
   -default-fs string
-    	The default filesystem to format new volumes with (default "xfs")
+      The default filesystem to format new volumes with (default "xfs")
   -default-volume-size uint
-    	The default volume size in bytes (default 10737418240)
+      The default volume size in bytes (default 10737418240)
   -devices string
-    	A comma-seperated list of devices in the volume group
+      A comma-seperated list of devices in the volume group
   -node-id string
-    	The node ID reported via the CSI Node gRPC service
+      The node ID reported via the CSI Node gRPC service
   -probe-module value
-    	Probe checks that the kernel module is loaded
+      Probe checks that the kernel module is loaded
   -remove-volume-group
-    	If set, the volume group will be removed when ProbeNode is called.
+      If set, the volume group will be removed when ProbeNode is called.
   -request-limit int
-    	Limits backlog of pending requests. (default 10)
+      Limits backlog of pending requests. (default 10)
   -statsd-format string
-    	The statsd format to use (one of: classic, datadog) (default "datadog")
+      The statsd format to use (one of: classic, datadog) (default "datadog")
+  -statsd-max-udp-size int
+      The size to buffer before transmitting a statsd UDP packet (default 1432)
   -statsd-udp-host-env-var string
-    	The name of the environment variable containing the host where a statsd service is listening for stats over UDP
+      The name of the environment variable containing the host where a statsd service is listening for stats over UDP
   -statsd-udp-port-env-var string
-    	The name of the environment variable containing the port where a statsd service is listening for stats over UDP
+      The name of the environment variable containing the port where a statsd service is listening for stats over UDP
   -tag value
-    	Value to tag the volume group with (can be given multiple times)
+      Value to tag the volume group with (can be given multiple times)
   -unix-addr string
-    	The path to the listening unix socket file
+      The path to the listening unix socket file
   -unix-addr-env string
-    	An optional environment variable from which to read the unix-addr
+      An optional environment variable from which to read the unix-addr
   -volume-group string
-    	The name of the volume group to manage
+      The name of the volume group to manage
 ```
 
 
