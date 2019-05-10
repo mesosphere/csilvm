@@ -2886,6 +2886,7 @@ func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 		grpc.UnaryInterceptor(
 			ChainUnaryServer(
 				LoggingInterceptor(),
+				MetricsInterceptor(s.metrics),
 			),
 		),
 	)
