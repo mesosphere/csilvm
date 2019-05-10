@@ -2,110 +2,90 @@
 
 
 [[projects]]
-  digest = "1:e9846ece10d1701db72a5add936bb9edc81353cdccb19be27078ca32f6c3f5d8"
-  name = "github.com/DataDog/datadog-go"
-  packages = ["statsd"]
-  pruneopts = ""
-  revision = "8a13fa761f51039f900738876f2837198fba804f"
-  version = "2.2.0"
-
-[[projects]]
-  digest = "1:47fe89a242ccbae03d31b4c665d3d983786acd316c0d7c51bcfa0d019b205004"
-  name = "github.com/cactus/go-statsd-client"
-  packages = ["statsd"]
-  pruneopts = ""
-  revision = "138b925ccdf617776955904ba7759fce64406cec"
-  version = "v3.1.1"
-
-[[projects]]
-  digest = "1:1ac4fce81586ed200df14dc9669be0d659b84bbdc2b57e32268c0cd4c5d5d1ed"
+  digest = "1:cf4f5171128e62b46299b0a7cd79543f50e62f483d2ca9364e4957c7bbee7a38"
   name = "github.com/container-storage-interface/spec"
   packages = [
     "lib/go",
     "lib/go/csi/v0",
   ]
   pruneopts = ""
-  revision = "35d9f9d77954980e449e52c3f3e43c21bd8171f5"
-  version = "v0.2.0"
+  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
+  version = "v0.3.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5baa2c02dc99e7e19da7e5f78f5df65649f0c45ffc2bfd695faa712a4d6ac779"
+  digest = "1:529d738b7976c3848cae5cf3a8036440166835e389c1f617af701eeb12a0518d"
   name = "github.com/golang/protobuf"
   packages = [
     "proto",
     "protoc-gen-go",
     "protoc-gen-go/descriptor",
     "protoc-gen-go/generator",
+    "protoc-gen-go/generator/internal/remap",
     "protoc-gen-go/grpc",
     "protoc-gen-go/plugin",
     "ptypes",
     "ptypes/any",
     "ptypes/duration",
     "ptypes/timestamp",
+    "ptypes/wrappers",
   ]
   pruneopts = ""
-  revision = "17ce1425424ab154092bbb43af630bd647f3bb0d"
+  revision = "b5d812f8a3706043e23a9cd5babf2e5423744d30"
+  version = "v1.3.1"
 
 [[projects]]
-  digest = "1:c1d7e883c50a26ea34019320d8ae40fad86c9e5d56e63a1ba2cb618cef43e986"
+  digest = "1:ad92aa49f34cbc3546063c7eb2cabb55ee2278b72842eda80e2a20a8a06a8d73"
   name = "github.com/google/uuid"
   packages = ["."]
   pruneopts = ""
-  revision = "064e2069ce9c359c118179501254f67d7d37ba24"
-  version = "0.2"
-
-[[projects]]
-  digest = "1:7ebd2ed0996b640ecc36fb9a4015c50d47a6e743b34faab0250d94d7ffb07805"
-  name = "github.com/uber-go/tally"
-  packages = [
-    ".",
-    "statsd",
-  ]
-  pruneopts = ""
-  revision = "e9a67ec1839e1f6e5133dbcca2f57bec12fdeda2"
-  version = "v3.3.8"
+  revision = "0cd6bf5da1e1c83f8b45653022c74f71af0538a4"
+  version = "v1.1.1"
 
 [[projects]]
   branch = "master"
-  digest = "1:ac3ee562ea184c7b47276d00d7bec2a0ac19fd87451125d57a432a934e65a6e4"
+  digest = "1:ccd51599eb31c3ee139de1b1fca3f5d3ddaa5ab37f3a1704a2a8426c0abd1e5b"
   name = "golang.org/x/net"
   packages = [
     "context",
+    "http/httpguts",
     "http2",
     "http2/hpack",
     "idna",
     "internal/timeseries",
-    "lex/httplex",
     "trace",
   ]
   pruneopts = ""
-  revision = "66aacef3dd8a676686c7ae3716979581e8b03c47"
+  revision = "a4d6f7feada510cc50e69a37b484cb0fdc6b7876"
 
 [[projects]]
   branch = "master"
-  digest = "1:814474ab808c5e04b9334d046f8a0060fc1724c2c02acfd00a7cc0008d675455"
+  digest = "1:9f6efefb4e401a4f699a295d14518871368eb89403f2dd23ec11dfcd2c0836ba"
   name = "golang.org/x/sync"
   packages = ["semaphore"]
   pruneopts = ""
-  revision = "37e7f081c4d4c64e13b10787722085407fe5d15f"
+  revision = "112230192c580c3556b8cee6403af37a4fc5f28c"
 
 [[projects]]
-  branch = "master"
-  digest = "1:5b10d2a0d1d7103d88617b2fc877b5aefb22b4fca0cbd6a600ff816f2fb511d3"
+  digest = "1:1132cbdac95d6a2a30f7434f7190b3b1345e85b6071e74911b1dce3e19e1543d"
   name = "golang.org/x/sys"
   packages = ["unix"]
   pruneopts = ""
-  revision = "9aade4d3a3b7e6d876cd3823ad20ec45fc035402"
+  revision = "1c9583448a9c3aa0f9a6a5241bf73c0bd8aafded"
 
 [[projects]]
-  branch = "master"
-  digest = "1:653926785eac385fd1d61dc16360a5194c68d4bf2541234363a9375d2e88a039"
+  digest = "1:740b51a55815493a8d0f2b1e0d0ae48fe48953bf7eaf3fcc4198823bf67768c0"
   name = "golang.org/x/text"
   packages = [
+    "collate",
+    "collate/build",
+    "internal/colltab",
     "internal/gen",
+    "internal/language",
+    "internal/language/compact",
+    "internal/tag",
     "internal/triegen",
     "internal/ucd",
+    "language",
     "secure/bidirule",
     "transform",
     "unicode/bidi",
@@ -114,39 +94,57 @@
     "unicode/rangetable",
   ]
   pruneopts = ""
-  revision = "bd91bbf73e9a4a801adbfb97133c992678533126"
+  revision = "342b2e1fbaa52c93f31447ad2c6abc048c63e475"
+  version = "v0.3.2"
 
 [[projects]]
   branch = "master"
-  digest = "1:6f35d1c2e4ad16fb2668d65d9e8ce5564b1fdb200fcae98633ecb4cc7176fb81"
+  digest = "1:8a19759d926bef22018755cf07db0b6d46d6bc87d2abbb8b2c9d50cb67724e97"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = ""
-  revision = "595979c8a7bf586b2d293fb42246bf91a0b893d9"
+  revision = "b515fa19cec88c32f305a962f34ae60068947aea"
 
 [[projects]]
-  digest = "1:b3c989821c14a572c49a8091fd1e832a5e53d3ae2fbf90ed3ea46cef4863aad9"
+  digest = "1:afc1b03a6d5ba3cbb2e0a12133e734d472e4df3b65f06e600a3d57a4b82f26cc"
   name = "google.golang.org/grpc"
   packages = [
     ".",
+    "balancer",
+    "balancer/base",
+    "balancer/roundrobin",
+    "binarylog/grpc_binarylog_v1",
     "codes",
     "connectivity",
     "credentials",
-    "grpclb/grpc_lb_v1/messages",
+    "credentials/internal",
+    "encoding",
+    "encoding/proto",
     "grpclog",
     "internal",
+    "internal/backoff",
+    "internal/balancerload",
+    "internal/binarylog",
+    "internal/channelz",
+    "internal/envconfig",
+    "internal/grpcrand",
+    "internal/grpcsync",
+    "internal/syscall",
+    "internal/transport",
     "keepalive",
     "metadata",
     "naming",
     "peer",
+    "resolver",
+    "resolver/dns",
+    "resolver/passthrough",
     "stats",
     "status",
     "tap",
-    "transport",
   ]
   pruneopts = ""
-  revision = "f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3"
-  version = "v1.6.0"
+  revision = "25c4f928eaa6d96443009bd842389fb4fa48664e"
+  version = "v1.20.1"
 
 [[projects]]
   branch = "v1"
@@ -160,14 +158,10 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/DataDog/datadog-go/statsd",
-    "github.com/cactus/go-statsd-client/statsd",
     "github.com/container-storage-interface/spec/lib/go",
     "github.com/container-storage-interface/spec/lib/go/csi/v0",
     "github.com/golang/protobuf/protoc-gen-go",
     "github.com/google/uuid",
-    "github.com/uber-go/tally",
-    "github.com/uber-go/tally/statsd",
     "golang.org/x/net/context",
     "golang.org/x/sync/semaphore",
     "google.golang.org/grpc",

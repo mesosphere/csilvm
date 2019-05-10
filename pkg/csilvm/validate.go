@@ -146,8 +146,21 @@ func validateCapacityRange(capacityRange *csi.CapacityRange) error {
 	if capacityRange.GetRequiredBytes() == 0 && capacityRange.GetLimitBytes() == 0 {
 		return ErrCapacityRangeUnspecified
 	}
+
+	// limit_bytes of 0 is equivalent to not setting a limit, so this is
+	// allowed. We already know required_bytes is non-zero because of the above
+	// check
+	if capacityRange.GetLimitBytes() == 0 {
+		return nil
+	}
 	if capacityRange.GetRequiredBytes() > capacityRange.GetLimitBytes() {
-		return ErrCapacityRangeInvalidSize
+		// return ErrCapacityRangeInvalidSize
+		return status.Errorf(
+			codes.InvalidArgument,
+			"required_bytes: %d cannot exceed the limit_bytes: %d",
+			capacityRange.GetRequiredBytes(),
+			capacityRange.GetLimitBytes(),
+		)
 	}
 	return nil
 }
@@ -313,6 +326,24 @@ func validateControllerGetCapabilitiesRequest(request *csi.ControllerGetCapabili
 	return nil
 }
 
+func (v *controllerServerValidator) CreateSnapshot(
+	ctx context.Context,
+	request *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	return v.inner.CreateSnapshot(ctx, request)
+}
+
+func (v *controllerServerValidator) DeleteSnapshot(
+	ctx context.Context,
+	request *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	return v.inner.DeleteSnapshot(ctx, request)
+}
+
+func (v *controllerServerValidator) ListSnapshots(
+	ctx context.Context,
+	request *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	return v.inner.ListSnapshots(ctx, request)
+}
+
 // NodeService RPCs
 
 type nodeServerValidator struct {
@@ -408,6 +439,12 @@ func (v *nodeServerValidator) NodeGetId(
 	ctx context.Context,
 	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
 	return v.inner.NodeGetId(ctx, request)
+}
+
+func (v *nodeServerValidator) NodeGetInfo(
+	ctx context.Context,
+	request *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	return v.inner.NodeGetInfo(ctx, request)
 }
 
 func (v *nodeServerValidator) NodeStageVolume(
