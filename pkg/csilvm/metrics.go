@@ -2,6 +2,8 @@ package csilvm
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"github.com/uber-go/tally"
 	"google.golang.org/grpc"
@@ -23,5 +25,25 @@ func MetricsInterceptor(scope tally.Scope) grpc.UnaryServerInterceptor {
 		}
 		scope.Counter("success").Inc(1)
 		return v, nil
+	}
+}
+
+func ReportUptime(scope tally.Scope, tags map[string]string) context.CancelFunc {
+	scope = scope.Tagged(tags)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ticker := time.NewTicker(time.Second)
+	go func() {
+		defer wg.Done()
+		gauge := scope.Gauge("uptime")
+		start := time.Now()
+		for range ticker.C {
+			elapsed := time.Now().Sub(start)
+			gauge.Update(float64(elapsed.Seconds()))
+		}
+	}()
+	return func() {
+		ticker.Stop()
+		wg.Wait()
 	}
 }

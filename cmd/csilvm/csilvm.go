@@ -177,6 +177,7 @@ func main() {
 	if err := s.Setup(); err != nil {
 		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
 	}
+	defer csilvm.ReportUptime(scope, map[string]string{"volume-group": *vgnameF})()
 	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
 	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
 	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))

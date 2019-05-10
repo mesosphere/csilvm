@@ -19,6 +19,7 @@ func TestMetricsUptime(t *testing.T) {
 		defer pvclean()
 		client, clean := startTest(vgname, []string{pvname}, Metrics(scope))
 		defer clean()
+		defer ReportUptime(scope, map[string]string{"volume-group": vgname})
 		req := testGetPluginInfoRequest()
 		_, err := client.GetPluginInfo(context.Background(), req)
 		if err != nil {
@@ -29,13 +30,13 @@ func TestMetricsUptime(t *testing.T) {
 	// Check that the uptime metric is reported and has the 'volume-group'
 	// tag.
 	snap := scope.Snapshot()
-	timers := timerMap(snap.Timers())
+	gauges := gaugeMap(snap.Gauges())
 
-	uptimeTimer, ok := timers.get("uptime")
+	uptimeGauge, ok := gauges.get("uptime")
 	if !ok {
-		t.Fatalf("The uptime timer could not be found")
+		t.Fatalf("The uptime gauge could not be found")
 	}
-	vgnameTag, ok := uptimeTimer.Tags()["volume-group"]
+	vgnameTag, ok := uptimeGauge.Tags()["volume-group"]
 	if !ok {
 		t.Fatalf("The volume-group tag could not be found")
 	}

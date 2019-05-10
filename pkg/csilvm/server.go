@@ -73,9 +73,6 @@ func NewServer(vgname string, pvnames []string, defaultFs string, opts ...Server
 		"volume-group": s.vgname,
 	})
 
-	// Configure the server uptime.
-	s.metrics.Timer("uptime").Start()
-
 	log.Printf("NewServer: %v", s)
 	return s
 }
