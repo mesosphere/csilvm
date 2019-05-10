@@ -10,21 +10,24 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	resultTypeSuccess = "success"
+	resultTypeError   = "error"
+)
+
 func MetricsInterceptor(scope tally.Scope) grpc.UnaryServerInterceptor {
-	scope = scope.SubScope("requests")
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		scope = scope.Tagged(map[string]string{
 			"method": info.FullMethod,
 		})
-		timer := scope.Timer("duration")
+		timer := scope.SubScope("requests").Timer("latency")
 		defer timer.Start().Stop()
-		scope.Counter("served").Inc(1)
 		v, err := handler(ctx, req)
 		if err != nil {
-			scope.Counter("failure").Inc(1)
+			scope.Tagged(map[string]string{"result_type": resultTypeError}).Counter("requests").Inc(1)
 			return nil, err
 		}
-		scope.Counter("success").Inc(1)
+		scope.Tagged(map[string]string{"result_type": resultTypeSuccess}).Counter("requests").Inc(1)
 		return v, nil
 	}
 }

@@ -2,7 +2,6 @@ package csilvm
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/uber-go/tally"
@@ -32,7 +31,7 @@ func TestMetricsUptime(t *testing.T) {
 	snap := scope.Snapshot()
 	gauges := gaugeMap(snap.Gauges())
 
-	uptimeGauge := gauges.mustGet("uptime")
+	uptimeGauge := gauges.mustGet(t, "uptime")
 	vgnameTag, ok := uptimeGauge.Tags()["volume-group"]
 	if !ok {
 		t.Fatalf("The volume-group tag could not be found")
@@ -88,48 +87,56 @@ func TestMetricsInterceptor(t *testing.T) {
 	getPluginInfoFilter := filterMetricsTags(map[string]string{
 		"method": "/csi.v0.Identity/GetPluginInfo",
 	})
-	served := counters.mustGet("requests.served", getPluginInfoFilter)
-	if served.Value() != 2 {
-		t.Fatalf("expected 2 but got %d", served.Value())
-	}
-	success := counters.mustGet("requests.success", getPluginInfoFilter)
+	getPluginInfoFilterSuccess := filterMetricsTags(map[string]string{
+		"method":      "/csi.v0.Identity/GetPluginInfo",
+		"result_type": resultTypeSuccess,
+	})
+	getPluginInfoFilterError := filterMetricsTags(map[string]string{
+		"method":      "/csi.v0.Identity/GetPluginInfo",
+		"result_type": resultTypeError,
+	})
+	success := counters.mustGet(t, "requests", getPluginInfoFilterSuccess)
 	if success.Value() != 2 {
-		t.Fatalf("expected 2 but got %d", served.Value())
+		t.Fatalf("expected 2 but got %d", 2)
 	}
-	_, ok := counters.get("requests.failure", getPluginInfoFilter)
+	_, ok := counters.get("requests.failure", getPluginInfoFilterError)
 	if ok {
 		t.Fatalf("The requests.failure counter was not expected")
 	}
-	duration := timers.mustGet("requests.duration", getPluginInfoFilter)
-	if int64(len(duration.Values())) != served.Value() {
-		t.Fatalf("expected %d but got %d", served.Value(), len(duration.Values()))
+	latency := timers.mustGet(t, "requests.latency", getPluginInfoFilter)
+	if int64(len(latency.Values())) != 2 {
+		t.Fatalf("expected %d but got %d", 2, len(latency.Values()))
 	}
-	if duration.Values()[0] <= 0 {
-		t.Fatalf("The requests.duration timer did not report a duration: %v", duration)
+	if latency.Values()[0] <= 0 {
+		t.Fatalf("The requests.latency timer did not report a latency: %v", latency)
 	}
 
 	// Check CreateVolume metrics
 	createVolumeFilter := filterMetricsTags(map[string]string{
 		"method": "/csi.v0.Controller/CreateVolume",
 	})
-	served = counters.mustGet("requests.served", createVolumeFilter)
-	if served.Value() != 1 {
-		t.Fatalf("expected 1 but got %d", served.Value())
-	}
-	_, ok = counters.get("requests.success", createVolumeFilter)
+	createVolumeFilterSuccess := filterMetricsTags(map[string]string{
+		"method":      "/csi.v0.Controller/CreateVolume",
+		"result_type": resultTypeSuccess,
+	})
+	createVolumeFilterError := filterMetricsTags(map[string]string{
+		"method":      "/csi.v0.Controller/CreateVolume",
+		"result_type": resultTypeError,
+	})
+	_, ok = counters.get("requests", createVolumeFilterSuccess)
 	if ok {
-		t.Fatalf("The requests.success counter was not expected")
+		t.Fatalf("The requests counter was not expected")
 	}
-	failure := counters.mustGet("requests.failure", createVolumeFilter)
+	failure := counters.mustGet(t, "requests", createVolumeFilterError)
 	if failure.Value() != 1 {
 		t.Fatalf("expected 1 but got %d", failure.Value())
 	}
-	duration = timers.mustGet("requests.duration", createVolumeFilter)
-	if int64(len(duration.Values())) != served.Value() {
-		t.Fatalf("expected %d but got %d", served.Value(), len(duration.Values()))
+	latency = timers.mustGet(t, "requests.latency", createVolumeFilter)
+	if int64(len(latency.Values())) != 1 {
+		t.Fatalf("expected %d but got %d", 1, len(latency.Values()))
 	}
-	if duration.Values()[0] <= 0 {
-		t.Fatalf("The requests.duration timer did not report a duration: %v", duration)
+	if latency.Values()[0] <= 0 {
+		t.Fatalf("The requests.latency timer did not report a latency: %v", latency)
 	}
 }
 
@@ -152,19 +159,19 @@ func TestReportStorageMetrics(t *testing.T) {
 	}
 	check := func(snap tally.Snapshot, exp expect) {
 		gauges := gaugeMap(snap.Gauges())
-		volumes := int(gauges.mustGet("volumes").Value())
+		volumes := int(gauges.mustGet(t, "volumes").Value())
 		if volumes != exp.volumes {
 			t.Fatalf("expected %d but got %d", exp.volumes, volumes)
 		}
-		total := int(gauges.mustGet("bytes-total").Value())
+		total := int(gauges.mustGet(t, "bytes-total").Value())
 		if total != exp.total {
 			t.Fatalf("expected %d but got %d", exp.total, total)
 		}
-		free := int(gauges.mustGet("bytes-free").Value())
+		free := int(gauges.mustGet(t, "bytes-free").Value())
 		if free != exp.free {
 			t.Fatalf("expected %d but got %d", exp.free, free)
 		}
-		used := int(gauges.mustGet("bytes-used").Value())
+		used := int(gauges.mustGet(t, "bytes-used").Value())
 		if used != exp.used {
 			t.Fatalf("expected %d but got %d", exp.used, used)
 		}
@@ -242,10 +249,10 @@ timersLoop:
 	return nil, false
 }
 
-func (m timerMap) mustGet(name string, opts ...getOpt) tally.TimerSnapshot {
+func (m timerMap) mustGet(t *testing.T, name string, opts ...getOpt) tally.TimerSnapshot {
 	timer, ok := m.get(name, opts...)
 	if !ok {
-		panic(fmt.Sprintf("cannot find timer %q", name))
+		t.Fatalf("cannot find timer %q", name)
 	}
 	return timer
 }
@@ -280,10 +287,10 @@ countersLoop:
 	return nil, false
 }
 
-func (m counterMap) mustGet(name string, opts ...getOpt) tally.CounterSnapshot {
+func (m counterMap) mustGet(t *testing.T, name string, opts ...getOpt) tally.CounterSnapshot {
 	counter, ok := m.get(name, opts...)
 	if !ok {
-		panic(fmt.Sprintf("cannot find counter %q", name))
+		t.Fatalf("cannot find counter %q", name)
 	}
 	return counter
 }
@@ -318,10 +325,10 @@ gaugesLoop:
 	return nil, false
 }
 
-func (m gaugeMap) mustGet(name string, opts ...getOpt) tally.GaugeSnapshot {
+func (m gaugeMap) mustGet(t *testing.T, name string, opts ...getOpt) tally.GaugeSnapshot {
 	gauge, ok := m.get(name, opts...)
 	if !ok {
-		panic(fmt.Sprintf("cannot find gauge %q", name))
+		t.Fatalf("cannot find gauge %q", name)
 	}
 	return gauge
 }

@@ -206,14 +206,20 @@ Metrics are emitted with the prefix `csilvm`.
 The following metrics are reported:
 
 - csilvm_uptime: the uptime (in seconds) of the process
-- csilvm_requests_served: number of requests served
-- csilvm_requests_failure: number of requests that failed
-- csilvm_requests_success: number of requests that succeeded
-- csilvm_requests_duration_(stddev,mean,lower,count,sum,upper): the request duration (in milliseconds)
+- csilvm_requests: number of requests served
+	tags:
+	  `result_type`: one of `success`, `error`
+	  `method`: the RPC name, e.g., `/csi.v0.Controller/CreateVolume`
+- csilvm_requests_latency_(stddev,mean,lower,count,sum,upper): the request duration (in milliseconds)
+	tags:
+	  `method`: the RPC name, e.g., `/csi.v0.Controller/CreateVolume`
 - csilvm_volumes: the number of active logical volumes
 - csilvm_bytes_total: the total number of bytes in the volume group
 - csilvm_bytes_free: the number of bytes available for creating a linear logical volume
 - csilvm_bytes_used: the number of bytes allocated to active logical volumes
+
+Furthermore, all metrics are tagged with `volume-group` set to the
+`-volume-group` command-line option.
 
 ### Runtime dependencies
 
