@@ -147,8 +147,20 @@ Usage of ./csilvm:
     	The default volume size in bytes (default 10737418240)
   -devices string
     	A comma-seperated list of devices in the volume group
+  -node-id string
+    	The node ID reported via the CSI Node gRPC service
+  -probe-module value
+    	Probe checks that the kernel module is loaded
   -remove-volume-group
     	If set, the volume group will be removed when ProbeNode is called.
+  -request-limit int
+    	Limits backlog of pending requests. (default 10)
+  -statsd-format string
+    	The statsd format to use (one of: classic, datadog) (default "datadog")
+  -statsd-udp-host-env-var string
+    	The name of the environment variable containing the host where a statsd service is listening for stats over UDP
+  -statsd-udp-port-env-var string
+    	The name of the environment variable containing the port where a statsd service is listening for stats over UDP
   -tag value
     	Value to tag the volume group with (can be given multiple times)
   -unix-addr string
@@ -172,6 +184,24 @@ It is expected that the CO will connect to the plugin through the unix socket an
 
 The plugin emits fairly verbose logs to `STDERR`.
 This is not currently configurable.
+
+
+### Metrics
+
+The plugin emits metrics in StatsD format. By default, it uses the
+[DogStatsD](http://docs.datadoghq.com/guides/dogstatsd/) format which augments
+the standard StatsD format with tags.
+
+The format of the StatsD metrics can be set using the `-statsd-format` flag. It
+defaults to `datadog` but can be set to `classic` in order to emit metrics in
+standard StatsD format.
+
+Metrics are emitted over UDP. The StatsD server's host and port are read from
+environment variables. The names of the environment variables that specify the
+StatsD server's host and port can be set using `-statsd-udp-host-env-var` and
+`-statsd-udp-port-env-var` flags, respectively.
+
+Metrics are emitted with the prefix `csilvm`.
 
 
 ### Runtime dependencies
