@@ -203,6 +203,14 @@ StatsD server's host and port can be set using `-statsd-udp-host-env-var` and
 
 Metrics are emitted with the prefix `csilvm`.
 
+The following metrics are reported:
+
+- csilvm_uptime: the uptime (in seconds) of the process
+- csilvm_requests_served: number of requests served
+- csilvm_requests_failure: number of requests that failed
+- csilvm_requests_success: number of requests that succeeded
+- csilvm_requests_duration_(stddev,mean,lower,count,sum,upper): the request duration (in milliseconds)
+
 
 ### Runtime dependencies
 
