@@ -2960,6 +2960,6 @@ func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client
 	if err := server.Setup(); err != nil {
 		panic(err)
 	}
-	clean.Add(server.ReportMetrics())
+	clean.Add(func() error { server.ReportUptime(); return nil })
 	return client, clean.Unwind
 }

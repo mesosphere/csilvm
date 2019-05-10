@@ -29,7 +29,7 @@ func MetricsInterceptor(scope tally.Scope) grpc.UnaryServerInterceptor {
 	}
 }
 
-func (s *Server) ReportMetrics() context.CancelFunc {
+func (s *Server) ReportUptime() context.CancelFunc {
 	var wg sync.WaitGroup
 	// Report uptime
 	wg.Add(1)
