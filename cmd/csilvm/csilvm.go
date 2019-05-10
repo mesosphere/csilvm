@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -56,8 +57,8 @@ func main() {
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
 	// Metrics-related flags
-	statsdUDPHostF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
-	statsdUDPPortF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
+	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
+	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -91,32 +92,11 @@ func main() {
 	if len(*nodeIDF) > defaultMaxStringLen {
 		log.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
 	}
-	var grpcOpts []grpc.ServerOption
-	grpcOpts = append(grpcOpts,
-		grpc.UnaryInterceptor(
-			csilvm.ChainUnaryServer(
-				csilvm.RequestLimitInterceptor(*requestLimitF),
-				csilvm.SerializingInterceptor(),
-				csilvm.LoggingInterceptor(),
-			),
-		),
-	)
-	grpcServer := grpc.NewServer(grpcOpts...)
-	opts := []csilvm.ServerOpt{
-		csilvm.NodeID(*nodeIDF),
-	}
-	opts = append(opts,
-		csilvm.DefaultVolumeSize(*defaultVolumeSizeF),
-		csilvm.ProbeModules(probeModulesF),
-	)
-	if *removeF {
-		opts = append(opts, csilvm.RemoveVolumeGroup())
-	}
-	for _, tag := range tagsF {
-		opts = append(opts, csilvm.Tag(tag))
-	}
-	if *statsdUDPHostF != "" && *statsdUDPPortF != "" {
-		statsdServerAddr := fmt.Sprintf("%s:%s", *statsdUDPHostF, *statsdUDPPortF)
+	scope := tally.NoopScope
+	if *statsdUDPHostEnvVarF != "" && *statsdUDPPortEnvVarF != "" {
+		statsdHost := os.Getenv(*statsdUDPHostEnvVarF)
+		statsdPort := os.Getenv(*statsdUDPPortEnvVarF)
+		statsdServerAddr := fmt.Sprintf("%s:%s", statsdHost, statsdPort)
 		// Set no statsd prefix, tags are already prefixed using 'csilvm'.
 		const (
 			statsdPrefix     = ""
@@ -132,13 +112,39 @@ func main() {
 		reporter := tallystatsd.NewReporter(statter, tallystatsd.Options{
 			SampleRate: 1.0,
 		})
-		scope, closer := tally.NewRootScope(tally.ScopeOptions{
+		var closer io.Closer
+		scope, closer = tally.NewRootScope(tally.ScopeOptions{
 			Prefix:   "csilvm",
 			Tags:     map[string]string{},
 			Reporter: reporter,
 		}, time.Second)
 		defer closer.Close()
-		opts = append(opts, csilvm.Metrics(scope))
+	}
+	var grpcOpts []grpc.ServerOption
+	grpcOpts = append(grpcOpts,
+		grpc.UnaryInterceptor(
+			csilvm.ChainUnaryServer(
+				csilvm.RequestLimitInterceptor(*requestLimitF),
+				csilvm.SerializingInterceptor(),
+				csilvm.LoggingInterceptor(),
+				csilvm.MetricsInterceptor(scope),
+			),
+		),
+	)
+	grpcServer := grpc.NewServer(grpcOpts...)
+	opts := []csilvm.ServerOpt{
+		csilvm.NodeID(*nodeIDF),
+	}
+	opts = append(opts,
+		csilvm.DefaultVolumeSize(*defaultVolumeSizeF),
+		csilvm.ProbeModules(probeModulesF),
+		csilvm.Metrics(scope),
+	)
+	if *removeF {
+		opts = append(opts, csilvm.RemoveVolumeGroup())
+	}
+	for _, tag := range tagsF {
+		opts = append(opts, csilvm.Tag(tag))
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	if err := s.Setup(); err != nil {
