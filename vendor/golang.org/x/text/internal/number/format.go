@@ -16,6 +16,13 @@ import (
 // - allow user-defined superscript notation (such as <sup>4</sup>)
 // - same for non-breaking spaces, like &nbsp;
 
+// A VisibleDigits computes digits, comma placement and trailing zeros as they
+// will be shown to the user.
+type VisibleDigits interface {
+	Digits(buf []byte, t language.Tag, scale int) Digits
+	// TODO: Do we also need to add the verb or pass a format.State?
+}
+
 // Formatting proceeds along the following lines:
 // 0) Compose rounding information from format and context.
 // 1) Convert a number into a Decimal.
@@ -32,12 +39,7 @@ type Formatter struct {
 
 func (f *Formatter) init(t language.Tag, index []uint8) {
 	f.Info = InfoFromTag(t)
-	for ; ; t = t.Parent() {
-		if ci, ok := language.CompactIndex(t); ok {
-			f.Pattern = formats[index[ci]]
-			break
-		}
-	}
+	f.Pattern = formats[index[tagToID(t)]]
 }
 
 // InitPattern initializes a Formatter for the given Pattern.

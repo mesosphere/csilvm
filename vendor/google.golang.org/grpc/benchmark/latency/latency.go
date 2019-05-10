@@ -23,13 +23,12 @@ package latency
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"time"
-
-	"golang.org/x/net/context"
 )
 
 // Dialer is a function matching the signature of net.Dial.
@@ -62,6 +61,17 @@ type Network struct {
 	Latency time.Duration // One-way latency (sending); if non-positive, no delay
 	MTU     int           // Bytes per packet; if non-positive, infinite
 }
+
+var (
+	//Local simulates local network.
+	Local = Network{0, 0, 0}
+	//LAN simulates local area network network.
+	LAN = Network{100 * 1024, 2 * time.Millisecond, 1500}
+	//WAN simulates wide area network.
+	WAN = Network{20 * 1024, 30 * time.Millisecond, 1500}
+	//Longhaul simulates bad network.
+	Longhaul = Network{1000 * 1024, 200 * time.Millisecond, 9000}
+)
 
 // Conn returns a net.Conn that wraps c and injects n's latency into that
 // connection.  This function also imposes latency for connection creation.

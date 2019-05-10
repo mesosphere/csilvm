@@ -26,6 +26,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	topologyKey = "io.mesosphere.csi.lvm/nodeId"
+)
+
+
 type Server struct {
 	vgname               string
 	pvnames              []string
@@ -313,7 +318,12 @@ func (s *Server) GetPluginInfo(
 		m[manifestBuildTime] = v.BuildTime
 	}
 
-	response := &csi.GetPluginInfoResponse{v.Product, v.Version, m}
+	response := &csi.GetPluginInfoResponse{
+		Name: v.Product,
+		VendorVersion: v.Version,
+		Manifest: m,
+	}
+
 	return response, nil
 }
 
@@ -444,10 +454,10 @@ func (s *Server) CreateVolume(
 			return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
 		}
 		response := &csi.CreateVolumeResponse{
-			&csi.Volume{
-				int64(lv.SizeInBytes()),
-				lv.Name(),
-				attr,
+			Volume: &csi.Volume{
+				CapacityBytes: int64(lv.SizeInBytes()),
+				Id: lv.Name(),
+				Attributes: attr,
 			},
 		}
 		return response, nil
@@ -524,10 +534,10 @@ func (s *Server) CreateVolume(
 	}
 	defer s.reportStorageMetrics()
 	response := &csi.CreateVolumeResponse{
-		&csi.Volume{
-			int64(lv.SizeInBytes()),
-			volumeID,
-			attr,
+		Volume: &csi.Volume{
+			CapacityBytes: int64(lv.SizeInBytes()),
+			Id: volumeID,
+			Attributes: attr,
 		},
 	}
 	return response, nil
@@ -736,8 +746,8 @@ func (s *Server) ValidateVolumeCapabilities(
 		}
 	}
 	response := &csi.ValidateVolumeCapabilitiesResponse{
-		true,
-		"",
+		Supported: true,
+		Message: "",
 	}
 	return response, nil
 }
@@ -800,18 +810,18 @@ func (s *Server) ListVolumes(
 			return nil, status.Errorf(codes.Internal, "failed to get volume attributes: err=%v", err)
 		}
 		info := &csi.Volume{
-			int64(lv.SizeInBytes()),
-			volname,
-			attr,
+			CapacityBytes: int64(lv.SizeInBytes()),
+			Id: lv.Name(),
+			Attributes: attr,
 		}
 		log.Printf("Found volume %v (%v bytes)", volname, lv.SizeInBytes())
-		entry := &csi.ListVolumesResponse_Entry{info}
+		entry := &csi.ListVolumesResponse_Entry{Volume: info}
 		entries = append(entries, entry)
 	}
 	defer s.reportStorageMetrics()
 	response := &csi.ListVolumesResponse{
-		entries,
-		"",
+		Entries: entries,
+		NextToken: "",
 	}
 	return response, nil
 }
@@ -822,7 +832,7 @@ func (s *Server) GetCapacity(
 	if s.removingVolumeGroup {
 		log.Printf("Running with '-remove-volume-group', reporting 0 capacity")
 		// We report 0 capacity if configured to remove the volume group.
-		response := &csi.GetCapacityResponse{0}
+		response := &csi.GetCapacityResponse{AvailableCapacity: 0}
 		return response, nil
 	}
 	for _, volumeCapability := range request.GetVolumeCapabilities() {
@@ -833,7 +843,7 @@ func (s *Server) GetCapacity(
 			fstype := mnt.GetFsType()
 			if _, ok := s.supportedFilesystems[fstype]; !ok {
 				// Zero capacity for unsupported filesystem type.
-				response := &csi.GetCapacityResponse{0}
+				response := &csi.GetCapacityResponse{AvailableCapacity: 0}
 				return response, nil
 			}
 		}
@@ -851,7 +861,7 @@ func (s *Server) GetCapacity(
 	}
 	log.Printf("BytesFree: %v", bytesFree)
 	defer s.reportStorageMetrics()
-	response := &csi.GetCapacityResponse{int64(bytesFree)}
+	response := &csi.GetCapacityResponse{AvailableCapacity: int64(bytesFree)}
 	return response, nil
 }
 
@@ -861,9 +871,9 @@ func (s *Server) ControllerGetCapabilities(
 	capabilities := []*csi.ControllerServiceCapability{
 		// CREATE_DELETE_VOLUME
 		{
-			&csi.ControllerServiceCapability_Rpc{
+			Type: &csi.ControllerServiceCapability_Rpc{
 				&csi.ControllerServiceCapability_RPC{
-					csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
+					Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				},
 			},
 		},
@@ -875,23 +885,44 @@ func (s *Server) ControllerGetCapabilities(
 		//
 		// LIST_VOLUMES
 		{
-			&csi.ControllerServiceCapability_Rpc{
+			Type: &csi.ControllerServiceCapability_Rpc{
 				&csi.ControllerServiceCapability_RPC{
-					csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
+					Type: csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 				},
 			},
 		},
 		// GET_CAPACITY
 		{
-			&csi.ControllerServiceCapability_Rpc{
+			Type: &csi.ControllerServiceCapability_Rpc{
 				&csi.ControllerServiceCapability_RPC{
-					csi.ControllerServiceCapability_RPC_GET_CAPACITY,
+					Type: csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 				},
 			},
 		},
 	}
-	response := &csi.ControllerGetCapabilitiesResponse{capabilities}
+	response := &csi.ControllerGetCapabilitiesResponse{Capabilities: capabilities}
 	return response, nil
+}
+
+func (s * Server) CreateSnapshot(
+	ctx context.Context,
+	request *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
+	log.Printf("CreateSnapshot not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s * Server) DeleteSnapshot(
+	ctx context.Context,
+	request *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
+	log.Printf("DeleteSnapshot not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s* Server) ListSnapshots(
+	ctx context.Context,
+	request *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
+	log.Printf("ListSnapshots not supported")
+	return nil, ErrCallNotImplemented
 }
 
 // NodeService RPCs
@@ -1217,6 +1248,18 @@ func (s *Server) NodeGetId(
 	}
 	return &csi.NodeGetIdResponse{
 		NodeId: s.nodeID,
+	}, nil
+}
+
+func (s *Server) NodeGetInfo(
+	ctx context.Context,
+	request *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
+	topology := &csi.Topology{
+		Segments: map[string]string{topologyKey: s.nodeID},
+	}
+	return &csi.NodeGetInfoResponse{
+		NodeId: s.nodeID,
+		AccessibleTopology: topology,
 	}, nil
 }
 
