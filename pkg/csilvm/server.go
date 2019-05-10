@@ -289,6 +289,7 @@ func (s *Server) Setup() error {
 		return nil
 	}
 	s.volumeGroup = volumeGroup
+	s.reportMetrics()
 	return nil
 }
 
@@ -528,6 +529,7 @@ func (s *Server) CreateVolume(
 			attr,
 		},
 	}
+	s.reportMetrics()
 	return response, nil
 }
 
@@ -649,6 +651,7 @@ func (s *Server) DeleteVolume(
 			err)
 	}
 	response := &csi.DeleteVolumeResponse{}
+	s.reportMetrics()
 	return response, nil
 }
 

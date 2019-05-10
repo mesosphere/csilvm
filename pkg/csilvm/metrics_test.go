@@ -19,7 +19,6 @@ func TestMetricsUptime(t *testing.T) {
 		defer pvclean()
 		client, clean := startTest(vgname, []string{pvname}, Metrics(scope))
 		defer clean()
-		defer ReportUptime(scope, map[string]string{"volume-group": vgname})
 		req := testGetPluginInfoRequest()
 		_, err := client.GetPluginInfo(context.Background(), req)
 		if err != nil {

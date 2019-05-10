@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mesosphere/csilvm/pkg/lvm"
 	"github.com/uber-go/tally"
 	"google.golang.org/grpc"
 )
@@ -28,22 +29,50 @@ func MetricsInterceptor(scope tally.Scope) grpc.UnaryServerInterceptor {
 	}
 }
 
-func ReportUptime(scope tally.Scope, tags map[string]string) context.CancelFunc {
-	scope = scope.Tagged(tags)
+func (s *Server) ReportMetrics() context.CancelFunc {
 	var wg sync.WaitGroup
+	// Report uptime
 	wg.Add(1)
-	ticker := time.NewTicker(time.Second)
+	uptimeTicker := time.NewTicker(time.Second)
 	go func() {
 		defer wg.Done()
-		gauge := scope.Gauge("uptime")
+		gauge := s.metrics.Gauge("uptime")
 		start := time.Now()
-		for range ticker.C {
+		for range uptimeTicker.C {
 			elapsed := time.Now().Sub(start)
 			gauge.Update(float64(elapsed.Seconds()))
 		}
 	}()
 	return func() {
-		ticker.Stop()
+		uptimeTicker.Stop()
 		wg.Wait()
 	}
+}
+
+func (s *Server) reportMetrics() {
+	// Report the number of volumes
+	volNames, err := s.volumeGroup.ListLogicalVolumeNames()
+	if err != nil {
+		log.Printf("failed to report metrics: cannot load lv names: err=%v", err)
+		return
+	}
+	s.metrics.Gauge("volumes").Update(float64(len(volNames)))
+	// Report the total bytes free for the volume group.
+	bytesTotal, err := s.volumeGroup.BytesTotal()
+	if err != nil {
+		log.Printf("failed to report metrics: cannot read total bytes: err=%v", err)
+		return
+	}
+	s.metrics.Gauge("bytes-total").Update(float64(bytesTotal))
+	// Report the number of bytes free for the volume group.
+	bytesFree, err := s.volumeGroup.BytesFree(lvm.VolumeLayout{
+		Type: lvm.VolumeTypeLinear,
+	})
+	if err != nil {
+		log.Printf("failed to report metrics: cannot read free bytes: err=%v", err)
+		return
+	}
+	s.metrics.Gauge("bytes-free").Update(float64(bytesFree))
+	// Report the number of bytes used.
+	s.metrics.Gauge("bytes-used").Update(float64(bytesTotal - bytesFree))
 }
