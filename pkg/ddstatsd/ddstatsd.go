@@ -28,6 +28,7 @@ package ddstatsd
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"time"
@@ -177,5 +178,7 @@ func (r *statsReporter) Tagging() bool {
 }
 
 func (r *statsReporter) Flush() {
-	// no-op
+	if err := r.client.Flush(); err != nil {
+		log.Printf("failed to flush metrics: err=%v", err)
+	}
 }
