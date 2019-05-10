@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:e9846ece10d1701db72a5add936bb9edc81353cdccb19be27078ca32f6c3f5d8"
+  name = "github.com/DataDog/datadog-go"
+  packages = ["statsd"]
+  pruneopts = ""
+  revision = "8a13fa761f51039f900738876f2837198fba804f"
+  version = "2.2.0"
+
+[[projects]]
   digest = "1:47fe89a242ccbae03d31b4c665d3d983786acd316c0d7c51bcfa0d019b205004"
   name = "github.com/cactus/go-statsd-client"
   packages = ["statsd"]
@@ -152,6 +160,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/DataDog/datadog-go/statsd",
     "github.com/cactus/go-statsd-client/statsd",
     "github.com/container-storage-interface/spec/lib/go",
     "github.com/container-storage-interface/spec/lib/go/csi/v0",
