@@ -210,7 +210,10 @@ The following metrics are reported:
 - csilvm_requests_failure: number of requests that failed
 - csilvm_requests_success: number of requests that succeeded
 - csilvm_requests_duration_(stddev,mean,lower,count,sum,upper): the request duration (in milliseconds)
-
+- csilvm_volumes: the number of active logical volumes
+- csilvm_bytes_total: the total number of bytes in the volume group
+- csilvm_bytes_free: the number of bytes available for creating a linear logical volume
+- csilvm_bytes_used: the number of bytes allocated to active logical volumes
 
 ### Runtime dependencies
 
