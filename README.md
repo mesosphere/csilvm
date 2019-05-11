@@ -142,21 +142,35 @@ It is expected that the Plugin Supervisor will launch the binary using the appro
 $ ./csilvm --help
 Usage of ./csilvm:
   -default-fs string
-    	The default filesystem to format new volumes with (default "xfs")
+      The default filesystem to format new volumes with (default "xfs")
   -default-volume-size uint
-    	The default volume size in bytes (default 10737418240)
+      The default volume size in bytes (default 10737418240)
   -devices string
-    	A comma-seperated list of devices in the volume group
+      A comma-seperated list of devices in the volume group
+  -node-id string
+      The node ID reported via the CSI Node gRPC service
+  -probe-module value
+      Probe checks that the kernel module is loaded
   -remove-volume-group
-    	If set, the volume group will be removed when ProbeNode is called.
+      If set, the volume group will be removed when ProbeNode is called.
+  -request-limit int
+      Limits backlog of pending requests. (default 10)
+  -statsd-format string
+      The statsd format to use (one of: classic, datadog) (default "datadog")
+  -statsd-max-udp-size int
+      The size to buffer before transmitting a statsd UDP packet (default 1432)
+  -statsd-udp-host-env-var string
+      The name of the environment variable containing the host where a statsd service is listening for stats over UDP
+  -statsd-udp-port-env-var string
+      The name of the environment variable containing the port where a statsd service is listening for stats over UDP
   -tag value
-    	Value to tag the volume group with (can be given multiple times)
+      Value to tag the volume group with (can be given multiple times)
   -unix-addr string
-    	The path to the listening unix socket file
+      The path to the listening unix socket file
   -unix-addr-env string
-    	An optional environment variable from which to read the unix-addr
+      An optional environment variable from which to read the unix-addr
   -volume-group string
-    	The name of the volume group to manage
+      The name of the volume group to manage
 ```
 
 
@@ -173,6 +187,41 @@ It is expected that the CO will connect to the plugin through the unix socket an
 The plugin emits fairly verbose logs to `STDERR`.
 This is not currently configurable.
 
+
+### Metrics
+
+The plugin emits metrics in StatsD format. By default, it uses the
+[DogStatsD](http://docs.datadoghq.com/guides/dogstatsd/) format which augments
+the standard StatsD format with tags.
+
+The format of the StatsD metrics can be set using the `-statsd-format` flag. It
+defaults to `datadog` but can be set to `classic` in order to emit metrics in
+standard StatsD format.
+
+Metrics are emitted over UDP. The StatsD server's host and port are read from
+environment variables. The names of the environment variables that specify the
+StatsD server's host and port can be set using `-statsd-udp-host-env-var` and
+`-statsd-udp-port-env-var` flags, respectively.
+
+Metrics are emitted with the prefix `csilvm`.
+
+The following metrics are reported:
+
+- csilvm_uptime: the uptime (in seconds) of the process
+- csilvm_requests: number of requests served
+	tags:
+	  `result_type`: one of `success`, `error`
+	  `method`: the RPC name, e.g., `/csi.v0.Controller/CreateVolume`
+- csilvm_requests_latency_(stddev,mean,lower,count,sum,upper): the request duration (in milliseconds)
+	tags:
+	  `method`: the RPC name, e.g., `/csi.v0.Controller/CreateVolume`
+- csilvm_volumes: the number of active logical volumes
+- csilvm_bytes_total: the total number of bytes in the volume group
+- csilvm_bytes_free: the number of bytes available for creating a linear logical volume
+- csilvm_bytes_used: the number of bytes allocated to active logical volumes
+
+Furthermore, all metrics are tagged with `volume-group` set to the
+`-volume-group` command-line option.
 
 ### Runtime dependencies
 

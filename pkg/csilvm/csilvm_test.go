@@ -2886,6 +2886,7 @@ func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 		grpc.UnaryInterceptor(
 			ChainUnaryServer(
 				LoggingInterceptor(),
+				MetricsInterceptor(s.metrics),
 			),
 		),
 	)
@@ -2959,5 +2960,6 @@ func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client
 	if err := server.Setup(); err != nil {
 		panic(err)
 	}
+	clean.Add(func() error { server.ReportUptime(); return nil })
 	return client, clean.Unwind
 }

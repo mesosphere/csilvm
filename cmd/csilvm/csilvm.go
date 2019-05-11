@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net"
@@ -15,6 +16,12 @@ import (
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/mesosphere/csilvm/pkg/csilvm"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+
+	datadogstatsd "github.com/DataDog/datadog-go/statsd"
+	"github.com/cactus/go-statsd-client/statsd"
+	"github.com/mesosphere/csilvm/pkg/ddstatsd"
+	"github.com/uber-go/tally"
+	tallystatsd "github.com/uber-go/tally/statsd"
 )
 
 const (
@@ -51,6 +58,11 @@ func main() {
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
+	// Metrics-related flags
+	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
+	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
+	statsdFormatF := flag.String("statsd-format", "datadog", "The statsd format to use (one of: classic, datadog)")
+	statsdMaxUDPSizeF := flag.Int("statsd-max-udp-size", 1432, "The size to buffer before transmitting a statsd UDP packet")
 	flag.Parse()
 	// Setup logging
 	logprefix := fmt.Sprintf("[%s]", *vgnameF)
@@ -84,6 +96,57 @@ func main() {
 	if len(*nodeIDF) > defaultMaxStringLen {
 		log.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
 	}
+	scope := tally.NoopScope
+	if *statsdUDPHostEnvVarF != "" && *statsdUDPPortEnvVarF != "" {
+		statsdHost := os.Getenv(*statsdUDPHostEnvVarF)
+		statsdPort := os.Getenv(*statsdUDPPortEnvVarF)
+		statsdServerAddr := fmt.Sprintf("%s:%s", statsdHost, statsdPort)
+		// Set no statsd prefix, tags are already prefixed using 'csilvm'.
+		const (
+			statsdPrefix     = ""
+			maxFlushInterval = time.Second
+		)
+		var reporter tally.StatsReporter
+		switch *statsdFormatF {
+		case "datadog":
+			// The datadog statsd client does not support setting a
+			// custom flush interval. It defaults to 100ms:
+			// https://github.com/DataDog/datadog-go/blob/40bafcb5f6c1d49df36deaf4ab019e44961d5e36/statsd/statsd.go#L150
+			client, err := datadogstatsd.NewBuffered(
+				statsdServerAddr,
+				*statsdMaxUDPSizeF,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			client.Namespace = statsdPrefix
+			reporter = ddstatsd.NewReporter(client, ddstatsd.Options{
+				SampleRate: 1.0,
+			})
+		case "classic":
+			client, err := statsd.NewBufferedClient(
+				statsdServerAddr,
+				statsdPrefix,
+				maxFlushInterval,
+				*statsdMaxUDPSizeF,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			reporter = tallystatsd.NewReporter(client, tallystatsd.Options{
+				SampleRate: 1.0,
+			})
+		default:
+			log.Fatalf("unknown -statsd-format value: %q", *statsdFormatF)
+		}
+		var closer io.Closer
+		scope, closer = tally.NewRootScope(tally.ScopeOptions{
+			Prefix:   "csilvm",
+			Tags:     map[string]string{},
+			Reporter: reporter,
+		}, time.Second)
+		defer closer.Close()
+	}
 	var grpcOpts []grpc.ServerOption
 	grpcOpts = append(grpcOpts,
 		grpc.UnaryInterceptor(
@@ -91,6 +154,7 @@ func main() {
 				csilvm.RequestLimitInterceptor(*requestLimitF),
 				csilvm.SerializingInterceptor(),
 				csilvm.LoggingInterceptor(),
+				csilvm.MetricsInterceptor(scope),
 			),
 		),
 	)
@@ -101,6 +165,7 @@ func main() {
 	opts = append(opts,
 		csilvm.DefaultVolumeSize(*defaultVolumeSizeF),
 		csilvm.ProbeModules(probeModulesF),
+		csilvm.Metrics(scope),
 	)
 	if *removeF {
 		opts = append(opts, csilvm.RemoveVolumeGroup())
@@ -112,6 +177,7 @@ func main() {
 	if err := s.Setup(); err != nil {
 		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
 	}
+	defer s.ReportUptime()
 	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
 	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
 	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
