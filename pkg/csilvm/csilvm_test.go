@@ -30,6 +30,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm/pkg/cleanup"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // The size of the physical volumes we create in our tests.
@@ -652,6 +654,47 @@ func TestDeleteVolumeUnknownVolume(t *testing.T) {
 	_, err := client.DeleteVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteVolumeAfterDeviceDisappears(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	client, clean := startTest(vgname, []string{pvname})
+	defer clean()
+	// Create the volume that we'll be publishing.
+	createReq := testCreateVolumeRequest()
+	createResp, err := client.CreateVolume(context.Background(), createReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeId := createResp.GetVolume().GetId()
+	// Remove the device node.
+	vg, err := lvm.LookupVolumeGroup(vgname)
+	if err != nil {
+		panic(err)
+	}
+	lv, err := vg.LookupLogicalVolume(volumeId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := lv.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the volume, even though the device node has already been
+	// removed, and expect it to succeed.
+	expErr := status.Errorf(codes.Internal,
+		"The device path does not exist, cannot zero volume contents. To bypass the zeroing of the volume contents, ensure the file exists, or create it by hand, and reissue the DeleteVolume operation. path=%s",
+		path)
+	deleteReq := testDeleteVolumeRequest(volumeId)
+	_, err = client.DeleteVolume(context.Background(), deleteReq)
+	if !grpcErrorEqual(err, expErr) {
+		t.Fatalf("expected %v got %v", expErr, err)
 	}
 }
 
