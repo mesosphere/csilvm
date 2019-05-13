@@ -154,7 +154,6 @@ func validateCapacityRange(capacityRange *csi.CapacityRange) error {
 		return nil
 	}
 	if capacityRange.GetRequiredBytes() > capacityRange.GetLimitBytes() {
-		// return ErrCapacityRangeInvalidSize
 		return status.Errorf(
 			codes.InvalidArgument,
 			"required_bytes: %d cannot exceed the limit_bytes: %d",

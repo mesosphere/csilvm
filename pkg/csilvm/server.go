@@ -30,7 +30,6 @@ const (
 	topologyKey = "io.mesosphere.csi.lvm/nodeId"
 )
 
-
 type Server struct {
 	vgname               string
 	pvnames              []string
@@ -319,9 +318,9 @@ func (s *Server) GetPluginInfo(
 	}
 
 	response := &csi.GetPluginInfoResponse{
-		Name: v.Product,
+		Name:          v.Product,
 		VendorVersion: v.Version,
-		Manifest: m,
+		Manifest:      m,
 	}
 
 	return response, nil
@@ -456,8 +455,8 @@ func (s *Server) CreateVolume(
 		response := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: int64(lv.SizeInBytes()),
-				Id: lv.Name(),
-				Attributes: attr,
+				Id:            lv.Name(),
+				Attributes:    attr,
 			},
 		}
 		return response, nil
@@ -536,8 +535,8 @@ func (s *Server) CreateVolume(
 	response := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: int64(lv.SizeInBytes()),
-			Id: volumeID,
-			Attributes: attr,
+			Id:            volumeID,
+			Attributes:    attr,
 		},
 	}
 	return response, nil
@@ -747,7 +746,7 @@ func (s *Server) ValidateVolumeCapabilities(
 	}
 	response := &csi.ValidateVolumeCapabilitiesResponse{
 		Supported: true,
-		Message: "",
+		Message:   "",
 	}
 	return response, nil
 }
@@ -811,8 +810,8 @@ func (s *Server) ListVolumes(
 		}
 		info := &csi.Volume{
 			CapacityBytes: int64(lv.SizeInBytes()),
-			Id: lv.Name(),
-			Attributes: attr,
+			Id:            lv.Name(),
+			Attributes:    attr,
 		}
 		log.Printf("Found volume %v (%v bytes)", volname, lv.SizeInBytes())
 		entry := &csi.ListVolumesResponse_Entry{Volume: info}
@@ -820,7 +819,7 @@ func (s *Server) ListVolumes(
 	}
 	defer s.reportStorageMetrics()
 	response := &csi.ListVolumesResponse{
-		Entries: entries,
+		Entries:   entries,
 		NextToken: "",
 	}
 	return response, nil
@@ -904,21 +903,21 @@ func (s *Server) ControllerGetCapabilities(
 	return response, nil
 }
 
-func (s * Server) CreateSnapshot(
+func (s *Server) CreateSnapshot(
 	ctx context.Context,
 	request *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	log.Printf("CreateSnapshot not supported")
 	return nil, ErrCallNotImplemented
 }
 
-func (s * Server) DeleteSnapshot(
+func (s *Server) DeleteSnapshot(
 	ctx context.Context,
 	request *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	log.Printf("DeleteSnapshot not supported")
 	return nil, ErrCallNotImplemented
 }
 
-func (s* Server) ListSnapshots(
+func (s *Server) ListSnapshots(
 	ctx context.Context,
 	request *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	log.Printf("ListSnapshots not supported")
@@ -1258,7 +1257,7 @@ func (s *Server) NodeGetInfo(
 		Segments: map[string]string{topologyKey: s.nodeID},
 	}
 	return &csi.NodeGetInfoResponse{
-		NodeId: s.nodeID,
+		NodeId:             s.nodeID,
 		AccessibleTopology: topology,
 	}, nil
 }
