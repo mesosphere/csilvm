@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
@@ -122,7 +123,13 @@ func TestCreateVolumeVolumeCapabilitiesCapacityRangeRequiredLessThanLimit(t *tes
 	req.CapacityRange.RequiredBytes = 1000
 	req.CapacityRange.LimitBytes = req.CapacityRange.RequiredBytes - 1
 	_, err := client.CreateVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrCapacityRangeInvalidSize) {
+	expErr := status.Errorf(
+		codes.InvalidArgument,
+		"required_bytes: %d cannot exceed the limit_bytes: %d",
+		req.CapacityRange.GetRequiredBytes(),
+		req.CapacityRange.GetLimitBytes(),
+	)
+	if !grpcErrorEqual(err, expErr) {
 		t.Fatal(err)
 	}
 }
