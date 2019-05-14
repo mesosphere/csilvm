@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -81,6 +82,11 @@ func main() {
 	if strings.HasPrefix(sock, "unix://") {
 		sock = sock[len("unix://"):]
 	}
+	// Unlink the domain socket in case it is left lying around from a
+	// previous run. err return is not really interesting because it is
+	// normal for this to fail if the process is starting for the first time.
+	log.Printf("[%s] Unlinking %s", *vgnameF, sock)
+	syscall.Unlink(sock)
 	// Setup socket listener
 	lis, err := net.Listen("unix", sock)
 	if err != nil {
