@@ -650,14 +650,13 @@ func (s *Server) DeleteVolume(
 			codes.Internal,
 			"The device path does not exist, cannot zero volume contents. To bypass the zeroing of the volume contents, ensure the file exists, or create it by hand, and reissue the DeleteVolume operation. path=%s",
 			path)
-	} else {
-		log.Printf("Deleting data on device %v", path)
-		if err := deleteDataOnDevice(path); err != nil {
-			return nil, status.Errorf(
-				codes.Internal,
-				"Cannot delete data from device: err=%v",
-				err)
-		}
+	}
+	log.Printf("Deleting data on device %v", path)
+	if err := deleteDataOnDevice(path); err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot delete data from device: err=%v",
+			err)
 	}
 	log.Printf("Removing volume")
 	if err := lv.Remove(); err != nil {
