@@ -36,18 +36,25 @@ func (s *Server) ReportUptime() context.CancelFunc {
 	var wg sync.WaitGroup
 	// Report uptime
 	wg.Add(1)
+	done := make(chan struct{})
 	uptimeTicker := time.NewTicker(time.Second)
+	defer uptimeTicker.Stop()
 	go func() {
 		defer wg.Done()
 		gauge := s.metrics.Gauge("uptime")
 		start := time.Now()
-		for range uptimeTicker.C {
-			elapsed := time.Now().Sub(start)
-			gauge.Update(float64(elapsed.Seconds()))
+		for {
+			select {
+			case <-uptimeTicker.C:
+				elapsed := time.Now().Sub(start)
+				gauge.Update(float64(elapsed.Seconds()))
+			case <-done:
+				return
+			}
 		}
 	}()
 	return func() {
-		uptimeTicker.Stop()
+		close(done)
 		wg.Wait()
 	}
 }
