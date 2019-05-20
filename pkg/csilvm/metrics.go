@@ -39,6 +39,7 @@ func (s *Server) ReportUptime() context.CancelFunc {
 	uptimeTicker := time.NewTicker(time.Second)
 	go func() {
 		defer wg.Done()
+		defer uptimeTicker.Stop()
 		gauge := s.metrics.Gauge("uptime")
 		start := time.Now()
 		for range uptimeTicker.C {
