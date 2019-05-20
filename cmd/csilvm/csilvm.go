@@ -108,6 +108,10 @@ func main() {
 		statsdHost = os.Getenv(*statsdUDPHostEnvVarF)
 		statsdPort = os.Getenv(*statsdUDPPortEnvVarF)
 	}
+	if (statsdHost == "") != (statsdPort == "") {
+		logger.Fatalf("misconfiguration, either both (host,port) values are required or neither should be specified: "+
+			"-statsd-udp-host-env-var resolved to %q, -statsd-udp-port-env-var resolved to %q", statsdHost, statsdPort)
+	}
 	if statsdHost != "" && statsdPort != "" {
 		statsdServerAddr := net.JoinHostPort(statsdHost, statsdPort)
 		logger.Print("configuring statsd client to report metrics to server ", statsdServerAddr)
