@@ -73,7 +73,7 @@ func main() {
 	lvm.SetLogger(logger)
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
-		log.Fatalf("[%s] cannot specify -unix-addr and -unix-addr-env", *vgnameF)
+		logger.Fatalf("cannot specify -unix-addr and -unix-addr-env")
 	}
 	sock := *socketFileF
 	if *socketFileEnvF != "" {
@@ -85,22 +85,22 @@ func main() {
 	// Unlink the domain socket in case it is left lying around from a
 	// previous run. err return is not really interesting because it is
 	// normal for this to fail if the process is starting for the first time.
-	log.Printf("[%s] Unlinking %s", *vgnameF, sock)
+	logger.Printf("Unlinking %s", sock)
 	syscall.Unlink(sock)
 	// Setup socket listener
 	lis, err := net.Listen("unix", sock)
 	if err != nil {
-		log.Fatalf("[%s] Failed to listen: %v", *vgnameF, err)
+		logger.Fatalf("Failed to listen: %v", err)
 	}
 	// Setup server
 	if *requestLimitF < 1 {
-		log.Fatalf("request-limit requires a positive, integer value instead of %d", *requestLimitF)
+		logger.Fatalf("request-limit requires a positive, integer value instead of %d", *requestLimitF)
 	}
 	// TODO(jdef) at some point we should require the node-id flag since it's
 	// a required part of the CSI spec.
 	const defaultMaxStringLen = 128
 	if len(*nodeIDF) > defaultMaxStringLen {
-		log.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
+		logger.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
 	}
 	scope := tally.NoopScope
 	var statsdHost, statsdPort string
@@ -110,7 +110,7 @@ func main() {
 	}
 	if statsdHost != "" && statsdPort != "" {
 		statsdServerAddr := net.JoinHostPort(statsdHost, statsdPort)
-		log.Print("configuring statsd client to report metrics to server ", statsdServerAddr)
+		logger.Print("configuring statsd client to report metrics to server ", statsdServerAddr)
 
 		// Set no statsd prefix, tags are already prefixed using 'csilvm'.
 		const (
@@ -128,7 +128,7 @@ func main() {
 				*statsdMaxUDPSizeF,
 			)
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatal(err)
 			}
 			client.Namespace = statsdPrefix
 			reporter = ddstatsd.NewReporter(client, ddstatsd.Options{
@@ -142,13 +142,13 @@ func main() {
 				*statsdMaxUDPSizeF,
 			)
 			if err != nil {
-				log.Fatal(err)
+				logger.Fatal(err)
 			}
 			reporter = tallystatsd.NewReporter(client, tallystatsd.Options{
 				SampleRate: 1.0,
 			})
 		default:
-			log.Fatalf("unknown -statsd-format value: %q", *statsdFormatF)
+			logger.Fatalf("unknown -statsd-format value: %q", *statsdFormatF)
 		}
 		var closer io.Closer
 		scope, closer = tally.NewRootScope(tally.ScopeOptions{
@@ -186,7 +186,7 @@ func main() {
 	}
 	s := csilvm.NewServer(*vgnameF, strings.Split(*pvnamesF, ","), *defaultFsF, opts...)
 	if err := s.Setup(); err != nil {
-		log.Fatalf("[%s] error initializing csilvm plugin: err=%v", *vgnameF, err)
+		logger.Fatalf("error initializing csilvm plugin: err=%v", err)
 	}
 	defer s.ReportUptime()()
 	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
