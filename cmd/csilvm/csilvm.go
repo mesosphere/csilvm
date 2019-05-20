@@ -103,10 +103,15 @@ func main() {
 		log.Fatalf("node-id cannot be longer than %d bytes: %q", defaultMaxStringLen, *nodeIDF)
 	}
 	scope := tally.NoopScope
+	var statsdHost, statsdPort string
 	if *statsdUDPHostEnvVarF != "" && *statsdUDPPortEnvVarF != "" {
-		statsdHost := os.Getenv(*statsdUDPHostEnvVarF)
-		statsdPort := os.Getenv(*statsdUDPPortEnvVarF)
-		statsdServerAddr := fmt.Sprintf("%s:%s", statsdHost, statsdPort)
+		statsdHost = os.Getenv(*statsdUDPHostEnvVarF)
+		statsdPort = os.Getenv(*statsdUDPPortEnvVarF)
+	}
+	if statsdHost != "" && statsdPort != "" {
+		statsdServerAddr := net.JoinHostPort(statsdHost, statsdPort)
+		log.Print("configuring statsd client to report metrics to server ", statsdServerAddr)
+
 		// Set no statsd prefix, tags are already prefixed using 'csilvm'.
 		const (
 			statsdPrefix     = ""
