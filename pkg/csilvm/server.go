@@ -251,6 +251,23 @@ func (s *Server) Setup() error {
 	// The volume group already exists. We check that the list of
 	// physical volumes matches the provided list.
 	log.Printf("Listing physical volumes in volume group %s", s.vgname)
+	var pverrs []error
+	for _, pvname := range s.pvnames {
+		// Check that the LVM2 metadata written to the start of the PV
+		// parses. There are reasonable scenarios where the list of
+		// PVs that comprise a VG might contain unexpected PVs or PVs
+		// that are unhealthy. Since the Probe call does not
+		// distinguish between DEGRADED and FAILED, we have no choice
+		// but to log an error but proceed without returning one.
+		log.Printf("Looking up LVM2 physical volume %v", pvname)
+		_, pverr := lvm.LookupPhysicalVolume(pvname)
+		if pverr != nil {
+			log.Printf("Cannot lookup physical volume %v: err=%v",
+				pvname, pverr)
+			pverrs = append(pverrs, pverr)
+		}
+	}
+	s.metrics.Gauge("lookup-pv-errs").Update(float64(len(pverrs)))
 	existing, err := volumeGroup.ListPhysicalVolumeNames()
 	if err != nil {
 		return fmt.Errorf(
@@ -262,6 +279,9 @@ func (s *Server) Setup() error {
 		log.Printf("Volume group contains unexpected PVs %v and is missing PVs %v",
 			unexpected, missing)
 	}
+	s.metrics.Gauge("pvs").Update(float64(len(existing)))
+	s.metrics.Gauge("unexpected-pvs").Update(float64(len(unexpected)))
+	s.metrics.Gauge("missing-pvs").Update(float64(len(missing)))
 	// We check that the volume group tags match those we expect.
 	log.Printf("Looking up volume group tags")
 	tags, err := volumeGroup.Tags()
@@ -377,29 +397,47 @@ func (s *Server) Probe(
 		response := &csi.ProbeResponse{}
 		return response, nil
 	}
-	log.Printf("Checking LVM2 physical volumes")
-	for _, pvname := range s.pvnames {
-		// Check that the LVM2 metadata written to the start of the PV
-		// parses.  There are reasonable scenarios where the list of
-		// PVs that comprise a VG might contain unexpected PVs or PVs
-		// that are unhealthy. Since the Probe call does not
-		// distinguish between DEGRADED and FAILED, we have no choice
-		// but to log an error but proceed without returning one.
-		log.Printf("Looking up LVM2 physical volume %v", pvname)
-		_, err := lvm.LookupPhysicalVolume(pvname)
-		if err != nil {
-			log.Printf("Cannot lookup physical volume %v: err=%v",
-				pvname, err)
-		}
-	}
 	log.Printf("Looking up volume group %v", s.vgname)
-	_, err := lvm.LookupVolumeGroup(s.vgname)
+	volumeGroup, err := lvm.LookupVolumeGroup(s.vgname)
 	if err != nil {
 		return nil, status.Errorf(
 			codes.FailedPrecondition,
 			"Cannot find volume group %v",
 			s.vgname)
 	}
+	log.Printf("Looking up physical volumes")
+	var pverrs []error
+	for _, pvname := range s.pvnames {
+		// Check that the LVM2 metadata written to the start of the PV
+		// parses. There are reasonable scenarios where the list of
+		// PVs that comprise a VG might contain unexpected PVs or PVs
+		// that are unhealthy. Since the Probe call does not
+		// distinguish between DEGRADED and FAILED, we have no choice
+		// but to log an error but proceed without returning one.
+		log.Printf("Looking up LVM2 physical volume %v", pvname)
+		_, pverr := lvm.LookupPhysicalVolume(pvname)
+		if pverr != nil {
+			log.Printf("Cannot lookup physical volume %v: err=%v",
+				pvname, pverr)
+			pverrs = append(pverrs, pverr)
+		}
+	}
+	s.metrics.Gauge("lookup-pv-errs").Update(float64(len(pverrs)))
+	log.Printf("Comparing expected PVs with actual PVs")
+	existing, err := volumeGroup.ListPhysicalVolumeNames()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"Cannot list physical volumes: err=%v",
+			err)
+	}
+	missing, unexpected := calculatePVDiff(existing, s.pvnames)
+	if len(missing) != 0 || len(unexpected) != 0 {
+		log.Printf("Volume group contains unexpected PVs %v and is missing PVs %v",
+			unexpected, missing)
+	}
+	s.metrics.Gauge("pvs").Update(float64(len(existing)))
+	s.metrics.Gauge("unexpected-pvs").Update(float64(len(unexpected)))
+	s.metrics.Gauge("missing-pvs").Update(float64(len(missing)))
 	response := &csi.ProbeResponse{}
 	return response, nil
 }
