@@ -259,8 +259,7 @@ func (s *Server) Setup() error {
 	}
 	missing, unexpected := calculatePVDiff(existing, s.pvnames)
 	if len(missing) != 0 || len(unexpected) != 0 {
-		return fmt.Errorf(
-			"Volume group contains unexpected volumes %v and is missing volumes %v",
+		log.Printf("Volume group contains unexpected PVs %v and is missing PVs %v",
 			unexpected, missing)
 	}
 	// We check that the volume group tags match those we expect.
@@ -380,13 +379,16 @@ func (s *Server) Probe(
 	}
 	log.Printf("Checking LVM2 physical volumes")
 	for _, pvname := range s.pvnames {
-		// Check that the LVM2 metadata written to the start of the PV parses.
+		// Check that the LVM2 metadata written to the start of the PV
+		// parses.  There are reasonable scenarios where the list of
+		// PVs that comprise a VG might contain unexpected PVs or PVs
+		// that are unhealthy. Since the Probe call does not
+		// distinguish between DEGRADED and FAILED, we have no choice
+		// but to log an error but proceed without returning one.
 		log.Printf("Looking up LVM2 physical volume %v", pvname)
 		_, err := lvm.LookupPhysicalVolume(pvname)
 		if err != nil {
-			return nil, status.Errorf(
-				codes.FailedPrecondition,
-				"Cannot lookup physical volume %v: err=%v",
+			log.Printf("Cannot lookup physical volume %v: err=%v",
 				pvname, err)
 		}
 	}

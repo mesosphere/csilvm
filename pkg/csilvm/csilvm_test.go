@@ -2307,6 +2307,48 @@ func TestProbe_MissingRequiredModule(t *testing.T) {
 	t.Log(err)
 }
 
+func TestProbe_MissingPhysicalVolumes(t *testing.T) {
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	pvnames := []string{loop1.Path(), loop2.Path(), "fakevol"}
+	client, server, clean := prepareSetupTest(vgname, pvnames)
+	defer clean()
+	err = server.Setup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := testProbeRequest()
+	_, err = client.Probe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSetup_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
 	vgname := testvgname()
 	pv1name, pv1clean := testpv()
@@ -2562,9 +2604,9 @@ func TestSetup_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
 	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	experr := "Volume group contains unexpected volumes [] and is missing volumes [/dev/missing-device]"
 	err = server.Setup()
-	if err.Error() != experr {
+	if err != nil {
+		// We do not treat unexpected PVs as errors, to allow the administrator to shrink/extend/modify VGs.
 		t.Fatal(err)
 	}
 }
@@ -2600,11 +2642,8 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	pvnames := []string{loop1.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
-	experr := fmt.Sprintf(
-		"Volume group contains unexpected volumes %v and is missing volumes []",
-		[]string{loop2.Path()})
 	err = server.Setup()
-	if err.Error() != experr {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2694,11 +2733,8 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGro
 	pvnames := []string{loop1.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
-	experr := fmt.Sprintf(
-		"Volume group contains unexpected volumes %v and is missing volumes []",
-		[]string{loop2.Path()})
 	err = server.Setup()
-	if err.Error() != experr {
+	if err != nil {
 		t.Fatal(err)
 	}
 }
