@@ -24,12 +24,12 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc"
-
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm/pkg/cleanup"
 	"github.com/mesosphere/csilvm/pkg/lvm"
+	"github.com/uber-go/tally"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -2277,16 +2277,18 @@ func testProbeRequest() *csi.ProbeRequest {
 }
 
 func TestProbe(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	vgname := testvgname()
 	pvname, pvclean := testpv()
 	defer pvclean()
-	client, clean := startTest(vgname, []string{pvname})
+	client, clean := startTest(vgname, []string{pvname}, Metrics(scope))
 	defer clean()
 	req := testProbeRequest()
 	_, err := client.Probe(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 1, 0, 0, 0)
 }
 
 func TestProbe_MissingRequiredModule(t *testing.T) {
@@ -2308,6 +2310,7 @@ func TestProbe_MissingRequiredModule(t *testing.T) {
 }
 
 func TestProbe_MissingPhysicalVolumes(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2336,7 +2339,7 @@ func TestProbe_MissingPhysicalVolumes(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path(), "fakevol"}
-	client, server, clean := prepareSetupTest(vgname, pvnames)
+	client, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
 	err = server.Setup()
 	if err != nil {
@@ -2347,20 +2350,72 @@ func TestProbe_MissingPhysicalVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 1, 0, 1)
+}
+
+func TestProbe_RemovedPhysicalVolume(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
+	loop1, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop1.Close()
+	loop2, err := lvm.CreateLoopDevice(pvsize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer loop2.Close()
+	pv1, err := lvm.CreatePhysicalVolume(loop1.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv1.Remove()
+	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pv2.Remove()
+	pvs := []*lvm.PhysicalVolume{pv1, pv2}
+	vgname := "test-vg-" + uuid.New().String()
+	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer vg.Remove()
+	// Force remove the second PV immediately.
+	pv2.Remove()
+	// Force remove the second device immediately.
+	loop2.Close()
+	pvnames := []string{loop1.Path(), loop2.Path()}
+	client, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
+	defer clean()
+	err = server.Setup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := testProbeRequest()
+	_, err = client.Probe(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The missing PV is shown as '[unknown]', which is an unexpected device from our point of view.
+	checkPVMetrics(t, scope.Snapshot(), 2, 1, 1, 1)
 }
 
 func TestSetup_NewVolumeGroup_NewPhysicalVolumes(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	vgname := testvgname()
 	pv1name, pv1clean := testpv()
 	defer pv1clean()
 	pv2name, pv2clean := testpv()
 	defer pv2clean()
 	pvnames := []string{pv1name, pv2name}
-	_, server, clean := prepareSetupTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
 	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 0, 0, 0)
 }
 
 func TestSetup_NewVolumeGroup_NewPhysicalVolumes_WithTag(t *testing.T) {
@@ -2538,6 +2593,7 @@ func TestSetup_NewVolumeGroup_NewPhysicalVolumes_RemoveVolumeGroup(t *testing.T)
 }
 
 func TestSetup_ExistingVolumeGroup(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2566,14 +2622,16 @@ func TestSetup_ExistingVolumeGroup(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path()}
-	_, server, clean := prepareSetupTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
 	if err := server.Setup(); err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 0, 0, 0)
 }
 
 func TestSetup_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2602,16 +2660,18 @@ func TestSetup_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
-	_, server, clean := prepareSetupTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
 	err = server.Setup()
 	if err != nil {
 		// We do not treat unexpected PVs as errors, to allow the administrator to shrink/extend/modify VGs.
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 1, 0, 1)
 }
 
 func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2640,12 +2700,13 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	_, server, clean := prepareSetupTest(vgname, pvnames)
+	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
 	err = server.Setup()
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 0, 1, 0)
 }
 
 func TestSetup_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
@@ -2703,6 +2764,7 @@ func TestSetup_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 }
 
 func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGroup(t *testing.T) {
+	scope := tally.NewTestScope("", nil)
 	loop1, err := lvm.CreateLoopDevice(pvsize)
 	if err != nil {
 		t.Fatal(err)
@@ -2731,12 +2793,13 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGro
 	}
 	defer vg.Remove()
 	pvnames := []string{loop1.Path()}
-	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
+	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup(), Metrics(scope))
 	defer clean()
 	err = server.Setup()
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkPVMetrics(t, scope.Snapshot(), 2, 0, 1, 0)
 }
 
 func TestSetup_ExistingVolumeGroup_WithTag(t *testing.T) {
@@ -3035,4 +3098,25 @@ func startTest(vgname string, pvnames []string, serverOpts ...ServerOpt) (client
 	}
 	clean.Add(func() error { server.ReportUptime()(); return nil })
 	return client, clean.Unwind
+}
+
+func checkPVMetrics(t *testing.T, snap tally.Snapshot, expPvs, expMissing, expUnexpected, expErrs int) {
+	t.Helper()
+	gauges := gaugeMap(snap.Gauges())
+	pvs := int(gauges.mustGet(t, "pvs").Value())
+	if pvs != expPvs {
+		t.Fatalf("expected %d pvs but got %d", expPvs, pvs)
+	}
+	missing := int(gauges.mustGet(t, "missing-pvs").Value())
+	if missing != expMissing {
+		t.Fatalf("expected %d missing pvs but got %d", expMissing, missing)
+	}
+	unexpected := int(gauges.mustGet(t, "unexpected-pvs").Value())
+	if unexpected != expUnexpected {
+		t.Fatalf("expected %d unexpected pvs but got %d", expUnexpected, unexpected)
+	}
+	nerrs := int(gauges.mustGet(t, "lookup-pv-errs").Value())
+	if nerrs != expErrs {
+		t.Fatalf("expected %d lookup pv errs but got %d", expErrs, nerrs)
+	}
 }

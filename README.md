@@ -219,6 +219,10 @@ The following metrics are reported:
 - csilvm_bytes_total: the total number of bytes in the volume group
 - csilvm_bytes_free: the number of bytes available for creating a linear logical volume
 - csilvm_bytes_used: the number of bytes allocated to active logical volumes
+- csilvm_pvs: the number of physical volumes in the volume group
+- csilvm_missing_pvs: the number of pvs given on the command-line but are not found in the volume group
+- csilvm_unexpected_pvs: the number of pvs not given on the command-line but are found in the volume group
+- csilvm_lookup_pv_errs: the number of errors encountered while looking for pvs specified on the command-line
 
 Furthermore, all metrics are tagged with `volume-group` set to the
 `-volume-group` command-line option.
