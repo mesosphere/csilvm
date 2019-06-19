@@ -289,6 +289,24 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	checkAttributesIncludeVolumeTag(t, info, req.GetName())
 }
 
+func TestCreateVolumeCapacityNotMultipleOfExtentSize(t *testing.T) {
+	vgname := testvgname()
+	pvname, pvclean := testpv()
+	defer pvclean()
+	const defaultVolumeSize = uint64(20 << 20)
+	client, clean := startTest(vgname, []string{pvname}, DefaultVolumeSize(defaultVolumeSize))
+	defer clean()
+	req := testCreateVolumeRequest()
+	// Specify a CapacityRange that includes no valid extent size.
+	req.CapacityRange.RequiredBytes = 25 << 20
+	req.CapacityRange.LimitBytes = 25 << 20
+	const extentSize = 4 << 20 // 4MiB
+	_, err := client.CreateVolume(context.Background(), req)
+	if !grpcErrorEqual(err, ErrNotMultipleOfExtentSize(extentSize)) {
+		t.Fatal(err)
+	}
+}
+
 func TestCreateVolume_Idempotent(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()

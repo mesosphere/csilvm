@@ -444,6 +444,10 @@ func (s *Server) Probe(
 
 // ControllerService RPCs
 
+func ErrNotMultipleOfExtentSize(extentSize uint64) error {
+	return status.Error(codes.OutOfRange, fmt.Sprintf("Volume capacity must be a multiple of %dMiB", extentSize>>20))
+}
+
 var ErrVolumeAlreadyExists = status.Error(codes.AlreadyExists, "The volume already exists")
 var ErrInsufficientCapacity = status.Error(codes.OutOfRange, "Not enough free space")
 var ErrTooFewDisks = status.Error(codes.OutOfRange, "The volume group does not have enough underlying physical devices to support the requested RAID configuration")
@@ -525,6 +529,24 @@ func (s *Server) CreateVolume(
 	// Determine the capacity, default to maximum size.
 	size := s.defaultVolumeSize
 	if capacityRange := request.GetCapacityRange(); capacityRange != nil {
+		// Set the volume size to the minimum requested size.
+		size = uint64(capacityRange.GetRequiredBytes())
+		// Get the extentSize for this volume group. The LV size must be a multiple of the extent size.
+		extentSize, err := s.volumeGroup.ExtentSize()
+		if err != nil {
+			return nil, status.Errorf(
+				codes.Internal,
+				"Error in ExtentSize: err=%v",
+				err)
+		}
+		// If size is not already a multiple of extentSize, round it up to the
+		// nearest extentSize.
+		if size%extentSize != 0 {
+			sizeBefore := size
+			size = ((size + extentSize) / extentSize) * extentSize
+			log.Printf("Rounding size up from required_bytes (%dMiB) to nearest extent size (%dMiB) to get (%dMiB)", sizeBefore>>20, extentSize>>20, size>>20)
+		}
+		// Get bytesFree, it is a multiple of extentSize.
 		bytesFree, err := s.volumeGroup.BytesFree(layout)
 		if err != nil {
 			return nil, status.Errorf(
@@ -532,13 +554,19 @@ func (s *Server) CreateVolume(
 				"Error in BytesFree: err=%v",
 				err)
 		}
-		log.Printf("BytesFree: %v", bytesFree)
+		log.Printf("BytesFree: %v (%dMiB)", bytesFree, bytesFree>>20)
 		// Check whether there is enough free space available.
-		if int64(bytesFree) < capacityRange.GetRequiredBytes() {
+		// bytesFree is a multiple of extentSize.
+		if bytesFree < size {
 			return nil, ErrInsufficientCapacity
 		}
-		// Set the volume size to the minimum requested  size.
-		size = uint64(capacityRange.GetRequiredBytes())
+		if limit := capacityRange.GetLimitBytes(); limit != 0 && size > uint64(limit) {
+			// We've already checked that there is sufficient capacity. The only
+			// way we can arrive here is if [required_bytes,limit_bytes] does
+			// not include a multiple of extentSize, in which case we cannot
+			// satisfy this request.
+			return nil, ErrNotMultipleOfExtentSize(extentSize)
+		}
 	}
 	lvopts, err := volumeOptsFromParameters(request.GetParameters())
 	if err != nil {
