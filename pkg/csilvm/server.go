@@ -544,7 +544,7 @@ func (s *Server) CreateVolume(
 		if size%extentSize != 0 {
 			sizeBefore := size
 			size = ((size + extentSize) / extentSize) * extentSize
-			log.Printf("Rounding size up from required_bytes (%dMiB) to nearest extent size (%dMiB) to get (%dMiB)", sizeBefore>>20, extentSize>>20, size>>20)
+			log.Printf("Rounding size up from required_bytes (about %dMiB) to nearest extent size (%dMiB) to get (%dMiB)", sizeBefore>>20, extentSize>>20, size>>20)
 		}
 		// Get bytesFree, it is a multiple of extentSize.
 		bytesFree, err := s.volumeGroup.BytesFree(layout)
