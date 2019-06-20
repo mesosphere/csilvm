@@ -1,3 +1,5 @@
+// +build !unit
+
 package csilvm
 
 import (
@@ -69,9 +71,10 @@ func TestMetricsInterceptor(t *testing.T) {
 
 		// A single request that fails
 		createVolumeReq := testCreateVolumeRequest()
-		// Check that trying to create a volume with the same name but
-		// incompatible capacity_range fails.
-		createVolumeReq.CapacityRange.RequiredBytes += 1
+		// Check that trying to create a volume with an invalid
+		// capacity_range fails.
+		createVolumeReq.CapacityRange.RequiredBytes = 0
+		createVolumeReq.CapacityRange.LimitBytes = 0
 		_, err = client.CreateVolume(context.Background(), createVolumeReq)
 		if err == nil {
 			t.Fatalf("Expected error but got nil")
