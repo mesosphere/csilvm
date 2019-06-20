@@ -273,7 +273,6 @@ Once all the PVs exist, the new volume group is created consisting of those PVs 
 The plugin is completely stateless and performs no locking around operations.
 Instead, it relies on LVM2 to lock around operations that are not reentrant.
 
-
 #### Logical volume naming
 
 The volume group name is specified at startup through the `-volume-group` argument.
@@ -290,13 +289,23 @@ Examples:
 * If the CO-specified volume name is `test-volume`, then the generated LV tag is `VN.test-volume`.
 * If the CO-specified volume name is `hello volume`, then the generated LV tag is `VN+aGVsbG8gdm9sdW1l`.
 
+#### Logical volume sizes
+
+The `CreateVolume` RPC will attempt to allocate a volume size that both:
+
+* satisfies the requested capacity with the range limits given, and;
+* aligns with an LVM extent boundary (LVM default is 4MiB)
+
+The plugin will choose the smallest size within the requested capacity range that aligns to an extent boundary.
+If the plugin cannot align on an extent boundary within the requested capacity range, then the `CreateVolume` RPC will return an error.
+For example, if the requested capacity is *exactly* 25MiB (RequiredBytes = LimitBytes = 25MiB) then the RPC will fail because 25MiB does not align to the default 4MiB extent boundary.
+
 #### SINGLE_NODE_READER_ONLY
 
 It is not possible to bind mount a device as 'ro' and thereby prevent write access to it.
 
 As such, this plugin does not support the `SINGLE_NODE_READER_ONLY` access mode for a
 volume of access type `BLOCK_DEVICE`.
-
 
 # Issues
 
