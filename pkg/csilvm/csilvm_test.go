@@ -1072,7 +1072,7 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	// Add the first volume.
 	req := testCreateVolumeRequest()
 	req.Name = "test-volume-1"
-	req.CapacityRange.RequiredBytes /= 2
+	req.CapacityRange.RequiredBytes /= 3
 	resp, err := client.CreateVolume(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
@@ -1098,7 +1098,9 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 		t.Fatalf("ListVolumes returned %v entries, expected %d.", len(entries), len(infos))
 	}
 	nameTags := []string{"VN.test-volume-1", "VN.test-volume-2"}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].GetVolume().GetId() < entries[j].GetVolume().GetId() })
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].GetVolume().GetCapacityBytes() < entries[j].GetVolume().GetCapacityBytes()
+	})
 	for i, entry := range entries {
 		had := false
 		for _, info := range infos {
