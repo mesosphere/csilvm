@@ -1260,9 +1260,16 @@ func determineFilesystemType(devicePath string) (string, error) {
 }
 
 func formatDevice(devicePath, fstype string) error {
-	output, err := exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
-	if err != nil {
-		return errors.New("csilvm: formatDevice: " + string(output))
+	// scrub the first 256k of the device to head off any mkfs probe misfires.
+	output, err := exec.Command(
+		"dd", "if=/dev/zero", "of="+devicePath, "bs=512", "count=512", "conv=notrunc",
+	).CombinedOutput()
+
+	if err == nil {
+		output, err = exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
+		if err != nil {
+			return errors.New("csilvm: formatDevice: " + string(output))
+		}
 	}
 	return nil
 }
