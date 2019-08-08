@@ -78,6 +78,8 @@ func main() {
 	// - https://github.com/lvmteam/lvm2/issues/23
 	if *lockFilePathF != "" {
 		lvm.SetLockFilePath(*lockFilePathF)
+	} else if path := os.Getenv("CSILVM_LOCKFILE_PATH"); path != "" {
+		lvm.SetLockFilePath(path)
 	}
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
