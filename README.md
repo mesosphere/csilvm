@@ -142,35 +142,37 @@ It is expected that the Plugin Supervisor will launch the binary using the appro
 $ ./csilvm --help
 Usage of ./csilvm:
   -default-fs string
-      The default filesystem to format new volumes with (default "xfs")
+    	The default filesystem to format new volumes with (default "xfs")
   -default-volume-size uint
-      The default volume size in bytes (default 10737418240)
+    	The default volume size in bytes (default 10737418240)
   -devices string
-      A comma-seperated list of devices in the volume group
+    	A comma-seperated list of devices in the volume group
+  -lockfile string
+    	The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances
   -node-id string
-      The node ID reported via the CSI Node gRPC service
+    	The node ID reported via the CSI Node gRPC service
   -probe-module value
-      Probe checks that the kernel module is loaded
+    	Probe checks that the kernel module is loaded
   -remove-volume-group
-      If set, the volume group will be removed when ProbeNode is called.
+    	If set, the volume group will be removed when ProbeNode is called.
   -request-limit int
-      Limits backlog of pending requests. (default 10)
+    	Limits backlog of pending requests. (default 10)
   -statsd-format string
-      The statsd format to use (one of: classic, datadog) (default "datadog")
+    	The statsd format to use (one of: classic, datadog) (default "datadog")
   -statsd-max-udp-size int
-      The size to buffer before transmitting a statsd UDP packet (default 1432)
+    	The size to buffer before transmitting a statsd UDP packet (default 1432)
   -statsd-udp-host-env-var string
-      The name of the environment variable containing the host where a statsd service is listening for stats over UDP
+    	The name of the environment variable containing the host where a statsd service is listening for stats over UDP
   -statsd-udp-port-env-var string
-      The name of the environment variable containing the port where a statsd service is listening for stats over UDP
+    	The name of the environment variable containing the port where a statsd service is listening for stats over UDP
   -tag value
-      Value to tag the volume group with (can be given multiple times)
+    	Value to tag the volume group with (can be given multiple times)
   -unix-addr string
-      The path to the listening unix socket file
+    	The path to the listening unix socket file
   -unix-addr-env string
-      An optional environment variable from which to read the unix-addr
+    	An optional environment variable from which to read the unix-addr
   -volume-group string
-      The name of the volume group to manage
+    	The name of the volume group to manage
 ```
 
 
@@ -180,6 +182,20 @@ The plugin listens on a unix socket.
 The unix socket path can be specified using the `-unix-addr=<path>` command-line option.
 The unix socket path can also be specified using the `-unix-addr-env=<env-var-name>` option in which case the path will be read from the environment variable of the given name.
 It is expected that the CO will connect to the plugin through the unix socket and will subsequently communicate with it in accordance with the CSI specification.
+
+
+### Locking
+
+If the `-lockfile` parameter is specified, an exclusive `flock()` is held on
+that file whenever any lvm2 command-line utility is invoked. This prevents
+multiple CSILVM processes from performing concurrent lvm operations that can
+lead to deadlocks in the underlying lvm2 implementation. For example,
+https://jira.mesosphere.com/browse/DCOS_OSS-5434 and
+https://github.com/lvmteam/lvm2/issues/23.
+
+By default no lock file is specified and no inter-process synchronization is
+performed. You are encouraged to enable locking by setting the `-lockfile=`
+option, for example `-lockfile=/run/csilvm.lock`.
 
 
 ### Logging
