@@ -186,8 +186,8 @@ It is expected that the CO will connect to the plugin through the unix socket an
 
 ### Locking
 
-If the `-lockfile` parameter is specified, an exclusive `flock()` is held on
-that file whenever any lvm2 command-line utility is invoked. This prevents
+If the `-lockfile` parameter is specified or the `CSILVM_LOCKFILE_PATH` environment variable is set,
+an exclusive `flock()` is held on that file whenever any lvm2 command-line utility is invoked. This prevents
 multiple CSILVM processes from performing concurrent lvm operations that can
 lead to deadlocks in the underlying lvm2 implementation. For example,
 https://jira.mesosphere.com/browse/DCOS_OSS-5434 and
