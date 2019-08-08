@@ -850,6 +850,10 @@ func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
 // https://github.com/Jajcus/lvm2/blob/266d6564d7a72fcff5b25367b7a95424ccf8089e/lib/metadata/metadata.c#L983
 
 func run(cmd string, v interface{}, extraArgs ...string) error {
+	if lvmlock != nil {
+		lvmlock.Lock()
+		defer lvmlock.Unlock()
+	}
 	var args []string
 	if v != nil {
 		args = append(args, "--reportformat=json")
