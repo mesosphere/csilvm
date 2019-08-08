@@ -59,6 +59,7 @@ func main() {
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
+	lockFilePathF := flag.String("lockfile", "", "The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances")
 	// Metrics-related flags
 	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
 	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
@@ -71,6 +72,13 @@ func main() {
 	logger := log.New(os.Stderr, logprefix, logflags)
 	csilvm.SetLogger(logger)
 	lvm.SetLogger(logger)
+	// Setup LVM operation lock file.
+	// See
+	// - https://jira.mesosphere.com/browse/DCOS_OSS-5434
+	// - https://github.com/lvmteam/lvm2/issues/23
+	if *lockFilePathF != "" {
+		lvm.SetLockFilePath(*lockFilePathF)
+	}
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
 		logger.Fatalf("cannot specify -unix-addr and -unix-addr-env")
