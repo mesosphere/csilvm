@@ -2,6 +2,22 @@
 
 
 [[projects]]
+  digest = "1:e9846ece10d1701db72a5add936bb9edc81353cdccb19be27078ca32f6c3f5d8"
+  name = "github.com/DataDog/datadog-go"
+  packages = ["statsd"]
+  pruneopts = ""
+  revision = "8a13fa761f51039f900738876f2837198fba804f"
+  version = "v2.2.0"
+
+[[projects]]
+  digest = "1:47fe89a242ccbae03d31b4c665d3d983786acd316c0d7c51bcfa0d019b205004"
+  name = "github.com/cactus/go-statsd-client"
+  packages = ["statsd"]
+  pruneopts = ""
+  revision = "138b925ccdf617776955904ba7759fce64406cec"
+  version = "v3.1.1"
+
+[[projects]]
   digest = "1:cf4f5171128e62b46299b0a7cd79543f50e62f483d2ca9364e4957c7bbee7a38"
   name = "github.com/container-storage-interface/spec"
   packages = [
@@ -11,6 +27,14 @@
   pruneopts = ""
   revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
   version = "v0.3.0"
+
+[[projects]]
+  digest = "1:a4724325f1d3bd4127dac415e980c7c28f2e08f4d0ba2513e7de9980906604ef"
+  name = "github.com/gofrs/flock"
+  packages = ["."]
+  pruneopts = ""
+  revision = "392e7fae8f1b0bdbd67dad7237d23f618feb6dbb"
+  version = "v0.7.1"
 
 [[projects]]
   digest = "1:529d738b7976c3848cae5cf3a8036440166835e389c1f617af701eeb12a0518d"
@@ -40,6 +64,17 @@
   pruneopts = ""
   revision = "0cd6bf5da1e1c83f8b45653022c74f71af0538a4"
   version = "v1.1.1"
+
+[[projects]]
+  digest = "1:aaef0733d4f8a38791c7b465fd4ab1a3f9afb6bdbd6bff2712deb803a0bcab1e"
+  name = "github.com/uber-go/tally"
+  packages = [
+    ".",
+    "statsd",
+  ]
+  pruneopts = ""
+  revision = "3332297784e46cd346ab6d9894fd4ea027dc9368"
+  version = "v3.3.12"
 
 [[projects]]
   branch = "master"
@@ -158,10 +193,15 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/DataDog/datadog-go/statsd",
+    "github.com/cactus/go-statsd-client/statsd",
     "github.com/container-storage-interface/spec/lib/go",
     "github.com/container-storage-interface/spec/lib/go/csi/v0",
+    "github.com/gofrs/flock",
     "github.com/golang/protobuf/protoc-gen-go",
     "github.com/google/uuid",
+    "github.com/uber-go/tally",
+    "github.com/uber-go/tally/statsd",
     "golang.org/x/net/context",
     "golang.org/x/sync/semaphore",
     "google.golang.org/grpc",
