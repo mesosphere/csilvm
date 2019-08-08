@@ -4,6 +4,7 @@ package lvm
 
 import (
 	"fmt"
+	"io/ioutil"
 	"reflect"
 	"sort"
 	"strings"
@@ -17,6 +18,16 @@ const (
 	// We use 100MiB test volumes.
 	pvsize = 100 << 20
 )
+
+func init() {
+	// Set the lock file to use in tests.
+	file, err := ioutil.TempFile("", "csilvm-test-lock-file")
+	if err != nil {
+		panic(err)
+	}
+	file.Close()
+	SetLockFilePath(file.Name())
+}
 
 func TestCreatePhysicalDevice(t *testing.T) {
 	loop, err := CreateLoopDevice(pvsize)
