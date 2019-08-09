@@ -850,7 +850,15 @@ func LookupPhysicalVolume(name string) (*PhysicalVolume, error) {
 // https://github.com/Jajcus/lvm2/blob/266d6564d7a72fcff5b25367b7a95424ccf8089e/lib/metadata/metadata.c#L983
 
 func run(cmd string, v interface{}, extraArgs ...string) error {
+	// lvmlock can be nil, as it is a global variable that is intended to be
+	// initialized from calling code outside this package. We have no way of
+	// knowing whether the caller performed that initialization and must
+	// defensively check. In the future, we may decide to simply panic with a
+	// nil pointer dereference.
 	if lvmlock != nil {
+		// We use Lock instead of TryLock as we have no alternative way of
+		// making progress. We expect lvm2 command-line utilities invoked by
+		// this package to return within a reasonable amount of time.
 		lvmlock.Lock()
 		defer lvmlock.Unlock()
 	}
