@@ -186,16 +186,18 @@ It is expected that the CO will connect to the plugin through the unix socket an
 
 ### Locking
 
-If the `-lockfile` parameter is specified or the `CSILVM_LOCKFILE_PATH` environment variable is set,
-an exclusive `flock()` is held on that file whenever any lvm2 command-line utility is invoked. This prevents
-multiple CSILVM processes from performing concurrent lvm operations that can
-lead to deadlocks in the underlying lvm2 implementation. For example,
+Any command-line invocations executed by the `csilvm` process first acquires a
+lock on a lockfile. The path to the lockfile can be overridden using the
+`-lockfile=` option or the `CSILVM_LOCKFILE_PATH` environment variable. The
+locking behaviour can be disabled by setting the `-lockfile=` option to the
+empty string. The purpose of locking around command-line invocations is to
+prevent multiple `csilvm` processes from executing concurrent `lvm2` commands.
+This works around deadlocks in lvm2. For example,
 https://jira.mesosphere.com/browse/DCOS_OSS-5434 and
 https://github.com/lvmteam/lvm2/issues/23.
 
-By default no lock file is specified and no inter-process synchronization is
-performed. You are encouraged to enable locking by setting the `-lockfile=`
-option, for example `-lockfile=/run/csilvm.lock`.
+By default the lock file is created at `/run/csilvm.lock` so it is assumed that
+the `/run` directory exists and is writable by the `csilvm` process.
 
 
 ### Logging

@@ -59,7 +59,7 @@ func main() {
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
-	lockFilePathF := flag.String("lockfile", "", "The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances")
+	lockFilePathF := flag.String("lockfile", "/run/csilvm.lock", "The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances")
 	// Metrics-related flags
 	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
 	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
@@ -95,7 +95,7 @@ func main() {
 	// Unlink the domain socket in case it is left lying around from a
 	// previous run. err return is not really interesting because it is
 	// normal for this to fail if the process is starting for the first time.
-	logger.Printf("Unlinking %s", sock)
+	logger.Printf("Unlinking socket file: %q", sock)
 	syscall.Unlink(sock)
 	// Setup socket listener
 	lis, err := net.Listen("unix", sock)
