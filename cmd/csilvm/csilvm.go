@@ -42,6 +42,14 @@ func (f *stringsFlag) Set(tag string) error {
 	return nil
 }
 
+func defaultLockfilePathOrEnv() string {
+	path := os.Getenv("CSILVM_LOCKFILE_PATH")
+	if path == "" {
+		return "/run/csilvm.lock"
+	}
+	return path
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
@@ -59,7 +67,7 @@ func main() {
 	var probeModulesF stringsFlag
 	flag.Var(&probeModulesF, "probe-module", "Probe checks that the kernel module is loaded")
 	nodeIDF := flag.String("node-id", "", "The node ID reported via the CSI Node gRPC service")
-	lockFilePathF := flag.String("lockfile", "/run/csilvm.lock", "The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances")
+	lockFilePathF := flag.String("lockfile", defaultLockfilePathOrEnv(), "The path to the lock file used to prevent concurrent lvm invocation by multiple csilvm instances")
 	// Metrics-related flags
 	statsdUDPHostEnvVarF := flag.String("statsd-udp-host-env-var", "", "The name of the environment variable containing the host where a statsd service is listening for stats over UDP")
 	statsdUDPPortEnvVarF := flag.String("statsd-udp-port-env-var", "", "The name of the environment variable containing the port where a statsd service is listening for stats over UDP")
@@ -78,8 +86,6 @@ func main() {
 	// - https://github.com/lvmteam/lvm2/issues/23
 	if *lockFilePathF != "" {
 		lvm.SetLockFilePath(*lockFilePathF)
-	} else if path := os.Getenv("CSILVM_LOCKFILE_PATH"); path != "" {
-		lvm.SetLockFilePath(path)
 	}
 	// Determine listen address.
 	if *socketFileF != "" && *socketFileEnvF != "" {
