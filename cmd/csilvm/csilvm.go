@@ -95,14 +95,14 @@ func main() {
 	if *socketFileEnvF != "" {
 		sock = os.Getenv(*socketFileEnvF)
 	}
-	if strings.HasPrefix(sock, "unix://") {
-		sock = sock[len("unix://"):]
-	}
+	sock = strings.TrimPrefix(sock, "unix://")
 	// Unlink the domain socket in case it is left lying around from a
 	// previous run. err return is not really interesting because it is
 	// normal for this to fail if the process is starting for the first time.
 	logger.Printf("Unlinking socket file: %q", sock)
-	syscall.Unlink(sock)
+	if err := syscall.Unlink(sock); err != nil {
+		logger.Fatalf("Failed to unlink socket file: %v", err)
+	}
 	// Setup socket listener
 	lis, err := net.Listen("unix", sock)
 	if err != nil {
@@ -212,5 +212,7 @@ func main() {
 	csi.RegisterIdentityServer(grpcServer, csilvm.IdentityServerValidator(s))
 	csi.RegisterControllerServer(grpcServer, csilvm.ControllerServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
 	csi.RegisterNodeServer(grpcServer, csilvm.NodeServerValidator(s, s.RemovingVolumeGroup(), s.SupportedFilesystems()))
-	grpcServer.Serve(lis)
+	if err := grpcServer.Serve(lis); err != nil {
+		logger.Fatalf("Stopped serving, err=%v", err)
+	}
 }

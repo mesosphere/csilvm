@@ -1,5 +1,6 @@
 // +build !unit
 
+//nolint:errcheck
 package csilvm
 
 import (
@@ -8,7 +9,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,7 +22,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/google/uuid"
@@ -36,10 +35,6 @@ import (
 
 // The size of the physical volumes we create in our tests.
 const pvsize = 100 << 20 // 100MiB
-
-var (
-	socketFile = flag.String("socket_file", "", "The path to the listening unix socket file")
-)
 
 func init() {
 	// Set test logging
@@ -149,7 +144,7 @@ func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			AccessType: &csi.VolumeCapability_Block{
-				&csi.VolumeCapability_BlockVolume{},
+				Block: &csi.VolumeCapability_BlockVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -157,7 +152,7 @@ func testCreateVolumeRequest() *csi.CreateVolumeRequest {
 		},
 		{
 			AccessType: &csi.VolumeCapability_Mount{
-				&csi.VolumeCapability_MountVolume{
+				Mount: &csi.VolumeCapability_MountVolume{
 					FsType:     "xfs",
 					MountFlags: nil,
 				},
@@ -885,7 +880,7 @@ func testValidateVolumeCapabilitiesRequest(volumeId string, filesystem string, m
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			AccessType: &csi.VolumeCapability_Block{
-				&csi.VolumeCapability_BlockVolume{},
+				Block: &csi.VolumeCapability_BlockVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -893,7 +888,7 @@ func testValidateVolumeCapabilitiesRequest(volumeId string, filesystem string, m
 		},
 		{
 			AccessType: &csi.VolumeCapability_Mount{
-				&csi.VolumeCapability_MountVolume{
+				Mount: &csi.VolumeCapability_MountVolume{
 					FsType:     filesystem,
 					MountFlags: mountOpts,
 				},
@@ -1150,7 +1145,7 @@ func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 	volumeCapabilities := []*csi.VolumeCapability{
 		{
 			AccessType: &csi.VolumeCapability_Block{
-				&csi.VolumeCapability_BlockVolume{},
+				Block: &csi.VolumeCapability_BlockVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -1158,7 +1153,7 @@ func testGetCapacityRequest(fstype string) *csi.GetCapacityRequest {
 		},
 		{
 			AccessType: &csi.VolumeCapability_Mount{
-				&csi.VolumeCapability_MountVolume{
+				Mount: &csi.VolumeCapability_MountVolume{
 					FsType: fstype,
 				},
 			},
@@ -1391,7 +1386,7 @@ func testNodePublishVolumeRequest(volumeId string, targetPath string, filesystem
 	if filesystem == "block" {
 		volumeCapability = &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Block{
-				&csi.VolumeCapability_BlockVolume{},
+				Block: &csi.VolumeCapability_BlockVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
 				Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
@@ -1400,7 +1395,7 @@ func testNodePublishVolumeRequest(volumeId string, targetPath string, filesystem
 	} else {
 		volumeCapability = &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{
-				&csi.VolumeCapability_MountVolume{
+				Mount: &csi.VolumeCapability_MountVolume{
 					FsType:     filesystem,
 					MountFlags: mountOpts,
 				},
@@ -2257,11 +2252,6 @@ func targetPathIsMountPoint(path string) bool {
 	return true
 }
 
-func testNodeGetIdRequest() *csi.NodeGetIdRequest {
-	req := &csi.NodeGetIdRequest{}
-	return req
-}
-
 func TestNodeGetIdNotSupported(t *testing.T) {
 	vgname := testvgname()
 	pvname, pvclean := testpv()
@@ -3058,11 +3048,11 @@ func prepareSetupTest(vgname string, pvnames []string, serverOpts ...ServerOpt) 
 	go grpcServer.Serve(lis)
 
 	// Start a grpc client connected to the server.
-	unixDialer := func(addr string, timeout time.Duration) (net.Conn, error) {
-		return net.DialTimeout("unix", addr, timeout)
+	unixDialer := func(ctx context.Context, addr string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", addr)
 	}
 	clientOpts := []grpc.DialOption{
-		grpc.WithDialer(unixDialer),
+		grpc.WithContextDialer(unixDialer),
 		grpc.WithInsecure(),
 	}
 	conn, err := grpc.Dial(lis.Addr().String(), clientOpts...)

@@ -678,7 +678,7 @@ func (s *Server) validateExistingVolume(lv *lvm.LogicalVolume, request *csi.Crea
 				}
 				// The existing volume satisfies this
 				// volume_capability.
-			} else {
+			} else { //nolint: staticcheck
 				// The existing volume has not been formatted
 				// with a filesystem and can therefore satisfy
 				// this volume_capability (by formatting it
@@ -825,10 +825,6 @@ func (s *Server) ValidateVolumeCapabilities(
 	return response, nil
 }
 
-func (s *Server) volumeNameToId(volname string) string {
-	return s.volumeGroup.Name() + "_" + volname
-}
-
 const (
 	tagVolumeNameEncodedPrefix = "VN+" // used when volume name is not tag-safe
 	tagVolumeNamePlainPrefix   = "VN." // used when volume name is tag-safe
@@ -945,7 +941,7 @@ func (s *Server) ControllerGetCapabilities(
 		// CREATE_DELETE_VOLUME
 		{
 			Type: &csi.ControllerServiceCapability_Rpc{
-				&csi.ControllerServiceCapability_RPC{
+				Rpc: &csi.ControllerServiceCapability_RPC{
 					Type: csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 				},
 			},
@@ -959,7 +955,7 @@ func (s *Server) ControllerGetCapabilities(
 		// LIST_VOLUMES
 		{
 			Type: &csi.ControllerServiceCapability_Rpc{
-				&csi.ControllerServiceCapability_RPC{
+				Rpc: &csi.ControllerServiceCapability_RPC{
 					Type: csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 				},
 			},
@@ -967,7 +963,7 @@ func (s *Server) ControllerGetCapabilities(
 		// GET_CAPACITY
 		{
 			Type: &csi.ControllerServiceCapability_Rpc{
-				&csi.ControllerServiceCapability_RPC{
+				Rpc: &csi.ControllerServiceCapability_RPC{
 					Type: csi.ControllerServiceCapability_RPC_GET_CAPACITY,
 				},
 			},
@@ -1264,12 +1260,12 @@ func formatDevice(devicePath, fstype string) error {
 	output, err := exec.Command(
 		"dd", "if=/dev/zero", "of="+devicePath, "bs=512", "count=512", "conv=notrunc",
 	).CombinedOutput()
-
-	if err == nil {
-		output, err = exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
-		if err != nil {
-			return errors.New("csilvm: formatDevice: " + string(output))
-		}
+	if err != nil {
+		return errors.New("csilvm: formatDevice: dd failed: err=" + err.Error() + ": " + string(output))
+	}
+	output, err = exec.Command("mkfs", "-t", fstype, devicePath).CombinedOutput()
+	if err != nil {
+		return errors.New("csilvm: formatDevice: mkfs failed: err=" + err.Error() + ": " + string(output))
 	}
 	return nil
 }

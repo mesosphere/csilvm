@@ -1,5 +1,6 @@
 // +build !unit
 
+//nolint:errcheck
 package csilvm
 
 import (

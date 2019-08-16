@@ -576,7 +576,7 @@ func (vg *VolumeGroup) Tags() ([]string, error) {
 					tags = append(tags, tag)
 				}
 			}
-			return tags, nil
+			return tags, nil //nolint: staticcheck
 		}
 	}
 	return nil, ErrVolumeGroupNotFound
@@ -859,8 +859,14 @@ func run(cmd string, v interface{}, extraArgs ...string) error {
 		// We use Lock instead of TryLock as we have no alternative way of
 		// making progress. We expect lvm2 command-line utilities invoked by
 		// this package to return within a reasonable amount of time.
-		lvmlock.Lock()
-		defer lvmlock.Unlock()
+		if lerr := lvmlock.Lock(); lerr != nil {
+			return lerr
+		}
+		defer func() {
+			if lerr := lvmlock.Unlock(); lerr != nil {
+				panic(fmt.Sprintf("failed to release lock, unrecoverable error, crashing: err=%v", lerr))
+			}
+		}()
 	}
 	var args []string
 	if v != nil {

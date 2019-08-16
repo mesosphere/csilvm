@@ -47,7 +47,7 @@ func (s *Server) ReportUptime() context.CancelFunc {
 		for {
 			select {
 			case <-uptimeTicker.C:
-				elapsed := time.Now().Sub(start)
+				elapsed := time.Since(start)
 				gauge.Update(float64(elapsed.Seconds()))
 			case <-done:
 				return
