@@ -36,10 +36,11 @@ RUN rm -rf /usr/local/go && \
 ENV GOPATH /go
 ENV PATH /go/bin:$PATH
 ENV PATH /usr/local/go/bin:$PATH
+ENV GOLANGCI_LINT_VERSION v1.17.1
 
 RUN mkdir -p /go/src/github.com/golangci/ && \
     cd /go/src/github.com/golangci && \
-    git clone https://github.com/golangci/golangci-lint.git --branch=v1.17.1 && \
+    git clone https://github.com/golangci/golangci-lint.git --branch=$GOLANGCI_LINT_VERSION && \
     go install -v github.com/golangci/golangci-lint/cmd/golangci-lint && \
     mkdir -p /go/src/github.com/mesosphere/csilvm
 
