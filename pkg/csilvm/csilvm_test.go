@@ -38,6 +38,12 @@ func check(fn func() error) {
 	}
 }
 
+func try(fn func() error) {
+	if err := fn(); err != nil {
+		log.Printf("try: err=%v", err)
+	}
+}
+
 // The size of the physical volumes we create in our tests.
 const pvsize = 100 << 20 // 100MiB
 
@@ -2340,19 +2346,19 @@ func TestProbe_MissingPhysicalVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path(), "fakevol"}
 	client, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
@@ -2384,23 +2390,33 @@ func TestProbe_RemovedPhysicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
-	// Force remove the second PV immediately.
-	check(pv2.Remove)
-	// Force remove the second device immediately.
-	loop2.Close()
+	defer try(vg.Remove)
+
+	// Zero metadata on the first PV immediately.
+	file, err := os.OpenFile(loop2.Path(), os.O_RDWR, 0755)
+	if err != nil {
+		panic(err)
+	}
+	if _, err := file.Write(bytes.Repeat([]byte{0}, 1<<20)); err != nil {
+		check(file.Close)
+		panic(err)
+	}
+	check(file.Close)
+	// Force remove the device underlying the second PV immediately.
+	check(loop2.Close)
+
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	client, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
@@ -2623,19 +2639,19 @@ func TestSetup_ExistingVolumeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
@@ -2661,19 +2677,19 @@ func TestSetup_ExistingVolumeGroup_MissingPhysicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path(), "/dev/missing-device"}
 	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
@@ -2701,19 +2717,19 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, Metrics(scope))
 	defer clean()
@@ -2739,19 +2755,19 @@ func TestSetup_ExistingVolumeGroup_RemoveVolumeGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup())
 	defer clean()
@@ -2794,19 +2810,19 @@ func TestSetup_ExistingVolumeGroup_UnexpectedExtraPhysicalVolume_RemoveVolumeGro
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, nil)
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, RemoveVolumeGroup(), Metrics(scope))
 	defer clean()
@@ -2832,12 +2848,12 @@ func TestSetup_ExistingVolumeGroup_WithTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	tags := []string{"blue", "foo"}
@@ -2845,7 +2861,7 @@ func TestSetup_ExistingVolumeGroup_WithTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tags[0]), Tag(tags[1]))
 	defer clean()
@@ -2870,12 +2886,12 @@ func TestSetup_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	tag := "blue"
@@ -2883,7 +2899,7 @@ func TestSetup_ExistingVolumeGroup_UnexpectedTag(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	_, server, clean := prepareSetupTest(vgname, pvnames)
 	defer clean()
@@ -2911,19 +2927,19 @@ func TestSetup_ExistingVolumeGroup_MissingTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv1.Remove)
+	defer try(pv1.Remove)
 	pv2, err := lvm.CreatePhysicalVolume(loop2.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer check(pv2.Remove)
+	defer try(pv2.Remove)
 	pvs := []*lvm.PhysicalVolume{pv1, pv2}
 	vgname := "test-vg-" + uuid.New().String()
 	vg, err := lvm.CreateVolumeGroup(vgname, pvs, []string{"some-other-tag"})
 	if err != nil {
 		panic(err)
 	}
-	defer check(vg.Remove)
+	defer try(vg.Remove)
 	pvnames := []string{loop1.Path(), loop2.Path()}
 	tag := "blue"
 	_, server, clean := prepareSetupTest(vgname, pvnames, Tag(tag))

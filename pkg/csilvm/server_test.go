@@ -110,7 +110,7 @@ func TestSerializingInterceptorCanceled(t *testing.T) {
 	si := SerializingInterceptor()
 	for i := 0; i < workers; i++ {
 		go func() {
-			if _, err := si(ctx, nil, nil, handler); err != nil {
+			if _, err := si(ctx, nil, nil, handler); err != context.Canceled {
 				panic(err)
 			}
 		}()
