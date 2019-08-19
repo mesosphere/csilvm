@@ -860,11 +860,11 @@ func run(cmd string, v interface{}, extraArgs ...string) error {
 		// making progress. We expect lvm2 command-line utilities invoked by
 		// this package to return within a reasonable amount of time.
 		if lerr := lvmlock.Lock(); lerr != nil {
-			return lerr
+			return fmt.Errorf("lvm: acquire lock failed: %v", lerr)
 		}
 		defer func() {
 			if lerr := lvmlock.Unlock(); lerr != nil {
-				panic(fmt.Sprintf("failed to release lock, unrecoverable error, crashing: err=%v", lerr))
+				panic(fmt.Sprintf("lvm: release lock failed: %v", lerr))
 			}
 		}()
 	}
