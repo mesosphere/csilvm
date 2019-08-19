@@ -99,9 +99,9 @@ func main() {
 	// Unlink the domain socket in case it is left lying around from a
 	// previous run. err return is not really interesting because it is
 	// normal for this to fail if the process is starting for the first time.
-	logger.Printf("Unlinking socket file: %q", sock)
+	logger.Printf("Unlinking socket file in case it still exists: %q", sock)
 	if err := syscall.Unlink(sock); err != nil {
-		logger.Fatalf("Failed to unlink socket file: %v", err)
+		logger.Printf("Failed to unlink socket file: %v", err)
 	}
 	// Setup socket listener
 	lis, err := net.Listen("unix", sock)
