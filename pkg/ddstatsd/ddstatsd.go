@@ -84,7 +84,7 @@ func (r *statsReporter) ReportCounter(name string, tags map[string]string, value
 	for k, v := range tags {
 		tagsList = append(tagsList, k+":"+v)
 	}
-	r.client.Count(name, value, tagsList, r.sampleRate)
+	logErr(r.client.Count(name, value, tagsList, r.sampleRate))
 }
 
 func (r *statsReporter) ReportGauge(name string, tags map[string]string, value float64) {
@@ -92,7 +92,7 @@ func (r *statsReporter) ReportGauge(name string, tags map[string]string, value f
 	for k, v := range tags {
 		tagsList = append(tagsList, k+":"+v)
 	}
-	r.client.Gauge(name, value, tagsList, r.sampleRate)
+	logErr(r.client.Gauge(name, value, tagsList, r.sampleRate))
 }
 
 func (r *statsReporter) ReportTimer(name string, tags map[string]string, interval time.Duration) {
@@ -100,7 +100,7 @@ func (r *statsReporter) ReportTimer(name string, tags map[string]string, interva
 	for k, v := range tags {
 		tagsList = append(tagsList, k+":"+v)
 	}
-	r.client.Timing(name, interval, tagsList, r.sampleRate)
+	logErr(r.client.Timing(name, interval, tagsList, r.sampleRate))
 }
 
 func (r *statsReporter) ReportHistogramValueSamples(
@@ -115,11 +115,11 @@ func (r *statsReporter) ReportHistogramValueSamples(
 	for k, v := range tags {
 		tagsList = append(tagsList, k+":"+v)
 	}
-	r.client.Histogram(
+	logErr(r.client.Histogram(
 		fmt.Sprintf("%s.%s-%s", name,
 			r.valueBucketString(bucketLowerBound),
 			r.valueBucketString(bucketUpperBound)),
-		float64(samples), tagsList, r.sampleRate)
+		float64(samples), tagsList, r.sampleRate))
 }
 
 func (r *statsReporter) ReportHistogramDurationSamples(
@@ -134,11 +134,11 @@ func (r *statsReporter) ReportHistogramDurationSamples(
 	for k, v := range tags {
 		tagsList = append(tagsList, k+":"+v)
 	}
-	r.client.Histogram(
+	logErr(r.client.Histogram(
 		fmt.Sprintf("%s.%s-%s", name,
 			r.durationBucketString(bucketLowerBound),
 			r.durationBucketString(bucketUpperBound)),
-		float64(samples), tagsList, r.sampleRate)
+		float64(samples), tagsList, r.sampleRate))
 }
 
 func (r *statsReporter) valueBucketString(
@@ -180,5 +180,11 @@ func (r *statsReporter) Tagging() bool {
 func (r *statsReporter) Flush() {
 	if err := r.client.Flush(); err != nil {
 		log.Printf("failed to flush metrics: err=%v", err)
+	}
+}
+
+func logErr(err error) {
+	if err != nil {
+		log.Printf("ddstatsd: error: %v", err)
 	}
 }

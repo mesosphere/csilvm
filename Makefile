@@ -58,7 +58,7 @@ shell: dev-image
 endif
 
 check:
-	$(BUILD_PREFIX) sh -c "go build -v ./... && gometalinter --config=gometalinter.conf --vendor ./..."
+	$(BUILD_PREFIX) sh -c "go build -v ./... && golangci-lint run -E=goimports -E=gofmt"
 
 build:
 	$(BUILD_PREFIX) go build -ldflags "$(LDFLAGS)" ./cmd/csilvm

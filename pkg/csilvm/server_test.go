@@ -81,7 +81,11 @@ func TestSerializingInterceptor(t *testing.T) {
 	}
 	si := SerializingInterceptor()
 	for i := 0; i < workers; i++ {
-		go si(context.Background(), nil, nil, handler)
+		go func() {
+			if _, err := si(context.Background(), nil, nil, handler); err != nil {
+				panic(err)
+			}
+		}()
 	}
 	g.Wait()
 	if calls != 100 {
@@ -105,7 +109,11 @@ func TestSerializingInterceptorCanceled(t *testing.T) {
 
 	si := SerializingInterceptor()
 	for i := 0; i < workers; i++ {
-		go si(ctx, nil, nil, handler)
+		go func() {
+			if _, err := si(ctx, nil, nil, handler); err != context.Canceled {
+				panic(err)
+			}
+		}()
 	}
 	if calls != 0 {
 		t.Fatalf("expected %d calls instead of %d", 0, calls)

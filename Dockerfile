@@ -36,13 +36,12 @@ RUN rm -rf /usr/local/go && \
 ENV GOPATH /go
 ENV PATH /go/bin:$PATH
 ENV PATH /usr/local/go/bin:$PATH
+ENV GOLANGCI_LINT_VERSION v1.17.1
 
-RUN mkdir -p /go/src/github.com/alecthomas && \
-    cd /go/src/github.com/alecthomas && \
-    git clone https://github.com/alecthomas/gometalinter.git --branch=v1.2.1 && \
-    go install -v github.com/alecthomas/gometalinter && \
-    gometalinter --install && \
-    go get -u golang.org/x/tools/cmd/goimports && \
+RUN mkdir -p /go/src/github.com/golangci/ && \
+    cd /go/src/github.com/golangci && \
+    git clone https://github.com/golangci/golangci-lint.git --branch=$GOLANGCI_LINT_VERSION && \
+    go install -v github.com/golangci/golangci-lint/cmd/golangci-lint && \
     mkdir -p /go/src/github.com/mesosphere/csilvm
 
 # We explicitly disable use of lvmetad as the cache appears to yield inconsistent results,

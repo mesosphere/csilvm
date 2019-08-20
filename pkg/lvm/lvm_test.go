@@ -29,6 +29,12 @@ func init() {
 	SetLockFilePath(file.Name())
 }
 
+func check(fn func() error) {
+	if err := fn(); err != nil {
+		panic(err)
+	}
+}
+
 func TestCreatePhysicalDevice(t *testing.T) {
 	loop, err := CreateLoopDevice(pvsize)
 	if err != nil {
@@ -43,7 +49,7 @@ func TestCreatePhysicalDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pv.Remove()
+	defer check(pv.Remove)
 }
 
 func TestListPhysicalVolumes(t *testing.T) {
@@ -60,7 +66,7 @@ func TestListPhysicalVolumes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pv.Remove()
+	defer check(pv.Remove)
 	pvs, err := ListPhysicalVolumes()
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +93,7 @@ func TestLookupPhysicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pv.Remove()
+	defer check(pv.Remove)
 	pv2, err := LookupPhysicalVolume(pv.dev)
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +117,7 @@ func TestLookupPhysicalVolumeNonExistent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pv.Remove()
+	defer check(pv.Remove)
 	pv2, err := LookupPhysicalVolume(pv.dev + "a")
 	if err != ErrPhysicalVolumeNotFound {
 		t.Fatal("Expected 'not found' error.")
@@ -135,7 +141,7 @@ func TestPhysicalVolumeCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pv.Remove()
+	defer check(pv.Remove)
 	if err := pv.Check(); err != nil {
 		t.Fatal(err)
 	}
@@ -282,11 +288,11 @@ func TestCreateVolumeGroupInvalidName(t *testing.T) {
 	// Try to create the volume group with a bad name.
 	vg, err := CreateVolumeGroup("bad name :)", nil, nil)
 	if err != ErrInvalidVGName {
-		vg.Remove()
+		check(vg.Remove)
 		t.Fatalf("Expected invalidNameError got %#v.", err)
 	}
 	if vg != nil {
-		vg.Remove()
+		check(vg.Remove)
 		t.Fatal("Expected no volume group in response")
 	}
 }
@@ -421,7 +427,7 @@ func TestCreateLogicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 }
 
 func TestCreateLogicalVolume_Tagged(t *testing.T) {
@@ -445,7 +451,7 @@ func TestCreateLogicalVolume_Tagged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	tags, err := lv.Tags()
 	if err != nil {
 		t.Fatal(err)
@@ -476,7 +482,7 @@ func TestCreateLogicalVolume_BadTag(t *testing.T) {
 		t.Fatalf("Expected invalid tag error, got %v", err)
 	}
 	if err == nil {
-		lv.Remove()
+		check(lv.Remove)
 	}
 }
 
@@ -505,7 +511,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv1.Remove()
+	defer check(lv1.Remove)
 	vg2, cleanup, err := createVolumeGroup([]*LoopDevice{loop2}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -519,7 +525,7 @@ func TestCreateLogicalVolumeDuplicateNameIsAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv2.Remove()
+	defer check(lv2.Remove)
 }
 
 func TestCreateLogicalVolumeInvalidName(t *testing.T) {
@@ -539,11 +545,11 @@ func TestCreateLogicalVolumeInvalidName(t *testing.T) {
 	}
 	lv, err := vg.CreateLogicalVolume("bad name :)", size, nil)
 	if err != ErrInvalidLVName {
-		lv.Remove()
+		check(lv.Remove)
 		t.Fatalf("Expected an invalidNameError but got %#v.", err)
 	}
 	if lv != nil {
-		lv.Remove()
+		check(lv.Remove)
 		t.Fatal("Expected no logical volume in response.")
 	}
 }
@@ -565,11 +571,11 @@ func TestCreateLogicalVolumeTooLarge(t *testing.T) {
 	}
 	lv, err := vg.CreateLogicalVolume("testvol", size*2, nil)
 	if err != ErrNoSpace {
-		lv.Remove()
+		check(lv.Remove)
 		t.Fatal("Expected ErrNoSpace.")
 	}
 	if lv != nil {
-		lv.Remove()
+		check(lv.Remove)
 		t.Fatal("Expected no logical volume in response.")
 	}
 }
@@ -596,7 +602,7 @@ func TestCreateLogicalVolume_VolumeLayout_Empty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	tags, err := lv.Tags()
 	if err != nil {
 		t.Fatal(err)
@@ -628,7 +634,7 @@ func TestCreateLogicalVolume_VolumeLayout_Linear(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	tags, err := lv.Tags()
 	if err != nil {
 		t.Fatal(err)
@@ -665,7 +671,7 @@ func TestCreateLogicalVolume_VolumeLayout_RAID1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	tags, err := lv.Tags()
 	if err != nil {
 		t.Fatal(err)
@@ -712,7 +718,7 @@ func TestCreateLogicalVolume_VolumeLayout_RAID1_Mirrors2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	tags, err := lv.Tags()
 	if err != nil {
 		t.Fatal(err)
@@ -747,7 +753,7 @@ func TestCreateLogicalVolume_VolumeLayout_RAID1_NotEnoughSpace(t *testing.T) {
 	tag := "dcos-tag"
 	lv, err := vg.CreateLogicalVolume(name, size*2, []string{tag}, VolumeLayoutOpt(raid))
 	if err == nil {
-		defer lv.Remove()
+		defer check(lv.Remove)
 		t.Fatalf("Expected error due to too few disks")
 	}
 	if err != ErrNoSpace {
@@ -774,7 +780,7 @@ func TestCreateLogicalVolume_VolumeLayout_RAID1_TooFewDisks(t *testing.T) {
 	raid := VolumeLayout{Type: VolumeTypeRAID1, Mirrors: 1}
 	lv, err := vg.CreateLogicalVolume(name, size, []string{tag}, VolumeLayoutOpt(raid))
 	if err == nil {
-		defer lv.Remove()
+		defer check(lv.Remove)
 		t.Fatalf("Expected error due to too few disks")
 	}
 	if err != ErrTooFewDisks {
@@ -802,7 +808,7 @@ func TestLookupLogicalVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	lv2, err := vg.LookupLogicalVolume(lv.name)
 	if err != nil {
 		t.Fatal(err)
@@ -832,7 +838,7 @@ func TestLookupLogicalVolumeNonExistent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	lv2, err := vg.LookupLogicalVolume(lv.name + "a")
 	if err != ErrLogicalVolumeNotFound {
 		t.Fatalf("Expected 'not found' error got %s", err)
@@ -862,7 +868,7 @@ func TestLogicalVolumeName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	if lv.Name() != name {
 		t.Fatalf("Expected name %v but got %v.", name, lv.Name())
 	}
@@ -888,7 +894,7 @@ func TestLogicalVolumeSizeInBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	if lv.SizeInBytes() != size {
 		t.Fatalf("Expected size %v but got %v.", size, lv.SizeInBytes())
 	}
@@ -921,7 +927,7 @@ func TestLogicalVolumePath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv.Remove()
+	defer check(lv.Remove)
 	path, err := lv.Path()
 	if err != nil {
 		t.Fatal(err)
@@ -952,13 +958,13 @@ func TestVolumeGroupListLogicalVolumeNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv1.Remove()
+	defer check(lv1.Remove)
 	name2 := "test-lv-" + uuid.New().String()
 	lv2, err := vg.CreateLogicalVolume(name2, size/2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lv2.Remove()
+	defer check(lv2.Remove)
 	lvnames, err := vg.ListLogicalVolumeNames()
 	if err != nil {
 		t.Fatal(err)
