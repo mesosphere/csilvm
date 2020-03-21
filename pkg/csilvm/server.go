@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/mesosphere/csilvm/pkg/lvm"
 	"github.com/mesosphere/csilvm/pkg/version"
 	"github.com/uber-go/tally"
@@ -499,8 +499,8 @@ func (s *Server) CreateVolume(
 		response := &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
 				CapacityBytes: int64(lv.SizeInBytes()),
-				Id:            lv.Name(),
-				Attributes:    attr,
+				VolumeId:      lv.Name(),
+				VolumeContext: attr,
 			},
 		}
 		return response, nil
@@ -603,8 +603,8 @@ func (s *Server) CreateVolume(
 	response := &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
 			CapacityBytes: int64(lv.SizeInBytes()),
-			Id:            volumeID,
-			Attributes:    attr,
+			VolumeId:      volumeID,
+			VolumeContext: attr,
 		},
 	}
 	return response, nil
@@ -819,7 +819,7 @@ func (s *Server) ValidateVolumeCapabilities(
 		}
 	}
 	response := &csi.ValidateVolumeCapabilitiesResponse{
-		Supported: true,
+		// TODO: Add optional Confirmed field
 		Message:   "",
 	}
 	return response, nil
@@ -860,6 +860,10 @@ func (s *Server) ListVolumes(
 		response := &csi.ListVolumesResponse{}
 		return response, nil
 	}
+	//Error if starting token is offered - Needed to pass csi-sanity ListVolume with invalid start token
+	if  request.GetStartingToken() != "" {
+		return nil, status.Errorf(codes.Aborted, "Starting_Token field not implemented.")
+	}
 	volnames, err := s.volumeGroup.ListLogicalVolumeNames()
 	if err != nil {
 		return nil, status.Errorf(
@@ -880,8 +884,8 @@ func (s *Server) ListVolumes(
 		}
 		info := &csi.Volume{
 			CapacityBytes: int64(lv.SizeInBytes()),
-			Id:            lv.Name(),
-			Attributes:    attr,
+			VolumeId:      lv.Name(),
+			VolumeContext: attr,
 		}
 		log.Printf("Found volume %v (%v bytes)", volname, lv.SizeInBytes())
 		entry := &csi.ListVolumesResponse_Entry{Volume: info}
@@ -987,10 +991,18 @@ func (s *Server) DeleteSnapshot(
 	return nil, ErrCallNotImplemented
 }
 
+
 func (s *Server) ListSnapshots(
 	ctx context.Context,
 	request *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 	log.Printf("ListSnapshots not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s *Server) ControllerExpandVolume(
+	ctx context.Context,
+	request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	log.Printf("ControllerExpandVolume not supported")
 	return nil, ErrCallNotImplemented
 }
 
@@ -1003,10 +1015,25 @@ func (s *Server) NodeStageVolume(
 	return nil, ErrCallNotImplemented
 }
 
+
 func (s *Server) NodeUnstageVolume(
 	ctx context.Context,
 	request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log.Printf("NodeUnstageVolume not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s *Server) NodeExpandVolume(
+	ctx context.Context,
+	request *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	log.Printf("NodeExpandVolume not supported")
+	return nil, ErrCallNotImplemented
+}
+
+func (s *Server) NodeGetVolumeStats(
+	ctx context.Context,
+	request *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	log.Printf("NodeGetVolumeStats not supported")
 	return nil, ErrCallNotImplemented
 }
 
@@ -1103,6 +1130,15 @@ func (s *Server) nodePublishVolume_Block(sourcePath, targetPath string, readonly
 		// For bind mounts, the filesystemtype and mount options are
 		// ignored. As this RPC is idempotent, we respond with success.
 		return nil
+	} else {
+		// The CSI Plug in is required to create the target 
+		log.Printf("Creating Mount Target  %v ", targetPath)
+		if _, err := os.Create(targetPath); err != nil {
+			return status.Errorf(
+				codes.Internal,
+				"Cannot create mount target %v: err=%v",
+				targetPath, err)
+		}
 	}
 	log.Printf("Nothing mounted at targetPath %v yet", targetPath)
 	// Perform a bind mount of the raw block device. The
@@ -1176,7 +1212,17 @@ func (s *Server) nodePublishVolume_Mount(sourcePath, targetPath string, readonly
 		// which is requested, to support idempotency
 		// we return success.
 		return nil
+	} else {
+		// The CSI Plug in is required to create the target 
+		log.Printf("Creating Mount Target  %v ", targetPath)
+		if err := os.Mkdir(targetPath, 0755); err != nil {
+			return status.Errorf(
+				codes.Internal,
+				"Cannot create mount target %v: err=%v",
+				targetPath, err)
+		}
 	}
+
 	log.Printf("Determining filesystem type at %v", sourcePath)
 	existingFstype, err := determineFilesystemType(sourcePath)
 	if err != nil {
@@ -1311,21 +1357,18 @@ func (s *Server) NodeUnpublishVolume(
 			"Failed to perform unmount: err=%v",
 			err)
 	}
+	// The CSI Plug in is required to delete the mount target 
+	log.Printf("Deleting Mount Target  %v ", targetPath)
+	if err := os.RemoveAll(targetPath); err != nil {
+		return nil, status.Errorf(
+			codes.Internal,
+			"Cannot delete  mount target %v: err=%v",
+			targetPath, err)
+	}
 	response := &csi.NodeUnpublishVolumeResponse{}
 	return response, nil
 }
 
-func (s *Server) NodeGetId(
-	ctx context.Context,
-	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	if s.nodeID == "" {
-		// TODO(jdef) remove this once the node-id flag is mandatory.
-		return nil, ErrCallNotImplemented
-	}
-	return &csi.NodeGetIdResponse{
-		NodeId: s.nodeID,
-	}, nil
-}
 
 func (s *Server) NodeGetInfo(
 	ctx context.Context,

@@ -89,14 +89,14 @@ func TestMetricsInterceptor(t *testing.T) {
 
 	// Check GetPluginInfo metrics
 	getPluginInfoFilter := filterMetricsTags(map[string]string{
-		"method": "/csi.v0.Identity/GetPluginInfo",
+		"method": "/csi.v1.Identity/GetPluginInfo",
 	})
 	getPluginInfoFilterSuccess := filterMetricsTags(map[string]string{
-		"method":      "/csi.v0.Identity/GetPluginInfo",
+		"method":      "/csi.v1.Identity/GetPluginInfo",
 		"result_type": resultTypeSuccess,
 	})
 	getPluginInfoFilterError := filterMetricsTags(map[string]string{
-		"method":      "/csi.v0.Identity/GetPluginInfo",
+		"method":      "/csi.v1.Identity/GetPluginInfo",
 		"result_type": resultTypeError,
 	})
 	success := counters.mustGet(t, "requests", getPluginInfoFilterSuccess)
@@ -117,14 +117,14 @@ func TestMetricsInterceptor(t *testing.T) {
 
 	// Check CreateVolume metrics
 	createVolumeFilter := filterMetricsTags(map[string]string{
-		"method": "/csi.v0.Controller/CreateVolume",
+		"method": "/csi.v1.Controller/CreateVolume",
 	})
 	createVolumeFilterSuccess := filterMetricsTags(map[string]string{
-		"method":      "/csi.v0.Controller/CreateVolume",
+		"method":      "/csi.v1.Controller/CreateVolume",
 		"result_type": resultTypeSuccess,
 	})
 	createVolumeFilterError := filterMetricsTags(map[string]string{
-		"method":      "/csi.v0.Controller/CreateVolume",
+		"method":      "/csi.v1.Controller/CreateVolume",
 		"result_type": resultTypeError,
 	})
 	_, ok = counters.get("requests", createVolumeFilterSuccess)
