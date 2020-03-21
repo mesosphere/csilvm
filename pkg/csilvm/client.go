@@ -1,7 +1,7 @@
 package csilvm
 
 import (
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	grpc "google.golang.org/grpc"
 )
 

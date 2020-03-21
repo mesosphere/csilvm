@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -326,13 +326,13 @@ func TestNodePublishVolumeMissingVolumeId(t *testing.T) {
 	}
 }
 
-func TestNodePublishVolumePresentPublishVolumeInfo(t *testing.T) {
+func TestNodePublishVolumePresentPublishVolumeContext(t *testing.T) {
 	client, cleanup := startTestValidate()
 	defer cleanup()
 	req := testNodePublishVolumeRequest("fake_volume_id", fakeMountDir, "", nil)
-	req.PublishInfo = map[string]string{"foo": "bar"}
+	req.PublishContext = map[string]string{"foo": "bar"}
 	_, err := client.NodePublishVolume(context.Background(), req)
-	if !grpcErrorEqual(err, ErrSpecifiedPublishInfo) {
+	if !grpcErrorEqual(err, ErrSpecifiedPublishContext) {
 		t.Fatal(err)
 	}
 }

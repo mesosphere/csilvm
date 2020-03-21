@@ -3,7 +3,7 @@ package csilvm
 import (
 	"context"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -343,6 +343,12 @@ func (v *controllerServerValidator) ListSnapshots(
 	return v.inner.ListSnapshots(ctx, request)
 }
 
+func (v *controllerServerValidator) ControllerExpandVolume(
+	ctx context.Context,
+	request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	return v.inner.ControllerExpandVolume(ctx, request)
+}
+
 // NodeService RPCs
 
 type nodeServerValidator struct {
@@ -366,7 +372,7 @@ func (v *nodeServerValidator) NodePublishVolume(
 
 var ErrMissingTargetPath = status.Error(codes.InvalidArgument, "The target_path field must be specified.")
 var ErrMissingVolumeCapability = status.Error(codes.InvalidArgument, "The volume_capability field must be specified.")
-var ErrSpecifiedPublishInfo = status.Error(codes.InvalidArgument, "The publish_volume_info field must not be specified.")
+var ErrSpecifiedPublishContext = status.Error(codes.InvalidArgument, "The publish_volume_context field must not be specified.")
 
 func validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest, removingVolumeGroup bool, supportedFilesystems map[string]string) error {
 	if err := validateRemoving(removingVolumeGroup); err != nil {
@@ -376,9 +382,9 @@ func validateNodePublishVolumeRequest(request *csi.NodePublishVolumeRequest, rem
 	if volumeId == "" {
 		return ErrMissingVolumeId
 	}
-	publishInfo := request.GetPublishInfo()
-	if publishInfo != nil {
-		return ErrSpecifiedPublishInfo
+	publishContext := request.GetPublishContext()
+	if publishContext != nil {
+		return ErrSpecifiedPublishContext
 	}
 	targetPath := request.GetTargetPath()
 	if targetPath == "" {
@@ -434,12 +440,6 @@ func validateNodeGetCapabilitiesRequest(request *csi.NodeGetCapabilitiesRequest)
 	return nil
 }
 
-func (v *nodeServerValidator) NodeGetId(
-	ctx context.Context,
-	request *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
-	return v.inner.NodeGetId(ctx, request)
-}
-
 func (v *nodeServerValidator) NodeGetInfo(
 	ctx context.Context,
 	request *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
@@ -457,3 +457,17 @@ func (v *nodeServerValidator) NodeUnstageVolume(
 	request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	return v.inner.NodeUnstageVolume(ctx, request)
 }
+
+func (v *nodeServerValidator) NodeExpandVolume(
+	ctx context.Context,
+	request *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
+	return v.inner.NodeExpandVolume(ctx, request)
+}
+
+func (v *nodeServerValidator) NodeGetVolumeStats(
+	ctx context.Context,
+	request *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
+	return v.inner.NodeGetVolumeStats(ctx, request)
+}
+
+

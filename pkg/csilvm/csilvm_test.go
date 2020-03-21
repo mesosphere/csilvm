@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"testing"
 
-	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
+	csi "github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/google/uuid"
 	"github.com/mesosphere/csilvm/pkg/cleanup"
 	"github.com/mesosphere/csilvm/pkg/lvm"
@@ -205,12 +205,12 @@ func TestCreateVolume(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 }
 
-func checkAttributesIncludeVolumeTag(t *testing.T, info *csi.Volume, name string) {
-	attr := info.GetAttributes()
-	tags := tagsFromAttributes(t, attr)
+func checkVolumeContextIncludeVolumeTag(t *testing.T, info *csi.Volume, name string) {
+	context := info.GetVolumeContext()
+	tags := tagsFromVolumeContext(t, context)
 	var found bool
 	for _, tag := range tags {
 		found = (tag == (tagVolumeNamePlainPrefix + "test-volume"))
@@ -219,7 +219,7 @@ func checkAttributesIncludeVolumeTag(t *testing.T, info *csi.Volume, name string
 		}
 	}
 	if !found {
-		t.Fatalf("Expected volume ID (%v) to have a tag with the suffix (%v).", info.GetId(), name)
+		t.Fatalf("Expected volume ID (%v) to have a tag with the suffix (%v).", info.GetVolumeId(), name)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestCreateVolume_WithTag(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 	vgnames, err := lvm.ListVolumeGroupNames()
 	if err != nil {
 		panic(err)
@@ -251,7 +251,7 @@ func TestCreateVolume_WithTag(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		lv, err := vg.LookupLogicalVolume(info.GetId())
+		lv, err := vg.LookupLogicalVolume(info.GetVolumeId())
 		if err == lvm.ErrLogicalVolumeNotFound {
 			continue
 		}
@@ -292,7 +292,7 @@ func TestCreateVolumeDefaultSize(t *testing.T) {
 	if uint64(info.GetCapacityBytes()) != defaultVolumeSize {
 		t.Fatalf("Expected defaultVolumeSize (%v) to match volume size (%v).", defaultVolumeSize, info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolumeCapacityNotMultipleOfExtentSize(t *testing.T) {
@@ -336,11 +336,11 @@ func TestCreateVolume_Idempotent(t *testing.T) {
 	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
 		t.Fatalf("Unexpected capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
 	}
-	if got := volInfo.GetId(); got != resp1.GetVolume().GetId() {
-		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetId())
+	if got := volInfo.GetVolumeId(); got != resp1.GetVolume().GetVolumeId() {
+		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetVolumeId())
 	}
-	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolume().GetAttributes()) {
-		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetAttributes())
+	if got := volInfo.GetVolumeContext(); !reflect.DeepEqual(got, resp1.GetVolume().GetVolumeContext()) {
+		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetVolumeContext())
 	}
 }
 
@@ -396,7 +396,7 @@ func TestCreateVolume_AlreadyExists_VolumeCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetId())
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetVolumeId())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetId())
+	lv, err := vg.LookupLogicalVolume(resp1.GetVolume().GetVolumeId())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,11 +481,11 @@ func TestCreateVolume_Idempotent_UnspecifiedExistingFsType(t *testing.T) {
 	if got := volInfo.GetCapacityBytes(); got != req.CapacityRange.RequiredBytes {
 		t.Fatalf("Unexpected capacity_bytes %v != %v", got, req.CapacityRange.RequiredBytes)
 	}
-	if got := volInfo.GetId(); got != resp1.GetVolume().GetId() {
-		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetId())
+	if got := volInfo.GetVolumeId(); got != resp1.GetVolume().GetVolumeId() {
+		t.Fatalf("Unexpected id %v != %v", got, resp1.GetVolume().GetVolumeId())
 	}
-	if got := volInfo.GetAttributes(); !reflect.DeepEqual(got, resp1.GetVolume().GetAttributes()) {
-		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetAttributes())
+	if got := volInfo.GetVolumeContext(); !reflect.DeepEqual(got, resp1.GetVolume().GetVolumeContext()) {
+		t.Fatalf("Unexpected attributes %v != %v", got, resp1.GetVolume().GetVolumeContext())
 	}
 }
 
@@ -544,7 +544,7 @@ func TestCreateVolume_VolumeLayout_Linear(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
@@ -567,7 +567,7 @@ func TestCreateVolume_VolumeLayout_RAID1(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
@@ -595,7 +595,7 @@ func TestCreateVolume_VolumeLayout_RAID1_Mirror2(t *testing.T) {
 	if info.GetCapacityBytes() != req.GetCapacityRange().GetRequiredBytes() {
 		t.Fatalf("Expected required_bytes (%v) to match volume size (%v).", req.GetCapacityRange().GetRequiredBytes(), info.GetCapacityBytes())
 	}
-	checkAttributesIncludeVolumeTag(t, info, req.GetName())
+	checkVolumeContextIncludeVolumeTag(t, info, req.GetName())
 }
 
 func TestCreateVolume_VolumeLayout_TooFewDisks(t *testing.T) {
@@ -634,7 +634,7 @@ func TestDeleteVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	req := testDeleteVolumeRequest(volumeId)
 	_, err = client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -653,7 +653,7 @@ func TestDeleteVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	req := testDeleteVolumeRequest(volumeId)
 	_, err = client.DeleteVolume(context.Background(), req)
 	if err != nil {
@@ -690,7 +690,7 @@ func TestDeleteVolumeAfterDeviceDisappears(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Remove the device node.
 	vg, err := lvm.LookupVolumeGroup(vgname)
 	if err != nil {
@@ -731,7 +731,7 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	capacityBytes := createResp.GetVolume().GetCapacityBytes()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
@@ -740,10 +740,6 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -802,19 +798,9 @@ func TestDeleteVolumeErasesData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId = createResp.GetVolume().GetId()
+	volumeId = createResp.GetVolume().GetVolumeId()
 	capacityBytes = createResp.GetVolume().GetCapacityBytes()
 	targetPath = filepath.Join(tmpdirPath, volumeId)
-	if file, err := os.Create(targetPath); err != nil {
-		t.Fatal(err)
-	} else {
-		// Immediately close the file, we're just creating it
-		// as a mount target.
-		if err := file.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	defer os.RemoveAll(targetPath)
 	publishReq = testNodePublishVolumeRequest(volumeId, targetPath, "block", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
@@ -928,17 +914,11 @@ func TestValidateVolumeCapabilities_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	req := testValidateVolumeCapabilitiesRequest(volumeId, "xfs", nil)
-	resp, err := client.ValidateVolumeCapabilities(context.Background(), req)
+	_, err = client.ValidateVolumeCapabilities(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !resp.GetSupported() {
-		t.Fatal("Expected requested volume capabilities to be supported.")
 	}
 }
 
@@ -954,7 +934,7 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -962,10 +942,6 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
@@ -978,12 +954,9 @@ func TestValidateVolumeCapabilities_MountVolume(t *testing.T) {
 		t.Fatal(err)
 	}
 	validateReq := testValidateVolumeCapabilitiesRequest(volumeId, "xfs", nil)
-	validateResp, err := client.ValidateVolumeCapabilities(context.Background(), validateReq)
+	_ , err = client.ValidateVolumeCapabilities(context.Background(), validateReq)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !validateResp.GetSupported() {
-		t.Fatal("Expected requested volume capabilities to be supported.")
 	}
 }
 
@@ -1013,7 +986,7 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Publish the volume with fstype 'xfs' then unmount it.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1021,10 +994,6 @@ func TestValidateVolumeCapabilities_MountVolume_MismatchedFsTypes(t *testing.T) 
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
 	if err != nil {
@@ -1120,8 +1089,8 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 		}
 
 		// This validates that create and list both properly return the tags attribute.
-		attr := entry.GetVolume().GetAttributes()
-		tags := tagsFromAttributes(t, attr)
+		context := entry.GetVolume().GetVolumeContext()
+		tags := tagsFromVolumeContext(t, context)
 		expected := []string{tag, nameTags[i]}
 		sort.Strings(expected)
 		sort.Strings(tags)
@@ -1131,10 +1100,10 @@ func TestListVolumes_TwoVolumes(t *testing.T) {
 	}
 }
 
-func tagsFromAttributes(t *testing.T, attr map[string]string) []string {
-	etags, ok := attr[attrTags]
+func tagsFromVolumeContext(t *testing.T, context map[string]string) []string {
+	etags, ok := context[attrTags]
 	if !ok {
-		t.Fatalf("volume attributes missing tags")
+		t.Fatalf("volume Context missing tags")
 	}
 	buf, err := base64.RawURLEncoding.DecodeString(etags)
 	if err != nil {
@@ -1446,7 +1415,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_BlockVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1501,7 +1470,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1509,10 +1478,6 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -1603,7 +1568,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1611,10 +1576,6 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_UnspecifiedFS(t *testi
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -1705,7 +1666,7 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1713,10 +1674,6 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume.
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -1802,10 +1759,6 @@ func TestNodePublishVolumeNodeUnpublishVolume_MountVolume_ReadOnly(t *testing.T)
 	alreadyUnpublished = true
 	// Publish the volume again, as SINGLE_NODE_READER_ONLY (ie., readonly).
 	targetPathRO := filepath.Join(tmpdirPath, volumeId+"-ro")
-	if err := os.Mkdir(targetPathRO, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPathRO)
 	publishReqRO := testNodePublishVolumeRequest(volumeId, targetPathRO, "xfs", nil)
 	publishReqRO.VolumeCapability.AccessMode.Mode = csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY
 	_, err = client.NodePublishVolume(context.Background(), publishReqRO)
@@ -1850,7 +1803,7 @@ func TestNodePublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1918,7 +1871,7 @@ func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId1 := createResp1.GetVolume().GetId()
+	volumeId1 := createResp1.GetVolume().GetVolumeId()
 	// Create a second volume.
 	createReq2 := testCreateVolumeRequest()
 	createReq2.Name += "-2"
@@ -1927,7 +1880,7 @@ func TestNodePublishVolume_BlockVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId2 := createResp2.GetVolume().GetId()
+	volumeId2 := createResp2.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1981,7 +1934,7 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -1989,10 +1942,6 @@ func TestNodePublishVolume_MountVolume_Idempotent(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -2050,7 +1999,7 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId1 := createResp1.GetVolume().GetId()
+	volumeId1 := createResp1.GetVolume().GetVolumeId()
 	// Create a second volume that we'll try to publish to the same targetPath.
 	createReq2 := testCreateVolumeRequest()
 	createReq2.Name += "-2"
@@ -2059,7 +2008,7 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId2 := createResp2.GetVolume().GetId()
+	volumeId2 := createResp2.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -2067,10 +2016,6 @@ func TestNodePublishVolume_MountVolume_TargetPathOccupied(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId1)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq1 := testNodePublishVolumeRequest(volumeId1, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq1)
@@ -2112,7 +2057,7 @@ func TestNodeUnpublishVolume_BlockVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -2191,7 +2136,7 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	volumeId := createResp.GetVolume().GetId()
+	volumeId := createResp.GetVolume().GetVolumeId()
 	// Prepare a temporary mount directory.
 	tmpdirPath, err := ioutil.TempDir("", "csilvm_tests")
 	if err != nil {
@@ -2199,10 +2144,6 @@ func TestNodeUnpublishVolume_MountVolume_Idempotent(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpdirPath)
 	targetPath := filepath.Join(tmpdirPath, volumeId)
-	if err := os.Mkdir(targetPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(targetPath)
 	// Publish the volume to /the/tmp/dir/volume-id
 	publishReq := testNodePublishVolumeRequest(volumeId, targetPath, "xfs", nil)
 	_, err = client.NodePublishVolume(context.Background(), publishReq)
@@ -2263,34 +2204,6 @@ func targetPathIsMountPoint(path string) bool {
 	return true
 }
 
-func TestNodeGetIdNotSupported(t *testing.T) {
-	vgname := testvgname()
-	pvname, pvclean := testpv()
-	defer check(pvclean)
-	client, clean := startTest(vgname, []string{pvname})
-	defer clean()
-	req := &csi.NodeGetIdRequest{}
-	_, err := client.NodeGetId(context.Background(), req)
-	if !grpcErrorEqual(err, ErrCallNotImplemented) {
-		t.Fatal(err)
-	}
-}
-
-func TestNodeGetId(t *testing.T) {
-	vgname := testvgname()
-	pvname, pvclean := testpv()
-	defer check(pvclean)
-	client, clean := startTest(vgname, []string{pvname}, NodeID("foo"))
-	defer clean()
-	req := &csi.NodeGetIdRequest{}
-	resp, err := client.NodeGetId(context.Background(), req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.GetNodeId() != "foo" {
-		t.Fatal("unexpected response", resp)
-	}
-}
 
 func testProbeRequest() *csi.ProbeRequest {
 	req := &csi.ProbeRequest{}

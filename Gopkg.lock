@@ -18,15 +18,15 @@
   version = "v3.1.1"
 
 [[projects]]
-  digest = "1:cf4f5171128e62b46299b0a7cd79543f50e62f483d2ca9364e4957c7bbee7a38"
+  digest = "1:0268b288445a5136a14f61e30ce61b23724afc9de635fed8c9397835c9568e1f"
   name = "github.com/container-storage-interface/spec"
   packages = [
     "lib/go",
-    "lib/go/csi/v0",
+    "lib/go/csi",
   ]
   pruneopts = ""
-  revision = "2178fdeea87f1150a17a63252eee28d4d8141f72"
-  version = "v0.3.0"
+  revision = "314ac542302938640c59b6fb501c635f27015326"
+  version = "v1.2.0"
 
 [[projects]]
   digest = "1:a4724325f1d3bd4127dac415e980c7c28f2e08f4d0ba2513e7de9980906604ef"
@@ -196,7 +196,7 @@
     "github.com/DataDog/datadog-go/statsd",
     "github.com/cactus/go-statsd-client/statsd",
     "github.com/container-storage-interface/spec/lib/go",
-    "github.com/container-storage-interface/spec/lib/go/csi/v0",
+    "github.com/container-storage-interface/spec/lib/go/csi",
     "github.com/gofrs/flock",
     "github.com/golang/protobuf/protoc-gen-go",
     "github.com/google/uuid",
